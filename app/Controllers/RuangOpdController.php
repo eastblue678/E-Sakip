@@ -151,9 +151,14 @@ class RuangOpdController extends BaseController
             return str_contains($teks, mb_strtolower($q));
         }));
 
+        // "PK di AKSARA": eKin tidak punya pihak kedua/baris untuk mereka — AKSARA pemilik dokumennya (satu kueri).
+        $lewat = array_map(static fn ($pk) => (int) ($pk['pegawai']['id'] ?? 0),
+            array_filter($semua, static fn ($pk) => ($pk['status'] ?? '') === 'lewat_aksara'));
+
         return view('ruang_opd/pk_pegawai', $this->dataDasar($opd, $tahun) + [
             'title'     => 'PK Pegawai · ' . $opd['nama_tampil'],
             'ada'       => $data !== null,
+            'pkAksara'  => $this->svc()->pkAksaraPerPihakPertama($lewat, $tahun),
             'baris'     => $baris,
             'jumlah'    => count($semua),
             'hitung'    => $hitung,
@@ -187,9 +192,15 @@ class RuangOpdController extends BaseController
         }
         $dok = $daftar === null ? null : $ekin->pkPegawai($pegawaiId, $tahun);
 
+        // Pihak pertama PK jabatan: eKin sengaja tidak membuat PK pegawai (jawabannya kosong). Tampilkan PK AKSARA-nya
+        // sendiri — isi sasaran/indikator/target dan tombol Lihat/Cetak — bukan kertas eKin tanpa isi.
+        $pkAksara = ($dok['status'] ?? '') === 'lewat_aksara' ? ($this->svc()->pkAksaraPerPihakPertama([$pegawaiId], $tahun)[$pegawaiId] ?? []) : [];
+
         return view('ruang_opd/pk_pegawai_dokumen', $this->dataDasar($opd, $tahun) + [
             'title'     => 'Dokumen PK Pegawai · ' . $opd['nama_tampil'],
             'dok'       => $dok,
+            'pkAksara'  => $pkAksara,
+            'isiPkAksara' => $this->svc()->isiPk(array_column($pkAksara, 'id')),
             'ekinPesan' => $dok === null ? $this->pesanEkin($ekin, $opd['id'], $tahun) : '',
         ]);
     }

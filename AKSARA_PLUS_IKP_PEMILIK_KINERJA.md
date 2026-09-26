@@ -106,10 +106,15 @@ AKSARA berbasis data, jadi Ruang OPD menampilkan **kelengkapan dan angka hidup**
   akun aktif untuk OPD itu dan menaut lewat `masuk-sebagai?opd_id=` (RSUD, UPT, kelurahan tidak punya akun).
 - **Kinerja Pegawai (eKin)**: angka RINGKAS, **Cascading Pegawai** (pohon RHK Kepala → … → staf lewat `rhk_atasan_id`, target
   IKI kuantitas, status porsi; lingkaran/yatim diputus jadi akar), **PK Pegawai** (daftar berstatus + dokumen baca-saja:
-  pernyataan & lampiran target bulanan, bisa dicetak peramban). Status "PK di AKSARA" (`lewat_aksara`) menaut ke
-  `perjanjian-kinerja?pegawai={id}` — id pegawai eKin = id pegawai AKSARA (eKin menyalin id saat sinkron), jadi yang
-  ditemukan tepat PK pihak pertama orang itu di OPD mana pun (PK Lurah tersimpan di kecamatan induknya). eKin mati / belum
-  dipasang → "Data eKin belum tersedia" dengan alasannya; dokumen SAKIP lain tidak terpengaruh.
+  pernyataan & lampiran target bulanan, bisa dicetak peramban). Status "PK di AKSARA" (`lewat_aksara`) = pihak pertama PK
+  jabatan; eKin sengaja tidak membuat PK pegawai untuknya (jawaban API kosong), jadi AKSARA membaca PK-nya sendiri
+  (`RuangOpdService::pkAksaraPerPihakPertama`, `pk.pihak_1` = id pegawai — id eKin = id AKSARA, eKin menyalin id saat
+  sinkron): di daftar, pihak kedua & jumlah indikator diambil dari PK AKSARA terbaru dan tombol **PK AKSARA** membuka
+  halaman PK itu di Ruang OPD (sasaran/indikator/target, Lihat/Cetak PDF — bagi admin OPD hanya PK yang tersimpan di
+  OPD-nya — dan tautan `perjanjian-kinerja?pegawai={id}`), bukan kertas eKin tanpa isi. Bila AKSARA tidak menemukan PK
+  orang itu, halaman menandainya "PK tidak ditemukan di AKSARA" (eKin dan AKSARA tidak sepakat). Unit yang pegawainya
+  sudah dimuat tetapi belum ber-SKP → satu kalimat "Belum ada SKP", bukan kartu bernilai nol. eKin mati / belum dipasang /
+  OPD tidak ada di eKin → "Data eKin belum tersedia" dengan alasannya; dokumen SAKIP lain tidak terpengaruh.
 
 ### EkinClient (arah eKin → AKSARA+)
 

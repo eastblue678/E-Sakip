@@ -1060,7 +1060,8 @@ final class RuangOpdService
      * Daftar PK satu OPD (atau semua OPD bila $opdId null) untuk satu tahun, dengan
      * pihak pertama/kedua dan jumlah sasaran/indikator. Dipakai hub & daftar PK terpadu.
      *
-     * @param array{jenis?:string[], q?:string, pihak_1?:int} $saring pihak_1 = id pegawai pihak pertama
+     * @param array{jenis?:string[], q?:string, pihak_1?:int|list<int>} $saring pihak_1 = id pegawai pihak pertama
+     *                                                                        (satu, atau beberapa sekaligus)
      *
      * @return list<array<string,mixed>>
      */
@@ -1091,7 +1092,11 @@ final class RuangOpdService
         }
         // Dari eKin (PK Pegawai "PK di AKSARA"): id pegawai eKin = id pegawai AKSARA (SinkronPegawaiService eKin
         // menyalin id), jadi pencocokan lewat id tepat — teks jabatan tidak (Plt., jabatan pihak kedua ikut cocok).
-        if ((int) ($saring['pihak_1'] ?? 0) > 0) {
+        if (is_array($saring['pihak_1'] ?? null)) {
+            // Beberapa pegawai sekaligus (daftar PK Pegawai Ruang OPD: semua "PK di AKSARA" satu OPD, satu kueri).
+            $ids = array_values(array_filter(array_map('intval', $saring['pihak_1']), static fn ($i) => $i > 0));
+            $b->whereIn('pk.pihak_1', $ids === [] ? [0] : $ids);
+        } elseif ((int) ($saring['pihak_1'] ?? 0) > 0) {
             $b->where('pk.pihak_1', (int) $saring['pihak_1']);
         }
         $q = trim((string) ($saring['q'] ?? ''));
@@ -1118,6 +1123,51 @@ final class RuangOpdService
         unset($r);
 
         return $rows;
+    }
+
+    /**
+     * PK AKSARA per pihak pertama — untuk pegawai yang di eKin berstatus "PK di AKSARA" (lewat_aksara).
+     *
+     * MENGAPA AKSARA mencarinya sendiri: eKin sengaja tidak membuat PK pegawai bagi pihak pertama PK jabatan (PK-nya
+     * dokumen AKSARA), jadi jawaban eKin untuk mereka kosong — tanpa pihak kedua, tanpa baris. Pemiliknya AKSARA;
+     * id pegawai eKin = id pegawai AKSARA (SinkronPegawaiService eKin menyalin id), sehingga cocok lewat pk.pihak_1.
+     * Pegawai yang tidak punya PK di sini = eKin dan AKSARA tidak sepakat; halaman menandainya, bukan menutupinya.
+     *
+     * @param int[] $pegawaiIds
+     *
+     * @return array<int, list<array<string,mixed>>> id pegawai => PK tahun itu, terbaru dulu (PK perubahan di atas PK awal)
+     */
+    public function pkAksaraPerPihakPertama(array $pegawaiIds, int $tahun): array
+    {
+        $pegawaiIds = array_values(array_unique(array_filter(array_map('intval', $pegawaiIds), static fn ($i) => $i > 0)));
+        if ($pegawaiIds === []) {
+            return [];
+        }
+        return self::kelompokPerPihakPertama($this->daftarPk(null, $tahun, ['pihak_1' => $pegawaiIds]));
+    }
+
+    /**
+     * Baris PK -> [pihak_1 => PK, terbaru dulu]. "Terbaru" = tanggal PK lalu id: PK perubahan (mis. 1 Juli sesudah
+     * rotasi) berlaku di atas PK awal tahun, dan PK tanpa tanggal jatuh ke bawah.
+     *
+     * @param list<array<string,mixed>> $rows
+     *
+     * @return array<int, list<array<string,mixed>>>
+     */
+    public static function kelompokPerPihakPertama(array $rows): array
+    {
+        $hasil = [];
+        foreach ($rows as $r) {
+            if ((int) ($r['pihak_1'] ?? 0) > 0) {
+                $hasil[(int) $r['pihak_1']][] = $r;
+            }
+        }
+        foreach ($hasil as &$daftar) {
+            usort($daftar, static fn ($a, $b) => [(string) ($b['tanggal'] ?? ''), (int) $b['id']] <=> [(string) ($a['tanggal'] ?? ''), (int) $a['id']]);
+        }
+        unset($daftar);
+
+        return $hasil;
     }
 
     /**

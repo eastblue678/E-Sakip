@@ -274,7 +274,7 @@ supaya satu alamat melayani semua peran; `ModulePermissionFilter` tidak berlaku,
 | GET | `/ruang-opd/(:num)` | `RuangOpdController::hub` | Hub satu OPD per tahap siklus SAKIP, tombol "Buka" ke halaman lama yang boleh dibuka peran itu (`App\Services\RuangOpdTautan`) |
 | GET | `/ruang-opd/(:num)/cascading-pegawai` | `RuangOpdController::cascadingPegawai` | Pohon RHK pegawai dari eKin |
 | GET | `/ruang-opd/(:num)/pk-pegawai` | `RuangOpdController::pkPegawai` | Daftar PK pegawai dari eKin (`?status&q`) |
-| GET | `/ruang-opd/(:num)/pk-pegawai/(:num)` | `RuangOpdController::pkPegawaiDokumen` | Dokumen PK satu pegawai (baca-saja, bisa dicetak peramban) |
+| GET | `/ruang-opd/(:num)/pk-pegawai/(:num)` | `RuangOpdController::pkPegawaiDokumen` | Dokumen PK satu pegawai (baca-saja, bisa dicetak peramban); pihak pertama PK jabatan ("PK di AKSARA") → PK AKSARA-nya sendiri dengan Lihat/Cetak PDF |
 | GET | `/perjanjian-kinerja` | `PerjanjianKinerjaController::index` | Semua PK (`?tahun&jenis&opd_id&q&pegawai&hal`; `pegawai` = id pihak pertama), aksi ke rute lama `adminopd|adminkab/pk/{jenis}/…` |
 
 ---

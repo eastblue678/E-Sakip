@@ -395,6 +395,16 @@ $lompat = [
       $warnaPr = ['sangat_baik' => '#0a8f50', 'baik' => '#6eab11', 'butuh_perbaikan' => '#e5b12c', 'kurang' => '#e0843a', 'sangat_kurang' => '#c93c3c'];
       $labelPr = ['sangat_baik' => 'Sangat Baik', 'baik' => 'Baik', 'butuh_perbaikan' => 'Butuh Perbaikan', 'kurang' => 'Kurang', 'sangat_kurang' => 'Sangat Kurang'];
       ?>
+      <?php if ((int) $pg['ber_skp'] === 0): ?>
+        <?php /* MENGAPA tidak delapan kartu bernilai nol: unit yang baru dimuat sebagian ke eKin (mis. Setda: hanya Sekda)
+                 terbaca seolah semua kinerjanya gagal. Cukup katakan apa adanya: pegawainya ada, SKP-nya belum. */ ?>
+        <div class="ro-kosong">
+          <div class="ic"><i class="fas fa-user-clock"></i></div>
+          <h5>Belum ada SKP <?= (int) $tahun ?> di eKin</h5>
+          <p class="small mb-0"><?= (int) $pg['total'] ?> pegawai perangkat daerah ini sudah dimuat di eKin (<?= (int) $pg['berakun'] ?> berakun), tetapi belum ada yang menyusun SKP <?= (int) $tahun ?>.
+            <?= (int) $pp['lewat_aksara'] > 0 ? (int) $pp['lewat_aksara'] . ' pejabat struktural memakai dokumen PK AKSARA.' : '' ?></p>
+        </div>
+      <?php else: ?>
       <div class="ro-dok-kepala">
         <div class="ic" style="background:#f1eefa;color:#5b4a8a;"><i class="fas fa-id-badge"></i></div>
         <div><h4>Ringkasan pegawai <?= (int) $tahun ?></h4><p>Angka hidup dari eKin (tembolok 5 menit)</p></div>
@@ -426,6 +436,7 @@ $lompat = [
         <div><span class="nm">Cascading pegawai</span><b><?= (int) $cs['porsi_lengkap'] ?>/<?= (int) $cs['rhk_ber_bawahan'] ?></b>
           <small>RHK berbawahan yang porsinya lengkap · <?= (int) $cs['porsi_kurang'] ?> kurang</small></div>
       </div>
+      <?php endif; /* ber_skp */ ?>
     <?php endif; ?>
     <div class="ro-aksi">
       <a class="btn btn-sm" style="background:#5b4a8a;color:#fff;" href="<?= base_url('ruang-opd/' . (int) $opd['id'] . '/cascading-pegawai?tahun=' . (int) $tahun) ?>" data-ro-tautan><i class="fas fa-diagram-project me-1"></i>Cascading Pegawai</a>

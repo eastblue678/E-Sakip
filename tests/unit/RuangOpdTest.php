@@ -257,6 +257,24 @@ final class RuangOpdTest extends CIUnitTestCase
         $this->assertSame(10, EkinClient::ikiKuantitas($p['akar'][0])['target'], 'target = IKI aspek kuantitas');
     }
 
+    /**
+     * PK di AKSARA (lewat_aksara): PK AKSARA dikelompokkan per pihak pertama, PK perubahan (tanggal lebih baru) di atas
+     * PK awal tahun; PK tanpa tanggal di bawah; baris tanpa pihak pertama diabaikan.
+     */
+    public function testPkAksaraPerPihakPertamaTerbaruDulu(): void
+    {
+        $g = RuangOpdService::kelompokPerPihakPertama([
+            ['id' => 10, 'pihak_1' => 7, 'tanggal' => '2026-01-02'],
+            ['id' => 55, 'pihak_1' => 7, 'tanggal' => '2026-07-01'],
+            ['id' => 60, 'pihak_1' => 7, 'tanggal' => null],
+            ['id' => 11, 'pihak_1' => 9, 'tanggal' => '2026-01-02'],
+            ['id' => 12, 'pihak_1' => null, 'tanggal' => '2026-01-02'],
+        ]);
+        $this->assertSame([7, 9], array_keys($g));
+        $this->assertSame([55, 10, 60], array_column($g[7], 'id'));
+        $this->assertSame([11], array_column($g[9], 'id'));
+    }
+
     public function testKlienEkinGagalMenjadiNullDenganAlasan(): void
     {
         $tanpaKonfig = new EkinClient('', '', static fn () => [200, '{}'], false);

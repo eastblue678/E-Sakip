@@ -239,6 +239,35 @@ table.ro-mini { width: 100%; min-width: 0 !important; font-size: .78rem; border-
 .ro-pohon details:not([open]) > summary .buka .s { display: none; }
 .ro-pohon .sembunyi { display: none; }
 .ro-fiktif { font-size: .6rem; font-weight: 800; letter-spacing: .4px; color: #8a4b00; background: #fff1d6; border-radius: 5px; padding: .1em .4em; }
+.ro-pk-hilang { font-size: .7rem; font-weight: 700; color: #9a3412; margin-top: 2px; }
+.ro-pohon .ro-rhk.teks { background: #faf9fd; border-style: dashed; }
+.ro-pohon .ro-rhk.teks .rum { font-weight: 600; color: #4a4163; }
+
+/* ---------- PK AKSARA pihak pertama (PK Pegawai "PK di AKSARA") ---------- */
+.ro-pka { border: 1px solid #dbe7f3; border-radius: 14px; background: #fff; padding: 14px 16px; margin-bottom: 14px; }
+.ro-pka-kepala { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-bottom: 10px; }
+.ro-pka-kepala h5 { margin: 0; font-size: .95rem; font-weight: 800; color: #1c3a5e; }
+.ro-pka-kepala .kanan { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+.ro-pka dl { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 2px 10px; font-size: .8rem; margin: 0 0 10px; }
+.ro-pka dt { color: #5d7064; font-weight: 600; } .ro-pka dd { margin: 0; color: #1c2d23; }
+table.ro-pka-isi { width: 100%; border-collapse: collapse; font-size: .8rem; }
+.ro-pka-isi th, .ro-pka-isi td { border-top: 1px solid #edf1ee; padding: 6px 8px; vertical-align: top; }
+.ro-pka-isi th { font-size: .7rem; text-transform: uppercase; letter-spacing: .3px; color: #5d7064; background: #f7faf8; }
+.ro-pka-isi td.num { text-align: right; white-space: nowrap; }
+@media (max-width: 575.98px) {
+    .ro-pka { padding: 12px; }
+    .ro-pka dl { grid-template-columns: 1fr; } .ro-pka dd { margin-bottom: 4px; }
+    .ro-pka-kepala .kanan { margin-left: 0; }
+    /* Ponsel: tiap indikator jadi kartu bertumpuk (sasaran → indikator → target), bukan tabel empat kolom yang terpotong. */
+    table.ro-pka-isi { min-width: 0 !important; }
+    .ro-pka-isi thead, .ro-pka-isi td.no { display: none; }
+    .ro-pka-isi tbody, .ro-pka-isi tr, .ro-pka-isi td { display: block; width: 100%; }
+    .ro-pka-isi tr { border-top: 1px solid #edf1ee; padding: 6px 0; }
+    .ro-pka-isi td { border: 0; padding: 1px 0; }
+    .ro-pka-isi td.sas { font-weight: 700; color: #1c2d23; }
+    .ro-pka-isi td.num { text-align: left; white-space: normal; }
+    .ro-pka-isi td.num::before { content: 'Target: '; color: #5d7064; }
+}
 
 /* ---------- Dokumen PK pegawai ---------- */
 .ro-kertas { background: #fff; border: 1px solid #dfe5e1; border-radius: 6px; box-shadow: 0 10px 28px rgba(16,40,24,.08); padding: 36px 42px;

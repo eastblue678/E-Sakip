@@ -17,7 +17,8 @@ $porsiLabel = [
     'lengkap'       => ['s-hijau', 'Porsi lengkap'],
     'kurang'        => ['s-kuning', 'Porsi kurang'],
     'lebih'         => ['s-merah', 'Porsi berlebih'],
-    'beda_satuan'   => ['s-abu', 'Satuan berbeda'],
+    // eKin (CascadingService::statusPorsi) hanya menjumlah kontribusi yang satuan DAN metodenya sama.
+    'beda_satuan'   => ['s-abu', 'Beda satuan/metode'],
     'tanpa_bawahan' => ['s-abu', 'Tanpa bawahan'],
 ];
 $angka = static function ($v): string {
@@ -56,7 +57,8 @@ $render = static function (array $n, int $dalam) use (&$render, $pegawai, $porsi
         . '<span class="ro-chip polos">' . (($n['jenis'] ?? '') === 'tambahan' ? 'RHK tambahan' : 'RHK utama') . '</span>'
         . ($iki ? '<span><i class="fas fa-bullseye me-1" style="color:#7a67b0"></i>' . esc((string) ($iki['indikator'] ?? '')) . ': <strong>'
             . esc($angka($iki['target'] ?? null) . ' ' . ($iki['satuan'] ?? '')) . '</strong></span>' : '')
-        . ($st !== '' ? '<span class="ro-chip ' . $cls . '" title="Target atasan yang terbagi ke bawahan"><i class="ro-titik"></i>' . esc($lbl)
+        // "Tanpa bawahan" di setiap daun hanya derau — cukup tampil bila simpul itu memang punya anak di pohon ini.
+        . ($st !== '' && ($st !== 'tanpa_bawahan' || ($n['anak'] ?? []) !== []) ? '<span class="ro-chip ' . $cls . '" title="Target atasan yang terbagi ke bawahan"><i class="ro-titik"></i>' . esc($lbl)
             . (($porsi['target'] ?? null) !== null && in_array($st, ['lengkap', 'kurang', 'lebih'], true)
                 ? ' · ' . esc($angka($porsi['terbagi'] ?? null)) . '/' . esc($angka($porsi['target'])) . ' ' . esc((string) ($porsi['satuan'] ?? '')) : '')
             . '</span>' : '')
@@ -103,7 +105,7 @@ $render = static function (array $n, int $dalam) use (&$render, $pegawai, $porsi
       <button type="button" class="aktif" data-porsi="">Semua RHK<span class="n"><?= (int) $j['rhk'] ?></span></button>
       <button type="button" data-porsi="kurang">Porsi kurang<span class="n"><?= (int) $j['kurang'] ?></span></button>
       <button type="button" data-porsi="lebih">Porsi berlebih<span class="n"><?= (int) $j['lebih'] ?></span></button>
-      <button type="button" data-porsi="beda_satuan">Satuan berbeda<span class="n"><?= (int) $j['beda_satuan'] ?></span></button>
+      <button type="button" data-porsi="beda_satuan">Beda satuan/metode<span class="n"><?= (int) $j['beda_satuan'] ?></span></button>
       <button type="button" data-porsi="lengkap">Lengkap<span class="n"><?= (int) $j['lengkap'] ?></span></button>
     </div>
     <div class="d-flex gap-2">
