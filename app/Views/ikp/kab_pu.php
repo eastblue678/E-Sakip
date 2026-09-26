@@ -51,6 +51,8 @@ CSS);
 ?>
 <?= $this->include('templates/shell_atas') ?>
 <?= $this->include('templates/dashboard_kit') ?>
+<?php /* AKSARA+ — satu menu IKP; halaman kabupaten dipilih lewat tab */ ?>
+<?= $this->include('ikp/_tab_kab') ?>
 
 <div class="mb-3">
   <a href="<?= base_url('adminkab/ikp') . $qs() ?>" class="btn btn-sm btn-outline-success"><i class="fas fa-arrow-left me-1"></i> Rekap per Perangkat Daerah</a>

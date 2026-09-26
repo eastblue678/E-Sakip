@@ -212,6 +212,9 @@ class JagaAsap extends BaseCommand
                 // AKSARA+ — Kinerja Prioritas (IKP) & Pemilik Kinerja
                 '/adminopd/ikp', '/adminopd/ikp/breakdown', '/adminopd/ikp/realisasi',
                 '/adminopd/ikp/rekap', '/adminopd/ikp/inovasi', '/adminopd/pemilik-kinerja',
+                // AKSARA+ — Perjanjian Kinerja terpadu. (/ruang-opd tidak diasapi di sini: untuk
+                // peran OPD ia 302 ke /ruang-opd/{id} sendiri, dan pemeriksa ini tidak mengikuti pengalihan.)
+                '/perjanjian-kinerja',
             ];
         }
 
@@ -221,6 +224,8 @@ class JagaAsap extends BaseCommand
             '/adminkab/lakip', '/adminkab/verifikasi',
             // AKSARA+ — Kinerja Prioritas (IKP) lintas OPD
             '/adminkab/ikp', '/adminkab/ikp/program-unggulan',
+            // AKSARA+ — Ruang OPD (matriks semua OPD) & Perjanjian Kinerja terpadu
+            '/ruang-opd', '/perjanjian-kinerja',
         ];
     }
 

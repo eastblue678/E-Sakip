@@ -120,6 +120,8 @@ $filterQs = http_build_query(array_filter([
             <div class="bg-white rounded shadow p-4">
                 <h2 class="h3 fw-bold text-success text-center mb-1"><?= esc($judul) ?></h2>
                 <p class="text-center text-muted small mb-4">Realisasi capaian triwulanan terhadap target Rencana Aksi PK.</p>
+                <?php /* AKSARA+ — satu menu Pengukuran; PK Bupati/OPD & Target/MONEV jadi tab di sini */ $this->setVar('halaman', 'monev'); ?>
+                <?= $this->include('adminOpd/pk_renaksi/_tab_pengukuran') ?>
 
                 <?php if (!empty($summary)): ?>
                     <div class="row g-2 mb-4">

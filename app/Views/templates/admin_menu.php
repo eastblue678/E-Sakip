@@ -10,6 +10,10 @@ $role    = session()->get('role');
 $dashUrl = in_array($role, ['admin_opd', 'admin_kecamatan'], true)
     ? base_url('adminopd/dashboard')
     : ($role === 'bupati' ? base_url('bupati/dashboard') : base_url('adminkab/dashboard'));
+// AKSARA+ — periode RPJMD aktif: tautan "Pohon Kinerja & Cascading" langsung berisi,
+// bukan layar kosong "pilih periode dulu".
+$periodeMenu = (new \App\Services\IkpRekapService())->periodeAktif();
+$periodeMenu = $periodeMenu['awal'] . '-' . $periodeMenu['akhir'];
 $linkCls = 'btn btn-outline-secondary text-start px-3 py-2 text-dark border-0 rounded sidebar-nav-link';
 $ddBtn   = 'btn btn-outline-secondary text-start px-3 py-2 text-dark border-0 rounded dropdown-toggle d-flex justify-content-between align-items-center sidebar-nav-link';
 
@@ -114,6 +118,10 @@ if (user_can('lakip_opd.buka_kunci')) {
   <a href="<?= base_url('bupati/dashboard') ?>" class="<?= $linkCls ?>">
     <i class="fas fa-gauge-high"></i><span>Dashboard Eksekutif</span>
   </a>
+  <?php /* AKSARA+ — Ruang OPD: satu pintu semua dokumen & kinerja satu perangkat daerah (baca) */ ?>
+  <a href="<?= base_url('ruang-opd') ?>" class="<?= $linkCls ?>" data-awalan="/ruang-opd">
+    <i class="fas fa-building-columns"></i><span>Ruang OPD</span>
+  </a>
 
   <div class="sidebar-section">Detail Monitoring</div>
   <?php foreach ($bupatiMenu as [$url, $ikon, $label]): ?>
@@ -126,6 +134,12 @@ if (user_can('lakip_opd.buka_kunci')) {
 
 <?php if (user_can('dashboard.view')): ?>
   <a href="<?= $dashUrl ?>" class="<?= $linkCls ?>"><i class="fas fa-gauge-high"></i><span>Dashboard</span></a>
+<?php endif; ?>
+<?php /* AKSARA+ — Ruang OPD (RuangOpdController menjaga lingkupnya: kabupaten/inspektorat/super admin semua OPD, admin OPD/kecamatan OPD sendiri) */ ?>
+<?php if (in_array($role, ['admin', 'admin_kab', 'admin_inspektorat'], true)): ?>
+  <a href="<?= base_url('ruang-opd') ?>" class="<?= $linkCls ?>" data-awalan="/ruang-opd"><i class="fas fa-building-columns"></i><span>Ruang OPD</span></a>
+<?php elseif (in_array($role, ['admin_opd', 'admin_kecamatan'], true)): ?>
+  <a href="<?= base_url('ruang-opd') ?>" class="<?= $linkCls ?>" data-awalan="/ruang-opd"><i class="fas fa-building-columns"></i><span>Ruang OPD Saya</span></a>
 <?php endif; ?>
 
 <?php /* AKSARA+ — "Masuk sebagai" (.env demo.masukSebagai; Admin Kabupaten & Super Admin, tidak tampil saat meniru) */ ?>
@@ -150,27 +164,19 @@ $canRencanaKab = user_can('rpjmd.view') || user_can('rkpd.view') || user_can('ik
       <?php if (user_can('rkpd.view')): ?><li><a class="dropdown-item" href="<?= base_url('adminkab/rkpd') ?>">RKPD</a></li><?php endif; ?>
       <?php if (user_can('iku_kab.view')): ?><li><a class="dropdown-item" href="<?= base_url('adminkab/iku') ?>">IKU</a></li><?php endif; ?>
       <?php if (user_can('iku_kab.view')): ?><li><a class="dropdown-item" href="<?= base_url('adminkab/iku/revisi') ?>">&nbsp;&nbsp;&#8226; Revisi IKU</a></li><?php endif; ?>
+      <?php /* AKSARA+ — satu butir: tampilan Tabel/Pohon dipilih lewat tab di halamannya */ ?>
       <?php if (user_can('cascading_kab.view')): ?>
-        <li><a class="dropdown-item" href="<?= base_url('adminkab/cascading?view=pohon') ?>">Pohon Kinerja</a></li>
-        <li><a class="dropdown-item" href="<?= base_url('adminkab/cascading?view=tabel') ?>">Cascading</a></li>
+        <li><a class="dropdown-item" href="<?= base_url('adminkab/cascading?view=pohon&periode=' . $periodeMenu) ?>" data-abaikan-view>Pohon Kinerja &amp; Cascading</a></li>
       <?php endif; ?>
-      <?php if (user_can('pk_bupati.view')): ?><li><a class="dropdown-item" href="<?= base_url('adminkab/pk/bupati') ?>">Perjanjian Kinerja Bupati</a></li><?php endif; ?>
+      <?php /* AKSARA+ — satu butir untuk semua jenis PK (Bupati, JPT, Camat, Administrator, Pengawas) di semua OPD */ ?>
+      <?php if (user_can('pk_bupati.view')): ?><li><a class="dropdown-item" href="<?= base_url('perjanjian-kinerja') ?>" data-awalan="/perjanjian-kinerja|/adminkab/pk/">Perjanjian Kinerja</a></li><?php endif; ?>
     </ul>
   </div>
 <?php endif; ?>
 <?php /* ===== AKSARA+ — Kinerja Prioritas (IKP) lintas OPD ===== */ ?>
 <?php if (user_can('ikp_kab.view')): ?>
-  <div class="dropdown">
-    <button class="<?= $ddBtn ?>" type="button" id="ddIkpKab" data-bs-toggle="dropdown" aria-expanded="false"><span><i class="fas fa-bullseye"></i> Kinerja Prioritas (IKP)</span></button>
-    <ul class="dropdown-menu w-100" aria-labelledby="ddIkpKab">
-      <li><a class="dropdown-item" href="<?= base_url('adminkab/ikp') ?>">Rekap Bulanan per OPD</a></li>
-      <li><a class="dropdown-item" href="<?= base_url('adminkab/ikp/program-unggulan') ?>">Per Program Unggulan</a></li>
-      <?php if (user_can('pemilik_kinerja.view')): ?>
-        <li><hr class="dropdown-divider"></li>
-        <li><a class="dropdown-item" href="<?= base_url('adminkab/pemilik-kinerja') ?>">Pemilik Kinerja per OPD (s.d. Pelaksana)</a></li>
-      <?php endif; ?>
-    </ul>
-  </div>
+  <?php /* Satu butir; Rekap per OPD / Per Program Unggulan / Pemilik Kinerja / Cetak = tab di halamannya (ikp/_tab_kab) */ ?>
+  <a href="<?= base_url('adminkab/ikp') ?>" class="<?= $linkCls ?>" data-awalan="/adminkab/ikp|/adminkab/pemilik-kinerja"><i class="fas fa-bullseye"></i><span>Kinerja Prioritas (IKP)</span></a>
 <?php endif; ?>
 <?php /* VERIFIKASI — dropdown berisi semua yang menunggu KEPUTUSAN admin
          kabupaten: pengajuan versi dokumen (§47) dan permintaan perbaikan LAKIP
@@ -224,14 +230,10 @@ $jmlVerifikasi   = (int) $jmlPending + (int) $lakipMenunggu;
   <div class="dropdown">
     <button class="<?= $ddBtn ?>" type="button" id="ddUkurKab" data-bs-toggle="dropdown" aria-expanded="false"><span><i class="fas fa-chart-line"></i> Pengukuran Kinerja</span></button>
     <ul class="dropdown-menu w-100" aria-labelledby="ddUkurKab">
+      <?php /* AKSARA+ — satu butir per konsep; PK Bupati vs PK OPD/Kecamatan = tab di halamannya (pk_renaksi/_tab_pengukuran) */ ?>
       <?php if (user_can('pk_bupati.view')): ?>
-        <li><h6 class="dropdown-header">Target Rencana Aksi</h6></li>
-        <li><a class="dropdown-item" href="<?= base_url('adminkab/target_renaksi') ?>">PK Bupati</a></li>
-        <li><a class="dropdown-item" href="<?= base_url('adminkab/renaksi_pk/es3') ?>">PK OPD / Kecamatan</a></li>
-        <li><hr class="dropdown-divider"></li>
-        <li><h6 class="dropdown-header">Monitoring Rencana Aksi</h6></li>
-        <li><a class="dropdown-item" href="<?= base_url('adminkab/monev') ?>">PK Bupati</a></li>
-        <li><a class="dropdown-item" href="<?= base_url('adminkab/monev_pk/es3') ?>">PK OPD / Kecamatan</a></li>
+        <li><a class="dropdown-item" href="<?= base_url('adminkab/target_renaksi') ?>" data-awalan="/adminkab/target_renaksi|/adminkab/renaksi_pk/">Target &amp; Rencana Aksi</a></li>
+        <li><a class="dropdown-item" href="<?= base_url('adminkab/monev') ?>" data-awalan="/adminkab/monev">Monitoring Rencana Aksi (MONEV)</a></li>
       <?php endif; ?>
     </ul>
   </div>
@@ -272,21 +274,12 @@ $canRencanaOpd = user_can('renstra.view') || user_can('rkt_opd.view') || user_ca
       <?php if (user_can('iku_opd.view')): ?><li><a class="dropdown-item" href="<?= base_url('adminopd/iku') ?>">IKU</a></li><?php endif; ?>
       <?php if (user_can('iku_opd.view')): ?><li><a class="dropdown-item" href="<?= base_url('adminopd/iku/revisi') ?>">&nbsp;&nbsp;&#8226; Revisi IKU</a></li><?php endif; ?>
       <?php if (user_can('cascading_opd.view')): ?>
-        <li><a class="dropdown-item" href="<?= base_url('adminopd/cascading?view=pohon') ?>">Pohon Kinerja</a></li>
-        <li><a class="dropdown-item" href="<?= base_url('adminopd/cascading?view=tabel') ?>">Cascading</a></li>
+        <li><a class="dropdown-item" href="<?= base_url('adminopd/cascading?view=pohon&periode=' . $periodeMenu) ?>" data-abaikan-view>Pohon Kinerja &amp; Cascading</a></li>
       <?php endif; ?>
+      <?php /* AKSARA+ — SATU butir Perjanjian Kinerja; jenis (JPT/Camat, Administrator, Pengawas) = saringan di halamannya.
+               Rute lama adminopd/pk/{jpt|kecamatan|administrator|pengawas} tetap berlaku untuk lihat/ubah/cetak. */ ?>
       <?php if (user_can('pk_opd.view')): ?>
-        <li><hr class="dropdown-divider"></li>
-        <li><h6 class="dropdown-header">Perjanjian Kinerja</h6></li>
-        <?php if ($role !== 'admin_kecamatan'): // PK JPT (Eselon II) tidak berlaku utk kecamatan ?>
-          <li><a class="dropdown-item" href="<?= base_url('adminopd/pk/jpt') ?>">PK JPT (Eselon II)</a></li>
-        <?php endif; ?>
-        <?php if ($role === 'admin_kecamatan' || $role === 'admin'): // PK Camat (puncak kecamatan) utk admin kecamatan (+ super admin) ?>
-          <li><a class="dropdown-item" href="<?= base_url('adminopd/pk/kecamatan') ?>">PK Kecamatan (Eselon III)</a></li>
-        <?php endif; ?>
-        <?php /* PK Administrator & Pengawas: berlaku utk OPD Dinas maupun Kecamatan (Sekcam/Kasi) */ ?>
-        <li><a class="dropdown-item" href="<?= base_url('adminopd/pk/administrator') ?>">PK Administrator (Eselon III)</a></li>
-        <li><a class="dropdown-item" href="<?= base_url('adminopd/pk/pengawas') ?>">PK Pengawas (Eselon IV)</a></li>
+        <li><a class="dropdown-item" href="<?= base_url('perjanjian-kinerja') ?>" data-awalan="/perjanjian-kinerja|/adminopd/pk/">Perjanjian Kinerja</a></li>
       <?php endif; ?>
     </ul>
   </div>
@@ -297,26 +290,16 @@ $canRencanaOpd = user_can('renstra.view') || user_can('rkt_opd.view') || user_ca
   <a href="<?= base_url('adminopd/pemilik-kinerja') ?>" class="<?= $linkCls ?>"><i class="fas fa-sitemap"></i><span>Pemilik Kinerja (s.d. Pelaksana)</span></a>
 <?php endif; ?>
 <?php if ($bukaOpdPlus && user_can('ikp_opd.view')): ?>
-  <div class="dropdown">
-    <button class="<?= $ddBtn ?>" type="button" id="ddIkpOpd" data-bs-toggle="dropdown" aria-expanded="false"><span><i class="fas fa-bullseye"></i> Kinerja Prioritas (IKP)</span></button>
-    <ul class="dropdown-menu w-100" aria-labelledby="ddIkpOpd">
-      <li><a class="dropdown-item" href="<?= base_url('adminopd/ikp') ?>">Indikator &amp; Target</a></li>
-      <li><a class="dropdown-item" href="<?= base_url('adminopd/ikp/breakdown') ?>">Breakdown Target (Tahun &amp; Bulan)</a></li>
-      <li><a class="dropdown-item" href="<?= base_url('adminopd/ikp/realisasi') ?>">Realisasi Bulanan</a></li>
-      <li><a class="dropdown-item" href="<?= base_url('adminopd/ikp/rekap') ?>">Rekap Triwulan</a></li>
-      <li><a class="dropdown-item" href="<?= base_url('adminopd/ikp/inovasi') ?>">Rencana Inovasi</a></li>
-      <li><hr class="dropdown-divider"></li>
-      <li><a class="dropdown-item" href="<?= base_url('adminopd/ikp/lampiran-pk') ?>" target="_blank">Cetak Lampiran PK Eselon II</a></li>
-    </ul>
-  </div>
+  <?php /* Satu butir; Indikator & Target / Breakdown / Realisasi / Rekap / Inovasi / Lampiran PK = tab di tiap halaman IKP (ikp/_tab_opd) */ ?>
+  <a href="<?= base_url('adminopd/ikp') ?>" class="<?= $linkCls ?>" data-awalan="/adminopd/ikp"><i class="fas fa-bullseye"></i><span>Kinerja Prioritas (IKP)</span></a>
 <?php endif; ?>
 <?php if (user_can('target_opd.view') || user_can('monev_opd.view') || user_can('pk_opd.view')): ?>
   <div class="dropdown">
     <button class="<?= $ddBtn ?>" type="button" id="ddUkurOpd" data-bs-toggle="dropdown" aria-expanded="false"><span><i class="fas fa-chart-line"></i> Pengukuran Kinerja</span></button>
     <ul class="dropdown-menu w-100" aria-labelledby="ddUkurOpd">
       <?php if (user_can('pk_opd.view')): ?>
-        <li><a class="dropdown-item" href="<?= base_url('adminopd/target_renaksi') ?>">Target Rencana Aksi</a></li>
-        <li><a class="dropdown-item" href="<?= base_url('adminopd/monev') ?>">Monitoring Rencana Aksi</a></li>
+        <li><a class="dropdown-item" href="<?= base_url('adminopd/target_renaksi') ?>" data-awalan="/adminopd/target_renaksi|/adminopd/renaksi_pk/">Target &amp; Rencana Aksi</a></li>
+        <li><a class="dropdown-item" href="<?= base_url('adminopd/monev') ?>" data-awalan="/adminopd/monev">Monitoring Rencana Aksi (MONEV)</a></li>
       <?php endif; ?>
     </ul>
   </div>
@@ -355,7 +338,8 @@ $canRencanaOpd = user_can('renstra.view') || user_can('rkt_opd.view') || user_ca
 
 <?php if (user_can('tentang_kami.view')): ?>
   <div class="sidebar-section">Lainnya</div>
-  <a href="<?= base_url(($role === 'admin_opd' ? 'adminopd' : 'adminkab') . '/tentang_kami') ?>" class="<?= $linkCls ?>"><i class="fas fa-circle-info"></i><span>Tentang Kami</span></a>
+  <?php /* AKSARA+ — admin_kecamatan juga di grup /adminopd (grup /adminkab menolaknya → /unauthorized). */ ?>
+  <a href="<?= base_url((in_array($role, ['admin_opd', 'admin_kecamatan'], true) ? 'adminopd' : 'adminkab') . '/tentang_kami') ?>" class="<?= $linkCls ?>"><i class="fas fa-circle-info"></i><span>Tentang Kami</span></a>
 <?php endif; ?>
 
 <?php endif; /* akhir cabang non-bupati */ ?>
@@ -366,14 +350,26 @@ $canRencanaOpd = user_can('renstra.view') || user_can('rkt_opd.view') || user_ca
     var path = location.pathname.replace(/\/+$/, '');
     // Parameter 'view' membedakan menu dgn path sama (mis. Cascading vs Pohon Kinerja).
     var curView = new URLSearchParams(location.search).get('view');
+    // Awalan jalur aplikasi (kosong bila AKSARA di akar domain) — untuk data-awalan.
+    var basisJalur = <?= json_encode(rtrim((string) parse_url(base_url('/'), PHP_URL_PATH), '/')) ?>;
     document.querySelectorAll('#sidebar a.sidebar-nav-link, #sidebar .dropdown-item').forEach(function (a) {
       try {
         var u = new URL(a.href);
         var href = u.pathname.replace(/\/+$/, '');
-        if (!href || path !== href) return;
-        // Bila link punya ?view=, hanya aktif jika view cocok (default 'tabel').
-        var lView = u.searchParams.get('view');
-        if (lView !== null && lView !== (curView || 'tabel')) return;
+        // AKSARA+ — satu butir menu melayani beberapa halaman (tab di dalamnya):
+        // data-awalan="/a|/b" = aktif bila jalur diawali salah satunya.
+        var awalan = a.getAttribute('data-awalan');
+        if (awalan) {
+          var rel = path.slice(basisJalur.length) || '/';
+          var cocok = awalan.split('|').some(function (w) { return rel.indexOf(w) === 0; });
+          if (!cocok) return;
+        } else {
+          if (!href || path !== href) return;
+          // Bila link punya ?view=, hanya aktif jika view cocok (default 'tabel') —
+          // kecuali butir gabungan (data-abaikan-view) yang mewakili kedua tampilan.
+          var lView = u.searchParams.get('view');
+          if (lView !== null && !a.hasAttribute('data-abaikan-view') && lView !== (curView || 'tabel')) return;
+        }
         a.classList.add('active');
         var dd = a.closest('.dropdown');
         if (dd) {

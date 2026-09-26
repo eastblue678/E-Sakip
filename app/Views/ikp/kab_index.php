@@ -50,6 +50,8 @@ CSS);
 ?>
 <?= $this->include('templates/shell_atas') ?>
 <?= $this->include('templates/dashboard_kit') ?>
+<?php /* AKSARA+ — satu menu IKP; halaman kabupaten dipilih lewat tab */ ?>
+<?= $this->include('ikp/_tab_kab') ?>
 
 <div class="dash-hero mb-3">
   <div class="dh-ic"><i class="fas fa-bullseye"></i></div>

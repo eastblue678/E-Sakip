@@ -265,6 +265,20 @@
                     . (!empty($versiIkuDipilih) ? '&iku_versi=' . (int) $versiIkuDipilih : '');
                 ?>
 
+                <?php
+                // AKSARA+ — satu menu "Pohon Kinerja & Cascading": tampilan dipilih di sini
+                // (dulu dua butir menu ke halaman yang sama dengan ?view= berbeda). Mode,
+                // periode, OPD, dan versi IKU ikut terbawa saat berpindah tampilan.
+                $qView = static fn (string $v) => 'adminkab/cascading?' . http_build_query(array_filter([
+                    'mode' => $mode, 'view' => $v, 'periode' => $periode,
+                    'opd_id' => $mode === 'opd' ? ($opd_id ?? '') : '', 'iku_versi' => $versiIkuDipilih ?? '',
+                ]));
+                ?>
+                <?= view('templates/tab_halaman', ['label' => 'Tampilan', 'tabs' => [
+                    ['url' => $qView('tabel'), 'label' => 'Tabel Cascading', 'ikon' => 'fa-table', 'aktif' => $view !== 'pohon'],
+                    ['url' => $qView('pohon'), 'label' => 'Pohon Kinerja', 'ikon' => 'fa-sitemap', 'aktif' => $view === 'pohon'],
+                ]], ['saveData' => false]) ?>
+
                 <!-- ===================== MODE ===================== -->
                 <div class="casc-toolbar">
                     <div class="tb-label"><i class="fas fa-layer-group me-1"></i>Mode Tampilan</div>

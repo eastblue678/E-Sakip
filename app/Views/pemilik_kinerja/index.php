@@ -13,6 +13,8 @@ $urlDasar  = $urlDasar ?? base_url('adminopd/pemilik-kinerja');
 $areaOpd   = ($area ?? 'adminopd') === 'adminopd';   // tautan ke menu Cascading OPD hanya di area OPD
 ?>
 <?= $this->include('templates/shell_atas') ?>
+<?php /* AKSARA+ — di area kabupaten Pemilik Kinerja adalah salah satu tab menu IKP */ ?>
+<?php if (($area ?? '') === 'adminkab'): ?><?= $this->include('ikp/_tab_kab') ?><?php endif; ?>
 
 <div class="pmk" id="pmk-akar">
     <div class="pmk-head">

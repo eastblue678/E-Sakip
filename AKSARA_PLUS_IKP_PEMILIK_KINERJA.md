@@ -22,6 +22,7 @@ menilai kinerja Kepala OPD setiap bulan, dan penilaian SKP bulanan menjadi prose
 | Tanpa CLI (phpMyAdmin) | jalankan `db/update_2026-09-26_ikp_kinerja.sql`, lalu `db/update_2026-09-26_ikp_referensi.sql` |
 
 Keduanya idempoten. Untuk API eKin tambahkan `EKIN_API_TOKEN` di `.env` (token terpisah dari `API_TOKEN`).
+Untuk Ruang OPD membaca eKin: `EKIN_INTERNAL_URL` dan `EKIN_AKSARA_TOKEN` (tanpa keduanya bagian eKin tampil "belum tersedia").
 Impor data prototipe Prioritas (opsional): `php spark ikp:impor-prioritas --db=/path/database.sqlite [--kecuali=23,20,11] [--kering]`.
 
 ## Yang ditambahkan
@@ -45,7 +46,9 @@ Impor data prototipe Prioritas (opsional): `php spark ikp:impor-prioritas --db=/
 `app/Config/Routes.php` (satu blok di ujung berkas), `app/Filters/ModulePermissionFilter.php` (peta `ikp`, `pemilik-kinerja`),
 `app/Filters/ApiTokenFilter.php` (argumen konsumen `api-token:ekin`; tanpa argumen perilaku lama tidak berubah),
 `app/Views/templates/admin_menu.php` (blok menu bertanda AKSARA+), `app/Views/bupati/dashboard.php` (kartu pintasan),
-`app/Commands/JagaAsap.php` (halaman IKP), `ALUR_FITUR_DAN_ROUTE.md` (§8.10, §9.10, §9.11), `API_DOCUMENTATION.md`, `public/openapi.json`.
+`app/Commands/JagaAsap.php` (halaman IKP, Ruang OPD, Perjanjian Kinerja), `ALUR_FITUR_DAN_ROUTE.md` (§2, §7, §8.5–8.7, §8.10,
+§9.6, §9.10, §9.11), `API_DOCUMENTATION.md`, `public/openapi.json`; untuk Ruang OPD & menu: tampilan `ikp/{_kepala,inovasi,kab_*}`,
+`pemilik_kinerja/index`, `adminOpd/pk_renaksi/{index,monev}`, `{adminOpd,adminKabupaten}/cascading/cascading` (tab), `profile`.
 
 ## Masuk sebagai (prototipe; bawaan mati)
 
@@ -63,6 +66,67 @@ AKSARA persis seperti pemiliknya, lalu kembali. Hanya aktif bila `.env` berisi `
 - Kolom "Kepala perangkat daerah" di halaman ini diambil dari PK jpt/camat terbaru tahun berjalan, bukan `opd.id_kepala_opd`
   (banyak yang basi).
 
+## Ruang OPD — satu pintu per perangkat daerah
+
+Keluhan pengguna: saat Admin Kabupaten menerima audiensi satu OPD, dokumennya tersebar di tujuh menu dan OPD harus
+dipilih ulang di tiap menu. Pembanding (e-SAKIP publik kabupaten lain) menyusun daftar berkas PDF per tahap SAKIP;
+AKSARA berbasis data, jadi Ruang OPD menampilkan **kelengkapan dan angka hidup**, bukan sekadar berkas.
+
+- **Rute** (blok AKSARA+ di ujung `Routes.php`, filter `auth`, GET saja): `ruang-opd` (matriks), `ruang-opd/{id}` (hub),
+  `ruang-opd/{id}/cascading-pegawai`, `ruang-opd/{id}/pk-pegawai`, `ruang-opd/{id}/pk-pegawai/{pegawai_id}`.
+- **Akses** dijaga `RuangOpdController` (jalur di luar `adminkab/*`/`adminopd/*`, jadi modperm tidak berlaku):
+  `admin`, `admin_kab`, `admin_inspektorat`, `bupati` → semua OPD (baca); `admin_opd`, `admin_kecamatan` → OPD sesinya
+  (index dialihkan ke hubnya; id OPD lain dikembalikan ke hub sendiri dengan pesan; dokumen PK pegawai hanya untuk pegawai
+  yang tercantum di daftar PK OPD itu).
+- **Matriks** (`RuangOpdService::matriks`): baris = OPD, dikelompokkan Sekretariat/Badan/Dinas, Kecamatan, Kelurahan,
+  Lainnya (kembaran tanpa data 13 & 213 disembunyikan); kolom = Renstra, Renja/RKT, IKU, Pohon Kinerja (simpul Es III s.d.
+  pelaksana & % berpemilik), Perjanjian Kinerja (JPT/Camat, jumlah administrator & pengawas), Rencana Aksi (indikator PK
+  ber-renaksi), MONEV (capaian triwulan yang sudah jatuh tempo terisi), IKP (rata-rata capaian s.d. bulan lalu, rumus
+  `ikp_capaian`), LAKIP (tahun ini & tahun lalu, pengesahan), Pegawai eKin (% ber-SKP, SKP bulanan dinilai, PK pegawai
+  ditandatangani). Warna: hijau lengkap, kuning sebagian, merah belum ada padahal wajib, abu tidak berlaku/belum jatuh
+  tempo; skor kelengkapan = rata-rata sel berwarna. Setiap dokumen = SATU kueri `GROUP BY opd_id` untuk semua OPD.
+  Cari (termasuk sebutan sehari-hari: Diskominfo, Dinkes, BPKAD, …), saring kelompok, klik ringkasan kolom untuk menampilkan
+  hanya OPD yang belum lengkap di dokumen itu, urut skor.
+- **Hub**: kepala OPD menurut PK JPT/Camat tahun itu (termasuk Plt./Plh.; jabatan puncak didahulukan dari Asisten/Staf Ahli,
+  bukan `opd.id_kepala_opd` yang basi), skor per tahap siklus, lalu kartu per dokumen: ringkasan di tempat + tombol
+  **Buka** ke halaman lama yang BOLEH dibuka peran itu dengan OPD sudah terpilih. Peta tautannya satu fungsi murni,
+  `App\Services\RuangOpdTautan::untuk()` (Bupati hanya `/bupati` & halaman publik; peran OPD hanya `/adminopd` tanpa
+  `opd_id`; kabupaten `/adminkab?...opd_id=`; tanpa halaman yang cocok → tidak ada tombol, ringkasan di kartu itulah datanya).
+- **Kinerja Pegawai (eKin)**: angka RINGKAS, **Cascading Pegawai** (pohon RHK Kepala → … → staf lewat `rhk_atasan_id`, target
+  IKI kuantitas, status porsi; lingkaran/yatim diputus jadi akar), **PK Pegawai** (daftar berstatus + dokumen baca-saja:
+  pernyataan & lampiran target bulanan, bisa dicetak peramban). eKin mati / belum dipasang → "Data eKin belum tersedia"
+  dengan alasannya; dokumen SAKIP lain tidak terpengaruh.
+
+### EkinClient (arah eKin → AKSARA+)
+
+`app/Services/EkinClient.php` membaca kontrak `GET <EKIN_INTERNAL_URL>api/aksara/{ringkas | opd/{id}/ringkas |
+opd/{id}/cascading | opd/{id}/pk-pegawai | pk-pegawai/{pegawai_id}}?tahun=` dengan header `Authorization: Bearer
+<EKIN_AKSARA_TOKEN>`. `.env` AKSARA: `EKIN_INTERNAL_URL` (mis. `http://127.0.0.1:8097/`) dan `EKIN_AKSARA_TOKEN` (token
+berbeda dari `EKIN_API_TOKEN` yang dipakai arah sebaliknya). Batas waktu 5 detik, tembolok 5 menit (kegagalan 1 menit),
+setiap kegagalan = `null` + kode alasan (`belum_dikonfigurasi`, `tidak_terjangkau`, `ditolak`, `belum_tersedia`,
+`galat_server`, `format`). Token tidak pernah masuk log, kunci tembolok, atau layar.
+
+## Menu dirampingkan — satu butir per konsep
+
+Pilihan di dalam satu konsep pindah ke halaman sebagai tab/saringan (`app/Views/templates/tab_halaman.php`); semua alamat
+lama tetap berlaku.
+
+| Butir | Dulu | Kini |
+|---|---|---|
+| Ruang OPD / Ruang OPD Saya | — | baru, dekat Dashboard (juga di menu Bupati) |
+| Perjanjian Kinerja | PK JPT / Kecamatan / Administrator / Pengawas (OPD); PK Bupati (kabupaten) | `perjanjian-kinerja`: saringan tahun, jenis, OPD, cari nama/jabatan; aksi Lihat/Ubah/Cetak ke rute lama peran itu; Tambah PK dengan pilihan jenis; isi PK bisa dibuka di tempat |
+| Kinerja Prioritas (IKP) | 5 sub-butir (OPD), 3 (kabupaten) | 1 butir + tab di setiap halaman IKP (`ikp/_tab_opd`, `ikp/_tab_kab`; Pemilik Kinerja lintas OPD jadi tab kabupaten) |
+| Pohon Kinerja & Cascading | 2 butir ke halaman yang sama | 1 butir (periode aktif terisi) + tab Tabel/Pohon |
+| Target & Rencana Aksi, MONEV (kabupaten) | 4 butir | 2 butir + tab PK Bupati / PK Perangkat Daerah (`pk_renaksi/_tab_pengukuran`) |
+
+Perbaikan kecil yang ikut: tautan "Tentang Kami" admin kecamatan menuju `/adminkab` (ditolak) → kini `/adminopd`; nama
+akun panjang di halaman Profil tidak lagi melebarkan halaman di ponsel.
+
+**Berkas baru**: `app/Controllers/RuangOpdController.php`, `app/Controllers/PerjanjianKinerjaController.php`,
+`app/Services/{RuangOpdService,RuangOpdTautan,EkinClient}.php`, `app/Views/ruang_opd/*`, `app/Views/perjanjian_kinerja/index.php`,
+`app/Views/templates/tab_halaman.php`, `app/Views/ikp/_tab_{opd,kab}.php`, `app/Views/adminOpd/pk_renaksi/_tab_pengukuran.php`,
+`tests/unit/RuangOpdTest.php`. Tidak ada perubahan skema. Uji peramban: `uji/ms/cek_ruang_opd.mjs` (repo demo).
+
 ## Keputusan desain penting
 
 - IKP melekat ke **OPD × periode RPJMD** (bukan per dokumen PK). Hapus IKP = *soft delete* (`dihapus_pada`) karena aplikasi
@@ -76,6 +140,11 @@ AKSARA persis seperti pemiliknya, lalu kembali. Hanya aktif bila `.env` berisi `
 - Pemilik Es II tidak disimpan ulang; mengikuti PK JPT/Camat `pihak_1`.
 
 ## Temuan di kode/data lama (belum diubah)
+
+- `MasukSebagaiService::kepalaPerOpd()` memilih PK JPT **terbaru** sebagai kepala; untuk Sekretariat Daerah (6 PK JPT: Sekda,
+  Asisten, Staf Ahli) hasilnya bisa Staf Ahli. Ruang OPD mendahulukan jabatan puncak (`RuangOpdService::kepalaPerOpd`).
+- `PkRenaksiController::ensureRole()` menolak Super Admin untuk Rencana Aksi/MONEV (Ruang OPD karena itu tidak memberi
+  tautan ke sana untuk Super Admin). `adminopd/*` untuk Super Admin tanpa `opd_id` di sesi berakhir di /login.
 
 - `tests/unit/CapaianTotalTest.php`: 2 kasus sudah gagal di `63a8275` (kebijakan `not_evaluable → 0%` 16 Sep belum diselaraskan).
 - `AdminOpd\PkController::cetak()` tidak memeriksa kepemilikan OPD.

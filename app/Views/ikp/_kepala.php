@@ -13,13 +13,6 @@ $this->setVar('shellCss', (string) @file_get_contents(FCPATH . 'assets/css/ikp.c
 
 $req  = service('request');
 $qs   = $req->getGet();
-$nav  = [
-    'index'     => ['adminopd/ikp', 'fa-list-check', 'Indikator & Target'],
-    'breakdown' => ['adminopd/ikp/breakdown', 'fa-table-cells', 'Breakdown Target'],
-    'realisasi' => ['adminopd/ikp/realisasi', 'fa-pen-to-square', 'Realisasi Bulanan'],
-    'rekap'     => ['adminopd/ikp/rekap', 'fa-chart-column', 'Rekap Triwulan'],
-    'inovasi'   => ['adminopd/ikp/inovasi', 'fa-lightbulb', 'Rencana Inovasi'],
-];
 $periodeTeks = 'Periode RPJMD ' . (int) $periode['awal'] . '–' . (int) $periode['akhir'];
 ?>
 <?= $this->include('templates/shell_atas') ?>
@@ -50,22 +43,5 @@ $periodeTeks = 'Periode RPJMD ' . (int) $periode['awal'] . '–' . (int) $period
     <?php endif; ?>
 </div>
 
-<nav class="ikp-nav" aria-label="Menu Kinerja Prioritas">
-    <?php foreach ($nav as $kunci => [$path, $ikon, $label]): ?>
-        <a href="<?= esc($u($path, ['tahun' => $tahun]), 'attr') ?>" class="<?= ($aktif ?? '') === $kunci ? 'aktif' : '' ?>">
-            <i class="fas <?= $ikon ?>"></i><?= esc($label) ?>
-        </a>
-    <?php endforeach; ?>
-    <a href="<?= esc($u('adminopd/ikp/lampiran-pk', ['tahun' => $tahun]), 'attr') ?>" target="_blank" rel="noopener">
-        <i class="fas fa-file-pdf"></i>Lampiran PK
-    </a>
-</nav>
-<script>
-    // Di ponsel menu IKP menggulir mendatar: pastikan halaman aktif terlihat.
-    (function () {
-        var a = document.querySelector('.ikp-nav a.aktif');
-        if (a && a.parentNode.scrollWidth > a.parentNode.clientWidth) {
-            a.parentNode.scrollLeft = Math.max(0, a.offsetLeft - a.parentNode.offsetLeft - 16);
-        }
-    })();
-</script>
+<?php /* AKSARA+ — tab bersama semua halaman IKP OPD (menu samping kini satu butir) */ ?>
+<?= $this->include('ikp/_tab_opd') ?>

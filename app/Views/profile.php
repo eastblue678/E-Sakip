@@ -28,6 +28,11 @@ $bergabung = !empty($user['created_at']) ? date('d-m-Y', strtotime($user['create
         .pf-hero p { margin: 2px 0 0; opacity: .9; }
         .pf-table th { width: 200px; color: #5d6b62; font-weight: 600; }
         .pf-table td, .pf-table th { padding: 11px 8px; border-bottom: 1px solid #eef2ef; vertical-align: middle; }
+        /* AKSARA+ — nama akun panjang tanpa spasi (mis. inspektorat_evaluasi) tidak boleh
+           mendorong halaman melebar di ponsel: bungkus di mana saja. */
+        .pf-hero > div { min-width: 0; }
+        .pf-hero h2, .pf-hero p, .pf-table td { overflow-wrap: anywhere; }
+        @media (max-width: 575.98px) { .pf-hero { padding: 18px; gap: 14px; } .pf-hero h2 { font-size: 1.2rem; } }
     </style>
 </head>
 

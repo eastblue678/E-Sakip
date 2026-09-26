@@ -84,6 +84,9 @@ $this->setVar('shellCss', $shellCss);
   </div>
 </div>
 
+<?php /* AKSARA+ — tab bersama halaman IKP OPD */ $this->setVar('aktif', 'inovasi'); ?>
+<?= $this->include('ikp/_tab_opd') ?>
+
 <!-- ======================= FILTER ======================= -->
 <form method="get" class="ino-toolbar">
   <div class="row g-3 align-items-end">

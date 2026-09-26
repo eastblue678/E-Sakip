@@ -2,7 +2,8 @@
 
 Dokumen tunggal berisi **alur fitur per modul** dan **seluruh route** aplikasi.
 Disusun dari [app/Config/Routes.php](app/Config/Routes.php), filter di [app/Filters/](app/Filters/),
-dan menu di [app/Views/templates/admin_menu.php](app/Views/templates/admin_menu.php) — per **28 Juli 2026**.
+dan menu di [app/Views/templates/admin_menu.php](app/Views/templates/admin_menu.php) — per **28 Juli 2026**
+(bagian AKSARA+ diperbarui 26 September 2026: Ruang OPD, Perjanjian Kinerja terpadu, menu dirampingkan).
 
 Dokumen pendamping: [db/ERD.md](db/ERD.md) (struktur data) · [db/RELASI_SAKIP.md](db/RELASI_SAKIP.md) (kerangka KemenPAN-RB) · [API_DOCUMENTATION.md](API_DOCUMENTATION.md).
 
@@ -79,6 +80,18 @@ flowchart TD
 Mapping role→URL hanya ada di satu tempat: `LoginController::redirectByRole()`.
 Sidebar tunggal [admin_menu.php](app/Views/templates/admin_menu.php) memfilter item menu
 dengan `user_can('<modul>.<aksi>')`, jadi tiap role otomatis hanya melihat menunya.
+
+**Prinsip menu sejak AKSARA+ (26 Sep 2026): satu butir menu per konsep.** Pilihan di dalam
+konsep itu pindah ke halaman sebagai tab/saringan (partial [tab_halaman.php](app/Views/templates/tab_halaman.php)),
+dan semua alamat lama tetap berlaku:
+
+| Butir menu | Dulu | Kini dipilih di halaman lewat |
+|---|---|---|
+| Ruang OPD / Ruang OPD Saya *(baru)* | — (dokumen satu OPD tersebar di 7 menu, OPD dipilih ulang di tiap menu) | matriks semua OPD → hub satu OPD |
+| Perjanjian Kinerja | PK JPT / PK Kecamatan / PK Administrator / PK Pengawas (OPD); PK Bupati saja (kabupaten) | saringan jenis, tahun, OPD, cari (`/perjanjian-kinerja`) |
+| Kinerja Prioritas (IKP) | 5 sub-butir (OPD), 3 sub-butir (kabupaten) | tab di setiap halaman IKP |
+| Pohon Kinerja & Cascading | dua butir ke halaman yang sama (`?view=pohon` / `?view=tabel`) | tab Tabel Cascading / Pohon Kinerja |
+| Target & Rencana Aksi · MONEV (kabupaten) | empat butir (Target: PK Bupati / PK OPD; Monitoring: PK Bupati / PK OPD) | tab Dokumen (Target/MONEV) × Lingkup (PK Bupati/PK OPD) |
 
 ---
 
@@ -249,6 +262,21 @@ Filter `auth` tanpa batasan role.
 | GET | `/analisis-ai` | `AiAnalysisController::index` | Panel analisis AI (Gemini) |
 | POST | `/analisis-ai/run` | `AiAnalysisController::run` | Jalankan analisis |
 
+**AKSARA+ — Ruang OPD & Perjanjian Kinerja terpadu.** Di luar `adminkab/*` dan `adminopd/*`
+supaya satu alamat melayani semua peran; `ModulePermissionFilter` tidak berlaku, jadi
+**lingkup dijaga controller**: `admin`, `admin_kab`, `admin_inspektorat`, `bupati` → semua OPD
+(baca); `admin_opd`, `admin_kecamatan` → OPD sesinya saja. GET saja (aman untuk
+`ReadOnlyRoleFilter`).
+
+| Method | Route | Handler | Fungsi |
+|---|---|---|---|
+| GET | `/ruang-opd` | `RuangOpdController::index` | Matriks kelengkapan dokumen SAKIP semua OPD (`?tahun`); peran OPD dialihkan ke hubnya |
+| GET | `/ruang-opd/(:num)` | `RuangOpdController::hub` | Hub satu OPD per tahap siklus SAKIP, tombol "Buka" ke halaman lama yang boleh dibuka peran itu (`App\Services\RuangOpdTautan`) |
+| GET | `/ruang-opd/(:num)/cascading-pegawai` | `RuangOpdController::cascadingPegawai` | Pohon RHK pegawai dari eKin |
+| GET | `/ruang-opd/(:num)/pk-pegawai` | `RuangOpdController::pkPegawai` | Daftar PK pegawai dari eKin (`?status&q`) |
+| GET | `/ruang-opd/(:num)/pk-pegawai/(:num)` | `RuangOpdController::pkPegawaiDokumen` | Dokumen PK satu pegawai (baca-saja, bisa dicetak peramban) |
+| GET | `/perjanjian-kinerja` | `PerjanjianKinerjaController::index` | Semua PK (`?tahun&jenis&opd_id&q&hal`), aksi ke rute lama `adminopd|adminkab/pk/{jenis}/…` |
+
 ---
 
 ## 8. Area Kabupaten — `/adminkab`
@@ -325,7 +353,9 @@ edit → ubah status per indikator → cetak.
 ### 8.5 Cascading / Pohon Kinerja Kabupaten
 
 Satu controller melayani **tiga mode** lewat query `?mode=` (kabupaten / OPD / keseluruhan)
-dan **dua tampilan** lewat `?view=` (`pohon` / `tabel`).
+dan **dua tampilan** lewat `?view=` (`pohon` / `tabel`). Sejak AKSARA+ menu hanya punya satu butir
+"Pohon Kinerja & Cascading" (dengan periode RPJMD aktif terisi); tampilannya dipilih lewat tab di
+halaman (mode, periode, OPD, versi IKU ikut terbawa). Sama untuk `adminopd/cascading` (§9.5).
 
 | Method | Route | Handler |
 |---|---|---|
@@ -342,6 +372,10 @@ dan **dua tampilan** lewat `?view=` (`pohon` / `tabel`).
 
 Route PK memakai pola `pk/(:any)` — segmen `(:any)` adalah **jenis PK** (`bupati`, `jpt`, `kecamatan`,
 `administrator`, `pengawas`). Di area kabupaten yang dipakai adalah `bupati`.
+
+> AKSARA+: butir menu kabupaten kini **Perjanjian Kinerja** → `/perjanjian-kinerja` (semua jenis, semua
+> OPD). Rute di bawah tetap dipakai untuk lihat/ubah PK Bupati dan untuk **cetak PK OPD mana pun**
+> (`adminkab/pk/{jenis}/cetak/{id}` — `PkController::cetak` tidak membaca OPD dari sesi).
 
 | Method | Route | Handler |
 |---|---|---|
@@ -361,6 +395,10 @@ Dua "wajah" untuk controller yang sama, `AdminOpd\PkRenaksiController`:
 - **URL bersih** `target_renaksi` / `monev` — jenis dipatok `bupati`.
 - **URL generik** `renaksi_pk/(:any)` / `monev_pk/(:any)` — jenis diambil dari segmen,
   dipakai admin kabupaten untuk memantau PK OPD (`es3`) lintas perangkat daerah.
+
+Sejak AKSARA+ menu kabupaten hanya punya dua butir (**Target & Rencana Aksi**, **Monitoring (MONEV)**);
+pilihan PK Bupati vs PK Perangkat Daerah/Kecamatan dan Target vs MONEV menjadi tab di halamannya
+(`adminOpd/pk_renaksi/_tab_pengukuran.php`), selalu di area yang sama (`/adminkab`, `/bupati`, `/adminopd`).
 
 **Alur:** susun rencana aksi + target triwulan → (opsional) tetapkan OPD pendukung →
 isi capaian triwulanan di MONEV → isi realisasi anggaran → cetak.
@@ -428,7 +466,8 @@ oleh `LakipAddendumTrait`.
 
 IKP = ukuran kinerja **bulanan** dari Program Unggulan Bupati, program prioritas, penugasan khusus
 dan penugasan tambahan (skema `db/update_2026-09-26_ikp_kinerja.sql`). Halaman kabupaten hanya
-membaca; `opd_id` divalidasi terhadap daftar OPD sah (bukan `canAccessOpd`).
+membaca; `opd_id` divalidasi terhadap daftar OPD sah (bukan `canAccessOpd`). Menu: satu butir;
+Rekap per OPD · Per Program Unggulan · Pemilik Kinerja · Cetak Rekap = tab (`ikp/_tab_kab`).
 
 | Method | Route | Handler |
 |---|---|---|
@@ -552,9 +591,11 @@ flowchart LR
 
 ### 9.6 Perjanjian Kinerja OPD
 
-Satu set route `pk/(:any)` melayani empat menu, dibedakan segmen jenis:
+Satu set route `pk/(:any)` melayani empat jenis, dibedakan segmen jenis. Sejak AKSARA+ sidebar hanya
+punya **satu butir "Perjanjian Kinerja"** → `/perjanjian-kinerja` (daftar terpadu, saringan jenis);
+halaman per jenis di bawah tetap berlaku dan dibuka dari tombol Lihat/Ubah/Cetak/Tambah di sana:
 
-| Menu di sidebar | URL | Terlihat oleh |
+| Jenis | URL | Dipakai oleh |
 |---|---|---|
 | PK JPT (Eselon II) | `adminopd/pk/jpt` | `admin_opd`, `admin` |
 | PK Kecamatan (Eselon III) | `adminopd/pk/kecamatan` | `admin_kecamatan`, `admin` |
@@ -626,6 +667,8 @@ Struktur identik LAKIP kabupaten (capaian + analisis faktor + efisiensi program)
 
 ### 9.10 Kinerja Prioritas (IKP) OPD — AKSARA+
 
+Menu: satu butir; Indikator & Target · Breakdown · Realisasi · Rekap Triwulan · Rencana Inovasi ·
+Cetak Lampiran PK = tab di setiap halaman IKP (`ikp/_tab_opd`).
 Target 5 tahun → tahunan → **bulanan**, rekap triwulan dihitung (tidak diisi), realisasi bulanan.
 Metode perhitungan memakai kosakata monev (`sum|trend_naik|trend_turun|trend_flat`). Hapus IKP =
 *soft delete* (`dihapus_pada`) karena eKin merujuk `ikp.id`. Kategori selalu lewat `?kategori=`

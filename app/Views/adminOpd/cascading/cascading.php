@@ -151,6 +151,19 @@
                 $filters = $filters ?? ['periode' => ''];
                 ?>
 
+                <?php
+                // AKSARA+ — satu menu "Pohon Kinerja & Cascading": tampilan dipilih di sini
+                // (dulu dua butir menu ke halaman yang sama dengan ?view= berbeda, tanpa
+                // cara berpindah dari dalam halaman). Periode & versi IKU ikut terbawa.
+                $qView = static fn (string $v) => 'adminopd/cascading?' . http_build_query(array_filter([
+                    'view' => $v, 'periode' => $filters['periode'] ?? '', 'iku_versi' => $versiIkuDipilih ?? '',
+                ]));
+                ?>
+                <?= view('templates/tab_halaman', ['label' => 'Tampilan', 'tabs' => [
+                    ['url' => $qView('tabel'), 'label' => 'Tabel Cascading', 'ikon' => 'fa-table', 'aktif' => $view !== 'pohon'],
+                    ['url' => $qView('pohon'), 'label' => 'Pohon Kinerja', 'ikon' => 'fa-sitemap', 'aktif' => $view === 'pohon'],
+                ]], ['saveData' => false]) ?>
+
                 <!-- ====================== FILTER ====================== -->
                 <div class="casc-toolbar">
                     <div class="tb-label"><i class="fas fa-filter me-1"></i>Filter Periode Perencanaan</div>

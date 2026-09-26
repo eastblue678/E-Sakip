@@ -866,3 +866,18 @@ $routes->group('api/ekin', ['filter' => 'api-token:ekin'], static function ($rou
 $routes->get('masuk-sebagai', 'MasukSebagaiController::index', ['filter' => 'auth']);
 $routes->post('masuk-sebagai/kembali', 'MasukSebagaiController::kembali', ['filter' => 'auth']);
 $routes->post('masuk-sebagai/(:num)', 'MasukSebagaiController::mulai/$1', ['filter' => 'auth']);
+
+// AKSARA+ — RUANG OPD: satu pintu untuk seluruh dokumen & kinerja satu perangkat daerah (App\Controllers\RuangOpdController).
+// Di luar adminkab/* & adminopd/* supaya SATU alamat melayani semua peran: ModulePermissionFilter tidak berlaku di sini,
+// jadi lingkup dijaga controller (peran kabupaten/Bupati/Inspektorat: semua OPD, baca; admin OPD/kecamatan: OPD sendiri).
+// GET saja — ReadOnlyRoleFilter (Bupati) tidak perlu dilonggarkan.
+$routes->get('ruang-opd', 'RuangOpdController::index', ['filter' => 'auth']);
+$routes->get('ruang-opd/(:num)', 'RuangOpdController::hub/$1', ['filter' => 'auth']);
+$routes->get('ruang-opd/(:num)/cascading-pegawai', 'RuangOpdController::cascadingPegawai/$1', ['filter' => 'auth']);
+$routes->get('ruang-opd/(:num)/pk-pegawai', 'RuangOpdController::pkPegawai/$1', ['filter' => 'auth']);
+$routes->get('ruang-opd/(:num)/pk-pegawai/(:num)', 'RuangOpdController::pkPegawaiDokumen/$1/$2', ['filter' => 'auth']);
+
+// AKSARA+ — PERJANJIAN KINERJA TERPADU: satu menu untuk semua jenis PK (Bupati, JPT, Camat, Administrator, Pengawas);
+// pilihan jenis/tahun/OPD pindah ke saringan di halaman. Rute lama adminopd/pk/(:any) & adminkab/pk/(:any) tetap berlaku
+// (detail, ubah, cetak) — halaman ini hanya daftar & pintu ke sana. Lingkup dijaga PerjanjianKinerjaController.
+$routes->get('perjanjian-kinerja', 'PerjanjianKinerjaController::index', ['filter' => 'auth']);
