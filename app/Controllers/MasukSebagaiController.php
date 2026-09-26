@@ -28,6 +28,8 @@ class MasukSebagaiController extends BaseController
             'q'     => mb_substr(trim((string) $this->request->getGet('q')), 0, 100),
             'peran' => in_array($peran, self::PERAN_SARING, true) ? $peran : '',
             'jenis' => array_key_exists($jenis, self::JENIS_SARING) ? $jenis : '',
+            // Pintasan dari Ruang OPD ("Masuk sebagai admin OPD ini"): saring akun menurut id perangkat daerah.
+            'opd_id' => max(0, (int) $this->request->getGet('opd_id')),
         ];
         $layanan = new MasukSebagaiService();
 

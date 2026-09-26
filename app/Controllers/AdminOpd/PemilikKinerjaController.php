@@ -593,11 +593,8 @@ class PemilikKinerjaController extends BaseController
      */
     private function labelLevel(bool $kecamatan): array
     {
-        return $kecamatan
-            ? ['es2' => 'Eselon III (Camat)', 'es3' => 'Eselon IV', 'es4' => 'Pelaksana / JF', 'pelaksana' => 'Staf Pelaksana',
-               'pk_es2' => 'PK Camat']
-            : ['es2' => 'Eselon II', 'es3' => 'Eselon III', 'es4' => 'Eselon IV / JF', 'pelaksana' => 'Pelaksana',
-               'pk_es2' => 'PK JPT'];
+        // Satu sumber dengan Ruang OPD (hub & tooltip matriks) supaya kedua halaman menyebut jenjang yang sama.
+        return \App\Services\RuangOpdService::labelJenjang($kecamatan);
     }
 
     /**

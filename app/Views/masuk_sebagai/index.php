@@ -2,7 +2,7 @@
 /**
  * AKSARA+ — "Masuk sebagai": cari akun lalu masuk sebagai pemiliknya (App\Services\MasukSebagaiService).
  *
- * @var array{q:string, peran:string, jenis:string} $saring
+ * @var array{q:string, peran:string, jenis:string, opd_id:int} $saring
  * @var list<array<string,mixed>>                   $akun
  * @var list<array<string,mixed>>                   $terakhir
  * @var array<string,mixed>|null                    $asli
@@ -10,7 +10,7 @@
  * @var array<string,string>                        $jenisSaring
  */
 $labelPeran = ['admin_opd' => 'Admin OPD', 'admin_kecamatan' => 'Admin Kecamatan', 'bupati' => 'Bupati', 'admin_inspektorat' => 'Admin Inspektorat'];
-$adaSaring  = $saring['q'] !== '' || $saring['peran'] !== '' || $saring['jenis'] !== '';
+$adaSaring  = $saring['q'] !== '' || $saring['peran'] !== '' || $saring['jenis'] !== '' || ($saring['opd_id'] ?? 0) > 0;
 $pintas     = [
     'Bupati'          => ['peran' => 'bupati'],
     'Dinas & Badan'   => ['jenis' => 'opd'],
@@ -65,6 +65,12 @@ $tombol  = static function (array $a, string $kelas = 'btn-success'): string {
 <?php endif; ?>
 
 <form method="get" action="<?= base_url('masuk-sebagai') ?>" class="ms-saring mb-3" role="search">
+  <?php if (($saring['opd_id'] ?? 0) > 0): ?>
+    <?php /* Saringan dari Ruang OPD: ikut terkirim bersama pencarian lain; "Hapus saringan" melepasnya. */ ?>
+    <input type="hidden" name="opd_id" value="<?= (int) $saring['opd_id'] ?>">
+    <p class="ms-kecil mb-2"><i class="fas fa-building me-1" aria-hidden="true"></i>Hanya akun perangkat daerah
+      <strong><?= esc($akun !== [] ? $rapikan($akun[0]['nama_opd'] ?? '') : ('#' . (int) $saring['opd_id'])) ?></strong> (dari Ruang OPD).</p>
+  <?php endif; ?>
   <div class="row g-2 align-items-end">
     <div class="col-12 col-lg-6">
       <label class="form-label" for="ms-q">Cari nama pengguna, perangkat daerah, atau nama/jabatan kepalanya</label>

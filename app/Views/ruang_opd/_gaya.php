@@ -58,6 +58,7 @@
 .s-kuning { --c: var(--ro-kuning); --bg: #fdf5e1; }
 .s-merah { --c: var(--ro-merah); --bg: #fcebeb; }
 .s-abu { --c: var(--ro-abu); --bg: #f2f4f3; }
+.s-biru { --c: #1d5f8f; --bg: #e2effa; } /* "PK di AKSARA": dokumen lain, bukan status tanda tangan */
 .ro-titik { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex: 0 0 auto; }
 .ro-chip { display: inline-flex; align-items: center; gap: 6px; font-size: .72rem; font-weight: 700; color: var(--c); background: var(--bg);
     padding: .28em .65em; border-radius: 999px; white-space: nowrap; }

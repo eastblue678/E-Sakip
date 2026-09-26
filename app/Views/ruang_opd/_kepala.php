@@ -4,7 +4,7 @@
  * pemilih tahun, skor, dan tab (Ringkasan · Cascading Pegawai · PK Pegawai).
  *
  * Dipanggil dengan $this->include('ruang_opd/_kepala') — hanya melihat DATA view:
- * $opd, $tahun, $tahunList, $kepala, $lintas, $buka, opsional $aktifTab, $skor.
+ * $opd, $tahun, $tahunList, $kepala, $lintas, $masukSebagai, $buka, opsional $aktifTab, $skor.
  */
 use App\Models\OpdModel;
 
@@ -44,8 +44,9 @@ $skorNil  = $skor ?? null;
           <a class="ro-lencana text-white" href="<?= base_url($tDash['url']) ?>"><i class="fas fa-gauge-high"></i> Dashboard kinerja</a>
         <?php endif; ?>
         <?php /* Audiensi: Admin Kabupaten bisa langsung melihat aplikasi persis seperti admin OPD ini (fitur demo, .env). */ ?>
-        <?php if ($lintas && ! \App\Services\MasukSebagaiService::sedangMeniru() && \App\Services\MasukSebagaiService::bolehDipakai()): ?>
-          <a class="ro-lencana text-white" href="<?= base_url('masuk-sebagai?' . http_build_query(['q' => $opd['nama_opd']])) ?>"><i class="fas fa-user-secret"></i> Masuk sebagai admin OPD ini</a>
+        <?php /* $masukSebagai (RuangOpdController::dataDasar) = ada akun aktif OPD ini; ditaut lewat id, bukan teks nama. */ ?>
+        <?php if (! empty($masukSebagai)): ?>
+          <a class="ro-lencana text-white" href="<?= base_url('masuk-sebagai?' . http_build_query(['opd_id' => (int) $opd['id']])) ?>"><i class="fas fa-user-secret"></i> Masuk sebagai admin OPD ini</a>
         <?php endif; ?>
       </p>
     </div>

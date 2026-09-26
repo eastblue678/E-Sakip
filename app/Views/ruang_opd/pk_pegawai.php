@@ -2,7 +2,8 @@
 /**
  * Ruang OPD — daftar PK Pegawai (AKSARA+). Data: eKin endpoint opd/{id}/pk-pegawai.
  * "lewat_aksara" = pejabat struktural yang PK-nya adalah dokumen PK AKSARA (bukan
- * dibuat ulang di eKin); "belum_ada_skp" = pegawai belum menyusun SKP tahun ini.
+ * dibuat ulang di eKin; status tanda tangannya tidak tercatat di mana pun, jadi tidak
+ * dihitung "ditandatangani"); "belum_ada_skp" = pegawai belum menyusun SKP tahun ini.
  *
  * @var bool   $ada       eKin menjawab?
  * @var array  $baris     PKRINGKAS tersaring
@@ -16,7 +17,7 @@ $this->setVar('shellCss', $shellCss);
 
 $statusLbl = [
     'ditandatangani' => ['s-hijau', 'Ditandatangani'],
-    'lewat_aksara'   => ['s-hijau', 'PK di AKSARA'],
+    'lewat_aksara'   => ['s-biru', 'PK di AKSARA'],
     'diajukan'       => ['s-kuning', 'Diajukan'],
     'draf'           => ['s-abu', 'Draf'],
     'dikembalikan'   => ['s-merah', 'Dikembalikan'],
@@ -76,8 +77,10 @@ $dasar = 'ruang-opd/' . (int) $opd['id'] . '/pk-pegawai';
               <td class="num"><?= (int) ($pk['jumlah_baris'] ?? 0) ?></td>
               <td class="num">
                 <?php if (($pk['status'] ?? '') === 'lewat_aksara'): ?>
-                  <?php /* PK pejabat struktural = dokumen PK AKSARA: cari lewat jabatannya (bukan nama — alamat ini tercatat di log server). */ ?>
-                  <a class="btn btn-sm btn-outline-success py-0 px-2" href="<?= base_url('perjanjian-kinerja?' . http_build_query(['tahun' => $tahun, 'opd_id' => $opd['id'], 'q' => (string) ($pk['pegawai']['jabatan'] ?? '')])) ?>" data-ro-tautan><i class="fas fa-file-signature me-1"></i>PK AKSARA</a>
+                  <?php /* PK pejabat struktural = dokumen PK AKSARA. Dicari lewat ID pegawai (id eKin = id AKSARA), tanpa
+                           saringan OPD: teks jabatan eKin tidak cocok untuk Plt. dan ikut mencocokkan pihak kedua, dan
+                           PK Lurah tersimpan di kecamatan induknya. Tanpa nama di alamat (tercatat di log server). */ ?>
+                  <a class="btn btn-sm btn-outline-success py-0 px-2" href="<?= base_url('perjanjian-kinerja?' . http_build_query(['tahun' => $tahun, 'pegawai' => $pid])) ?>" data-ro-tautan><i class="fas fa-file-signature me-1"></i>PK AKSARA</a>
                 <?php endif; ?>
                 <?php if ($pid > 0 && ($pk['status'] ?? '') !== 'belum_ada_skp'): ?>
                   <a class="btn btn-sm btn-outline-secondary py-0 px-2" href="<?= base_url($dasar . '/' . $pid . '?tahun=' . (int) $tahun) ?>" data-ro-tautan><i class="fas fa-file-lines me-1"></i>Dokumen</a>
@@ -88,7 +91,8 @@ $dasar = 'ruang-opd/' . (int) $opd['id'] . '/pk-pegawai';
         </tbody>
       </table>
     </div>
-    <p class="ro-catatan mt-2"><i class="fas fa-circle-info me-1"></i>"PK di AKSARA" = pejabat yang Perjanjian Kinerjanya sudah ditandatangani sebagai dokumen PK AKSARA; eKin tidak membuatnya ulang.</p>
+    <p class="ro-catatan mt-2"><i class="fas fa-circle-info me-1"></i>"PK di AKSARA" = pejabat struktural yang Perjanjian Kinerjanya disusun sebagai dokumen PK AKSARA (menu Perjanjian Kinerja);
+      eKin tidak membuatnya ulang dan tidak mencatat tanda tangannya, jadi tidak dihitung sebagai "ditandatangani".</p>
   <?php endif; ?>
 <?php endif; ?>
 

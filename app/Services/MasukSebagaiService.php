@@ -173,7 +173,7 @@ final class MasukSebagaiService
      * banyak yang basi (telaah 26-09-2026, simulasi/01b_pk.php), sedangkan PK perubahan memuat pejabat terkini —
      * termasuk Plt. Sama dengan kepala yang dikirim API eKin (api/ekin/opd).
      *
-     * @param array{q?:string, peran?:string, jenis?:string} $saring
+     * @param array{q?:string, peran?:string, jenis?:string, opd_id?:int} $saring  opd_id: pintasan dari Ruang OPD
      *
      * @return list<array<string,mixed>>
      */
@@ -194,6 +194,11 @@ final class MasukSebagaiService
 
         if (($saring['jenis'] ?? '') !== '') {
             $q->where('o.jenis', $saring['jenis']);
+        }
+
+        // Ruang OPD menautkan lewat id, bukan teks nama: nama OPD panjang tidak selalu cocok kata per kata.
+        if ((int) ($saring['opd_id'] ?? 0) > 0) {
+            $q->where('u.opd_id', (int) $saring['opd_id']);
         }
 
         $akun   = $q->orderBy("FIELD(u.role, 'bupati', 'admin_inspektorat', 'admin_opd', 'admin_kecamatan')", '', false)
@@ -221,6 +226,25 @@ final class MasukSebagaiService
         }
 
         return $hasil;
+    }
+
+    /**
+     * Adakah akun aktif perangkat daerah ini yang boleh ditiru? Ruang OPD hanya menampilkan pintasan
+     * "Masuk sebagai admin OPD ini" bila jawabannya ya — RSUD, UPT, dan kelurahan tidak punya akun AKSARA.
+     * Aturan akunnya sama dengan cari(): aktif, bukan akun sendiri, bukan admin kabupaten/super admin.
+     */
+    public function adaAkunUntukOpd(int $opdId): bool
+    {
+        if ($opdId <= 0) {
+            return false;
+        }
+
+        return Database::connect()->table('users')
+            ->where('opd_id', $opdId)
+            ->where('is_active', 1)
+            ->where('user_id !=', self::idAsli())
+            ->whereNotIn('role', self::PERAN_TAK_BISA_DITIRU)
+            ->countAllResults() > 0;
     }
 
     /**

@@ -160,10 +160,16 @@ $lompat = [
     <article class="ro-dok" id="cascading">
       <div class="ro-dok-kepala">
         <div class="ic"><i class="fas fa-sitemap"></i></div>
-        <div><h4>Pohon Kinerja &amp; Cascading</h4><p>Eselon III → Eselon IV/JF → Pelaksana, berpemilik tahun <?= (int) $tahun ?></p></div>
+        <?php
+        // Label jenjang per jenis unit — sama dengan halaman Pemilik Kinerja yang dibuka tombol di bawah
+        // (di kecamatan Camat = Eselon III, jadi simpul es3 = Eselon IV).
+        $jj = RuangOpdService::labelJenjang(($opd['kelompok'] ?? '') === 'kecamatan');
+        $lv = ['es3' => $jj['es3'], 'es4' => $jj['es4'], 'pelaksana' => $jj['pelaksana']];
+        $c  = $d['cascading'];
+        ?>
+        <div><h4>Pohon Kinerja &amp; Cascading</h4><p><?= esc(implode(' → ', $lv)) ?>, berpemilik tahun <?= (int) $tahun ?></p></div>
         <div class="kanan"><?= $chip($sel['cascading']) ?></div>
       </div>
-      <?php $lv = ['es3' => 'Eselon III', 'es4' => 'Eselon IV / JF', 'pelaksana' => 'Pelaksana']; $c = $d['cascading']; ?>
       <div class="ro-level">
         <?php foreach ($lv as $k => $lbl): ?>
           <?php $sp = (int) ($c[$k]['simpul'] ?? 0); $bp = (int) ($c[$k]['berpemilik'] ?? 0); $p = $sp > 0 ? round($bp / $sp * 100) : 0; ?>
@@ -383,6 +389,9 @@ $lompat = [
       $pg = $e['pegawai']; $sk = $e['skp']; $bl = $e['bulanan']; $pr = $e['predikat']; $hr = $e['harian'];
       $pn = $e['penugasan']; $pp = $e['pk_pegawai']; $cs = $e['cascading'];
       $totPr = max(1, array_sum(array_map('intval', $pr)));
+      // Bulan yang SUDAH dinilai (predikat_bulan), bukan bulan berjalan yang baru berisi draf — lihat RuangOpdService::ekinDinilai.
+      $nl    = RuangOpdService::ekinDinilai($e);
+      $blnNl = $nl['bulan'] > 0 ? ikp_nama_bulan($nl['bulan']) : '';
       $warnaPr = ['sangat_baik' => '#0a8f50', 'baik' => '#6eab11', 'butuh_perbaikan' => '#e5b12c', 'kurang' => '#e0843a', 'sangat_kurang' => '#c93c3c'];
       $labelPr = ['sangat_baik' => 'Sangat Baik', 'baik' => 'Baik', 'butuh_perbaikan' => 'Butuh Perbaikan', 'kurang' => 'Kurang', 'sangat_kurang' => 'Sangat Kurang'];
       ?>
@@ -396,10 +405,11 @@ $lompat = [
           <small><?= (int) $pg['berakun'] ?> berakun · <?= (int) $pg['ber_skp'] ?> ber-SKP<?= (int) $pg['fiktif'] > 0 ? ' · ' . (int) $pg['fiktif'] . ' fiktif' : '' ?></small></div>
         <div><span class="nm">SKP tahunan</span><b><?= (int) $sk['disetujui'] ?></b>
           <small>disetujui · <?= (int) $sk['diajukan'] ?> diajukan · <?= (int) $sk['draf'] ?> draf</small></div>
-        <div><span class="nm">SKP bulanan <?= (int) $bl['bulan'] > 0 ? esc(ikp_nama_bulan((int) $bl['bulan'], true)) : '' ?></span><b><?= (int) $bl['dinilai'] ?></b>
-          <small>dinilai · <?= (int) $bl['diajukan'] ?> diajukan · <?= (int) $bl['draf'] ?> draf · <?= (int) $bl['belum'] ?> belum</small></div>
-        <div><span class="nm">Predikat bulanan</span>
-          <div class="ro-predikat" title="Sebaran predikat SKP bulanan">
+        <div><span class="nm">SKP bulanan dinilai<?= $blnNl !== '' ? ' ' . esc($blnNl) : '' ?></span><b><?= (int) $nl['dinilai'] ?>/<?= (int) $pg['ber_skp'] ?></b>
+          <small>pegawai ber-SKP<?php if ((int) ($bl['bulan'] ?? 0) > 0 && (int) $bl['bulan'] !== $nl['bulan']): ?>
+            · <?= esc(ikp_nama_bulan((int) $bl['bulan'])) ?> berjalan: <?= (int) ($bl['diajukan'] ?? 0) ?> diajukan · <?= (int) ($bl['draf'] ?? 0) ?> draf · <?= (int) ($bl['belum'] ?? 0) ?> belum<?php endif; ?></small></div>
+        <div><span class="nm">Predikat<?= $blnNl !== '' ? ' ' . esc($blnNl) : ' bulanan' ?></span>
+          <div class="ro-predikat" title="Sebaran predikat SKP bulanan<?= $blnNl !== '' ? ' ' . esc($blnNl, 'attr') : '' ?>">
             <?php foreach ($warnaPr as $k => $w): ?>
               <span style="width:<?= round((int) ($pr[$k] ?? 0) / $totPr * 100, 1) ?>%;background:<?= $w ?>" title="<?= esc($labelPr[$k]) ?>: <?= (int) ($pr[$k] ?? 0) ?>"></span>
             <?php endforeach; ?>
@@ -409,8 +419,10 @@ $lompat = [
           <small>disetujui bulan ini · <?= (int) $hr['menunggu'] ?> menunggu</small></div>
         <div><span class="nm">Penugasan tambahan</span><b><?= (int) $pn['diterima'] ?></b>
           <small>diterima · <?= (int) $pn['menunggu'] ?> menunggu</small></div>
-        <div><span class="nm">PK pegawai</span><b><?= (int) $pp['ditandatangani'] + (int) $pp['lewat_aksara'] ?></b>
-          <small><?= (int) $pp['ditandatangani'] ?> ditandatangani · <?= (int) $pp['lewat_aksara'] ?> lewat AKSARA · <?= (int) $pp['diajukan'] ?> diajukan · <?= (int) $pp['draf'] ?> draf<?= (int) $pp['dikembalikan'] > 0 ? ' · ' . (int) $pp['dikembalikan'] . ' dikembalikan' : '' ?></small></div>
+        <?php /* "lewat AKSARA" = pejabat struktural yang PK-nya dokumen PK AKSARA; AKSARA tidak menyimpan status tanda
+                 tangan, jadi TIDAK dijumlahkan ke "ditandatangani". */ ?>
+        <div><span class="nm">PK pegawai ditandatangani</span><b><?= (int) $pp['ditandatangani'] ?></b>
+          <small>di eKin · <?= (int) $pp['diajukan'] ?> diajukan · <?= (int) $pp['draf'] ?> draf<?= (int) $pp['dikembalikan'] > 0 ? ' · ' . (int) $pp['dikembalikan'] . ' dikembalikan' : '' ?><?= (int) $pp['lewat_aksara'] > 0 ? ' · ' . (int) $pp['lewat_aksara'] . ' pejabat memakai PK AKSARA' : '' ?></small></div>
         <div><span class="nm">Cascading pegawai</span><b><?= (int) $cs['porsi_lengkap'] ?>/<?= (int) $cs['rhk_ber_bawahan'] ?></b>
           <small>RHK berbawahan yang porsinya lengkap · <?= (int) $cs['porsi_kurang'] ?> kurang</small></div>
       </div>

@@ -65,7 +65,7 @@ final class RuangOpdService
         'monev'     => ['MONEV', 'pengukuran', 'fa-chart-line', 'Rencana aksi yang capaian triwulannya sudah diisi'],
         'ikp'       => ['IKP', 'pengukuran', 'fa-gauge-high', 'Kinerja Prioritas: rata-rata capaian s.d. bulan lalu'],
         'lakip'     => ['LAKIP', 'pelaporan', 'fa-file-contract', 'Laporan Kinerja tahun ini (dan tahun lalu)'],
-        'ekin'      => ['Pegawai (eKin)', 'pegawai', 'fa-users', 'Pegawai ber-SKP, SKP bulanan dinilai, PK pegawai ditandatangani'],
+        'ekin'      => ['Pegawai (eKin)', 'pegawai', 'fa-users', 'Pegawai ber-SKP, SKP bulanan dinilai (bulan terakhir yang sudah dinilai), PK pegawai ditandatangani di eKin (+ pejabat yang memakai PK AKSARA)'],
     ];
 
     /**
@@ -176,6 +176,46 @@ final class RuangOpdService
         }
 
         return null;
+    }
+
+    /**
+     * Apakah OPD ini tercakup rekap IKP kabupaten (adminkab/ikp/opd/{id} dan bupati/ikp/opd/{id})?
+     *
+     * MENGAPA disalin dari AdminKab\IkpController::daftarOpd, bukan ditebak dari warna sel: rekap itu
+     * hanya menerima jenis opd/kecamatan, dan kembaran (OPD_KEMBAR) hanya bila punya IKP. Kelurahan
+     * & UPT ada di Ruang OPD tetapi tidak di rekap IKP — tombol ke sana berakhir 404.
+     */
+    public function ikpKabBerlaku(int $opdId): bool
+    {
+        $o = $this->opd($opdId);
+        if ($o === null || ! in_array($o['jenis'], [OpdModel::JENIS_OPD, OpdModel::JENIS_KECAMATAN], true)) {
+            return false;
+        }
+        if (! isset(self::OPD_KEMBAR[$opdId])) {
+            return true;
+        }
+
+        return $this->db->tableExists('ikp')
+            && $this->db->table('ikp')->where('opd_id', $opdId)->where('dihapus_pada', null)->countAllResults() > 0;
+    }
+
+    /**
+     * Label jenjang pohon kinerja menurut jenis unit. Satu sumber untuk Ruang OPD dan halaman
+     * Pemilik Kinerja (PemilikKinerjaController::labelLevel memanggil ini).
+     *
+     * MENGAPA berbeda untuk kecamatan: Camat sendiri Eselon III (simpul es2), sehingga simpul es3 di
+     * kecamatan = Eselon IV (Sekcam/Kasi) dan es4 = pelaksana/JF. Label dinas dipakai di kecamatan
+     * membuat hub dan halaman yang dibuka tombolnya menyebut jenjang yang berbeda.
+     *
+     * @return array{es2:string, es3:string, es4:string, pelaksana:string, pk_es2:string}
+     */
+    public static function labelJenjang(bool $kecamatan): array
+    {
+        return $kecamatan
+            ? ['es2' => 'Eselon III (Camat)', 'es3' => 'Eselon IV', 'es4' => 'Pelaksana / JF', 'pelaksana' => 'Staf Pelaksana',
+               'pk_es2' => 'PK Camat']
+            : ['es2' => 'Eselon II', 'es3' => 'Eselon III', 'es4' => 'Eselon IV / JF', 'pelaksana' => 'Pelaksana',
+               'pk_es2' => 'PK JPT'];
     }
 
     public static function kelompok(string $jenis): string
@@ -343,6 +383,7 @@ final class RuangOpdService
         $lakip   = $this->angkaLakip($tahun, $opdIds);
         $ikp     = $this->angkaIkp($tahun, $opdIds);
         $wajibTw = self::triwulanWajib($tahun);
+        $bulanWajib = self::bulanLalu($tahun);
 
         $hasil = [];
         foreach ($opdIds as $id) {
@@ -351,27 +392,36 @@ final class RuangOpdService
                 'renstra'   => self::selRenstra($renstra[$id] ?? null, $wajib),
                 'rkt'       => self::selRkt($rkt[$id] ?? null, $wajib),
                 'iku'       => self::selIku($iku[$id] ?? null, $wajib),
-                'cascading' => self::selCascading($casc[$id] ?? null, $wajib),
+                'cascading' => self::selCascading($casc[$id] ?? null, $wajib, ($kel[$id] ?? '') === 'kecamatan'),
                 'pk'        => self::selPk($pk[$id] ?? [], $wajib, ($kel[$id] ?? '') === 'kecamatan'),
                 'renaksi'   => self::selRenaksi($renaksi[$id] ?? null, $wajib),
                 'monev'     => self::selMonev($renaksi[$id] ?? null, $wajibTw, $wajib),
                 'ikp'       => self::selIkp($ikp[$id] ?? null, $wajib),
                 'lakip'     => self::selLakip($lakip[$id] ?? [], $tahun, $wajib),
-                'ekin'      => self::selEkin($ekinRingkas === null ? null : ($ekinRingkas['opd'][(string) $id] ?? $ekinRingkas['opd'][$id] ?? false), $alasanEkin),
+                'ekin'      => self::selEkin($ekinRingkas === null ? null : ($ekinRingkas['opd'][(string) $id] ?? $ekinRingkas['opd'][$id] ?? false), $alasanEkin, $bulanWajib),
             ];
-            $hasil[$id]['_skor'] = self::skor($hasil[$id]);
+            // Unit yang tidak wajib menyusun dokumen SAKIP sendiri (kelurahan, UPT, ...) tidak diberi skor:
+            // dulu satu sel berwarna saja sudah memberi 100% dan menempatkannya di puncak urutan.
+            $hasil[$id]['_skor'] = $wajib ? self::skor($hasil[$id]) : null;
         }
 
         return $hasil;
     }
 
-    /** Skor kelengkapan 0–100 dari sel berwarna (abu tidak dihitung); null bila semua abu. */
+    /**
+     * Kolom yang TIDAK ikut skor kelengkapan dokumen SAKIP. MENGAPA eKin di luar: ia kinerja pegawai
+     * (sistem lain) dan baru sebagian unit yang pegawainya dimuat — ikut dihitung berarti unit percontohan
+     * eKin mendapat tambahan nilai yang tidak ada hubungannya dengan kelengkapan dokumen SAKIP-nya.
+     */
+    public const KOLOM_BUKAN_SKOR = ['ekin'];
+
+    /** Skor kelengkapan dokumen SAKIP 0–100 dari sel berwarna (abu & KOLOM_BUKAN_SKOR tidak dihitung); null bila tak ada. */
     public static function skor(array $sel): ?int
     {
         $nilai = ['hijau' => 1.0, 'kuning' => 0.5, 'merah' => 0.0];
         $n     = [];
         foreach ($sel as $k => $s) {
-            if ($k[0] !== '_' && isset($nilai[$s['s'] ?? ''])) {
+            if ($k[0] !== '_' && ! in_array($k, self::KOLOM_BUKAN_SKOR, true) && isset($nilai[$s['s'] ?? ''])) {
                 $n[] = $nilai[$s['s']];
             }
         }
@@ -472,8 +522,9 @@ final class RuangOpdService
             $bt === $ind ? 'Semua indikator IKU punya target tahun ini' : ($ind - $bt) . ' indikator IKU belum bertarget tahun ini', $bt / $ind);
     }
 
-    public static function selCascading(?array $a, bool $wajib): array
+    public static function selCascading(?array $a, bool $wajib, bool $kecamatan = false): array
     {
+        $lbl    = self::labelJenjang($kecamatan);
         $simpul = 0;
         $milik  = 0;
         foreach (['es3', 'es4', 'pelaksana'] as $l) {
@@ -488,7 +539,8 @@ final class RuangOpdService
 
         return self::sel($p >= 0.999 ? 'hijau' : 'kuning', $simpul . ' simpul',
             (int) round($p * 100) . '% berpemilik',
-            'Eselon III ' . (int) ($a['es3']['simpul'] ?? 0) . ', Eselon IV ' . (int) ($a['es4']['simpul'] ?? 0) . ', pelaksana ' . $pel
+            $lbl['es3'] . ' ' . (int) ($a['es3']['simpul'] ?? 0) . ', ' . $lbl['es4'] . ' ' . (int) ($a['es4']['simpul'] ?? 0)
+            . ', ' . mb_strtolower($lbl['pelaksana']) . ' ' . $pel
             . ' · ' . $milik . ' simpul sudah punya pemilik', $p);
     }
 
@@ -579,15 +631,23 @@ final class RuangOpdService
         if ($ini && ($ini['pengesahan'] ?? '') === 'disahkan') {
             return self::sel('hijau', 'Disahkan', $k, 'LAKIP ' . $tahun . ' sudah disahkan', 1.0);
         }
+        $belumJatuhTempo = $tahun >= (int) self::kini()->format('Y');
         if ($ini && (int) $ini['n'] > 0) {
             $s = (int) $ini['selesai'];
             $n = (int) $ini['n'];
+            // LAKIP tahun berjalan yang sudah MULAI disusun belum jatuh tempo: abu (tidak ikut skor), bukan
+            // kuning. Kuning (½) justru membuat OPD yang rajin menyusun lebih awal turun skornya dibanding
+            // OPD yang belum mulai sama sekali (abu). Yang sudah selesai tetap hijau — tidak pernah menurunkan skor.
+            if ($belumJatuhTempo && $s < $n) {
+                return self::sel('abu', 'Disusun ' . $s . '/' . $n, $k,
+                    'LAKIP ' . $tahun . ' sedang disusun (' . $s . ' dari ' . $n . ' baris selesai) — jatuh tempo awal ' . ($tahun + 1));
+            }
 
             return self::sel($s === $n ? 'hijau' : 'kuning', $s === $n ? 'Selesai' : 'Draf ' . $s . '/' . $n, $k,
                 'LAKIP ' . $tahun . ': ' . $s . ' dari ' . $n . ' baris selesai', $s / $n);
         }
         // LAKIP tahun berjalan baru disusun awal tahun berikutnya: belum jatuh tempo.
-        if ($tahun >= (int) self::kini()->format('Y')) {
+        if ($belumJatuhTempo) {
             return self::sel('abu', 'Belum jatuh tempo', $k, 'LAKIP ' . $tahun . ' disusun awal ' . ($tahun + 1));
         }
 
@@ -595,9 +655,11 @@ final class RuangOpdService
     }
 
     /**
-     * @param array|false|null $r RINGKAS eKin; null = eKin tidak tersedia, false = OPD tidak ada di eKin
+     * @param array|false|null $r          RINGKAS eKin; null = eKin tidak tersedia, false = OPD tidak ada di eKin
+     * @param int              $bulanWajib bulan terakhir yang SKP bulanannya sudah jatuh tempo dinilai (bulanLalu();
+     *                                     0 = abaikan). Warna hijau menuntut bulan itu sudah dinilai.
      */
-    public static function selEkin($r, string $alasan = ''): array
+    public static function selEkin($r, string $alasan = '', int $bulanWajib = 0): array
     {
         if ($r === null) {
             return self::sel('abu', '–', '', $alasan !== '' ? $alasan : 'Data eKin belum tersedia');
@@ -609,14 +671,52 @@ final class RuangOpdService
         if ($total === 0) {
             return self::sel('abu', '–', 'tanpa pegawai', 'Belum ada pegawai di eKin');
         }
-        $skp   = (int) ($r['pegawai']['ber_skp'] ?? 0);
-        $p     = $skp / $total;
-        $dinilai = (int) ($r['bulanan']['dinilai'] ?? 0);
-        $ttd   = (int) ($r['pk_pegawai']['ditandatangani'] ?? 0) + (int) ($r['pk_pegawai']['lewat_aksara'] ?? 0);
+        $skp = (int) ($r['pegawai']['ber_skp'] ?? 0);
+        $p   = $skp / $total;
+        $nl  = self::ekinDinilai($r);
+        $ttd = (int) ($r['pk_pegawai']['ditandatangani'] ?? 0);
+        $pkA = (int) ($r['pk_pegawai']['lewat_aksara'] ?? 0);
 
-        return self::sel($p >= 0.9 ? 'hijau' : ($p > 0 ? 'kuning' : 'merah'), (int) round($p * 100) . '% SKP',
-            'dinilai ' . $dinilai . ' · PK ' . $ttd,
-            $skp . ' dari ' . $total . ' pegawai ber-SKP · SKP bulanan dinilai ' . $dinilai . ' · PK pegawai ditandatangani ' . $ttd, $p);
+        // Penilaian tertinggal = bulan jatuh tempo belum dinilai, atau baru sebagian kecil pegawai ber-SKP.
+        $tertinggal = $bulanWajib > 0 && $skp > 0
+            && ($nl['bulan'] < $bulanWajib || $nl['dinilai'] < 0.9 * $skp);
+        $s = $p >= 0.9 && ! $tertinggal ? 'hijau' : ($p > 0 ? 'kuning' : 'merah');
+
+        $bln  = $nl['bulan'] > 0 ? ikp_nama_bulan($nl['bulan'], true) . ' ' : '';
+        $blnP = $nl['bulan'] > 0 ? ikp_nama_bulan($nl['bulan']) : 'bulan terakhir';
+        $j    = $skp . ' dari ' . $total . ' pegawai ber-SKP'
+            . ' · SKP bulanan ' . $blnP . ' dinilai ' . $nl['dinilai'] . ' dari ' . $skp
+            . ($tertinggal && $nl['bulan'] < $bulanWajib ? ' (penilaian ' . ikp_nama_bulan($bulanWajib) . ' belum ada)' : '')
+            . ' · PK pegawai ditandatangani di eKin ' . $ttd
+            . ($pkA > 0 ? ' · ' . $pkA . ' pejabat struktural memakai dokumen PK AKSARA' : '');
+
+        // Tanpa pegawai ber-SKP, "dinilai 0/0" tidak berarti apa-apa: sebut saja belum ada SKP.
+        $k = ($skp > 0 ? 'dinilai ' . $bln . $nl['dinilai'] . '/' . $skp . ' · PK ' . $ttd : 'belum ada SKP')
+            . ($pkA > 0 ? ' +' . $pkA . ' PK AKSARA' : '');
+
+        return self::sel($s, (int) round($p * 100) . '% SKP', $k, $j, $p);
+    }
+
+    /**
+     * Bulan terakhir yang SKP bulanannya sudah dinilai, dan berapa pegawai yang dinilai pada bulan itu.
+     *
+     * MENGAPA bukan bulanan.bulan/bulanan.dinilai begitu saja: `bulanan.bulan` = bulan terakhir yang PUNYA
+     * SKP bulanan — di tengah bulan itu bulan berjalan (mis. September) yang baru berisi draf/diajukan, jadi
+     * `dinilai` hampir selalu 0, padahal Agustus sudah dinilai semua. eKin mengirim `predikat_bulan` (kunci
+     * tambahan) = bulan terakhir yang sudah dinilai, dan `predikat` = sebaran pegawai yang dinilai bulan itu.
+     * eKin lama tanpa kunci itu: jatuh ke bulanan.bulan/dinilai.
+     *
+     * @return array{bulan:int, dinilai:int}
+     */
+    public static function ekinDinilai(array $r): array
+    {
+        $bulan = (int) ($r['bulanan']['bulan'] ?? 0);
+        $pb    = (int) ($r['predikat_bulan'] ?? 0);
+        if ($pb > 0 && $pb !== $bulan) {
+            return ['bulan' => $pb, 'dinilai' => array_sum(array_map('intval', (array) ($r['predikat'] ?? [])))];
+        }
+
+        return ['bulan' => $bulan, 'dinilai' => (int) ($r['bulanan']['dinilai'] ?? 0)];
     }
 
     // ---------------------------------------------------------------- angka mentah
@@ -960,7 +1060,7 @@ final class RuangOpdService
      * Daftar PK satu OPD (atau semua OPD bila $opdId null) untuk satu tahun, dengan
      * pihak pertama/kedua dan jumlah sasaran/indikator. Dipakai hub & daftar PK terpadu.
      *
-     * @param array{jenis?:string[], q?:string} $saring
+     * @param array{jenis?:string[], q?:string, pihak_1?:int} $saring pihak_1 = id pegawai pihak pertama
      *
      * @return list<array<string,mixed>>
      */
@@ -988,6 +1088,11 @@ final class RuangOpdService
         }
         if (! empty($saring['jenis'])) {
             $b->whereIn('pk.jenis', $saring['jenis']);
+        }
+        // Dari eKin (PK Pegawai "PK di AKSARA"): id pegawai eKin = id pegawai AKSARA (SinkronPegawaiService eKin
+        // menyalin id), jadi pencocokan lewat id tepat — teks jabatan tidak (Plt., jabatan pihak kedua ikut cocok).
+        if ((int) ($saring['pihak_1'] ?? 0) > 0) {
+            $b->where('pk.pihak_1', (int) $saring['pihak_1']);
         }
         $q = trim((string) ($saring['q'] ?? ''));
         if ($q !== '') {

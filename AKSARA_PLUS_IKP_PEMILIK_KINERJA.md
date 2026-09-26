@@ -65,6 +65,8 @@ AKSARA persis seperti pemiliknya, lalu kembali. Hanya aktif bila `.env` berisi `
   akun; mulai/ganti/kembali tercatat di `activity_logs` (modul `masuk_sebagai`) atas nama akun asli.
 - Kolom "Kepala perangkat daerah" di halaman ini diambil dari PK jpt/camat terbaru tahun berjalan, bukan `opd.id_kepala_opd`
   (banyak yang basi).
+- Saringan `GET masuk-sebagai?opd_id=` (pintasan dari Ruang OPD) menyaring akun menurut id perangkat daerah;
+  `MasukSebagaiService::adaAkunUntukOpd()` memutuskan apakah pintasan itu ditampilkan.
 
 ## Ruang OPD — satu pintu per perangkat daerah
 
@@ -82,9 +84,14 @@ AKSARA berbasis data, jadi Ruang OPD menampilkan **kelengkapan dan angka hidup**
   Lainnya (kembaran tanpa data 13 & 213 disembunyikan); kolom = Renstra, Renja/RKT, IKU, Pohon Kinerja (simpul Es III s.d.
   pelaksana & % berpemilik), Perjanjian Kinerja (JPT/Camat, jumlah administrator & pengawas), Rencana Aksi (indikator PK
   ber-renaksi), MONEV (capaian triwulan yang sudah jatuh tempo terisi), IKP (rata-rata capaian s.d. bulan lalu, rumus
-  `ikp_capaian`), LAKIP (tahun ini & tahun lalu, pengesahan), Pegawai eKin (% ber-SKP, SKP bulanan dinilai, PK pegawai
+  `ikp_capaian`), LAKIP (tahun ini & tahun lalu, pengesahan), Pegawai eKin (% ber-SKP, SKP bulanan dinilai pada bulan
+  terakhir yang SUDAH dinilai — `predikat_bulan` eKin, bukan bulan berjalan yang baru berisi draf — dan PK pegawai
+  ditandatangani di eKin; pejabat yang PK-nya dokumen PK AKSARA dihitung terpisah "+n PK AKSARA", tidak sebagai
   ditandatangani). Warna: hijau lengkap, kuning sebagian, merah belum ada padahal wajib, abu tidak berlaku/belum jatuh
-  tempo; skor kelengkapan = rata-rata sel berwarna. Setiap dokumen = SATU kueri `GROUP BY opd_id` untuk semua OPD.
+  tempo (LAKIP tahun berjalan yang sedang disusun juga abu). Sel eKin hijau menuntut ≥90% pegawai ber-SKP DAN bulan lalu
+  sudah dinilai. **Skor kelengkapan dokumen SAKIP** = rata-rata sel berwarna Perencanaan s.d. Pelaporan (kolom eKin tidak
+  ikut — baru sebagian unit dimuat di eKin); unit yang tidak wajib menyusun dokumen SAKIP sendiri (kelurahan, UPT) tidak
+  diberi skor dan tidak masuk rata-rata/urutan. Setiap dokumen = SATU kueri `GROUP BY opd_id` untuk semua OPD.
   Cari (termasuk sebutan sehari-hari: Diskominfo, Dinkes, BPKAD, …), saring kelompok, klik ringkasan kolom untuk menampilkan
   hanya OPD yang belum lengkap di dokumen itu, urut skor.
 - **Hub**: kepala OPD menurut PK JPT/Camat tahun itu (termasuk Plt./Plh.; jabatan puncak didahulukan dari Asisten/Staf Ahli,
@@ -92,10 +99,17 @@ AKSARA berbasis data, jadi Ruang OPD menampilkan **kelengkapan dan angka hidup**
   **Buka** ke halaman lama yang BOLEH dibuka peran itu dengan OPD sudah terpilih. Peta tautannya satu fungsi murni,
   `App\Services\RuangOpdTautan::untuk()` (Bupati hanya `/bupati` & halaman publik; peran OPD hanya `/adminopd` tanpa
   `opd_id`; kabupaten `/adminkab?...opd_id=`; tanpa halaman yang cocok → tidak ada tombol, ringkasan di kartu itulah datanya).
+  Rekap IKP kabupaten (`adminkab|bupati/ikp/opd/{id}`) hanya ditautkan untuk OPD jenis opd/kecamatan
+  (`RuangOpdService::ikpKabBerlaku`, aturan `AdminKab\IkpController::opdSah`) — kelurahan & UPT tidak (dulu 404). Label
+  jenjang pohon kinerja mengikuti jenis unit (`RuangOpdService::labelJenjang`, dipakai juga halaman Pemilik Kinerja: di
+  kecamatan Camat = Eselon III, jadi simpul es3 = Eselon IV). Pintasan "Masuk sebagai admin OPD ini" hanya tampil bila ada
+  akun aktif untuk OPD itu dan menaut lewat `masuk-sebagai?opd_id=` (RSUD, UPT, kelurahan tidak punya akun).
 - **Kinerja Pegawai (eKin)**: angka RINGKAS, **Cascading Pegawai** (pohon RHK Kepala → … → staf lewat `rhk_atasan_id`, target
   IKI kuantitas, status porsi; lingkaran/yatim diputus jadi akar), **PK Pegawai** (daftar berstatus + dokumen baca-saja:
-  pernyataan & lampiran target bulanan, bisa dicetak peramban). eKin mati / belum dipasang → "Data eKin belum tersedia"
-  dengan alasannya; dokumen SAKIP lain tidak terpengaruh.
+  pernyataan & lampiran target bulanan, bisa dicetak peramban). Status "PK di AKSARA" (`lewat_aksara`) menaut ke
+  `perjanjian-kinerja?pegawai={id}` — id pegawai eKin = id pegawai AKSARA (eKin menyalin id saat sinkron), jadi yang
+  ditemukan tepat PK pihak pertama orang itu di OPD mana pun (PK Lurah tersimpan di kecamatan induknya). eKin mati / belum
+  dipasang → "Data eKin belum tersedia" dengan alasannya; dokumen SAKIP lain tidak terpengaruh.
 
 ### EkinClient (arah eKin → AKSARA+)
 
@@ -114,7 +128,7 @@ lama tetap berlaku.
 | Butir | Dulu | Kini |
 |---|---|---|
 | Ruang OPD / Ruang OPD Saya | — | baru, dekat Dashboard (juga di menu Bupati) |
-| Perjanjian Kinerja | PK JPT / Kecamatan / Administrator / Pengawas (OPD); PK Bupati (kabupaten) | `perjanjian-kinerja`: saringan tahun, jenis, OPD, cari nama/jabatan; aksi Lihat/Ubah/Cetak ke rute lama peran itu; Tambah PK dengan pilihan jenis; isi PK bisa dibuka di tempat |
+| Perjanjian Kinerja | PK JPT / Kecamatan / Administrator / Pengawas (OPD); PK Bupati (kabupaten) | `perjanjian-kinerja`: saringan tahun, jenis, OPD, cari nama/jabatan, `pegawai` (id pihak pertama); aksi Lihat/Ubah/Cetak ke rute lama peran itu; Tambah PK dengan pilihan jenis; isi PK bisa dibuka di tempat. Peran OPD melihat SEMUA PK OPD-nya selain PK Bupati; PK puncak yang ditawarkan (JPT atau Camat) mengikuti `opd.jenis`, bukan nama peran (kecamatan berakun `admin_opd` dulu kehilangan PK Camat) |
 | Kinerja Prioritas (IKP) | 5 sub-butir (OPD), 3 (kabupaten) | 1 butir + tab di setiap halaman IKP (`ikp/_tab_opd`, `ikp/_tab_kab`; Pemilik Kinerja lintas OPD jadi tab kabupaten) |
 | Pohon Kinerja & Cascading | 2 butir ke halaman yang sama | 1 butir (periode aktif terisi) + tab Tabel/Pohon |
 | Target & Rencana Aksi, MONEV (kabupaten) | 4 butir | 2 butir + tab PK Bupati / PK Perangkat Daerah (`pk_renaksi/_tab_pengukuran`) |
@@ -144,10 +158,15 @@ akun panjang di halaman Profil tidak lagi melebarkan halaman di ponsel.
 - `MasukSebagaiService::kepalaPerOpd()` memilih PK JPT **terbaru** sebagai kepala; untuk Sekretariat Daerah (6 PK JPT: Sekda,
   Asisten, Staf Ahli) hasilnya bisa Staf Ahli. Ruang OPD mendahulukan jabatan puncak (`RuangOpdService::kepalaPerOpd`).
 - `PkRenaksiController::ensureRole()` menolak Super Admin untuk Rencana Aksi/MONEV (Ruang OPD karena itu tidak memberi
-  tautan ke sana untuk Super Admin). `adminopd/*` untuk Super Admin tanpa `opd_id` di sesi berakhir di /login.
+  tautan ke sana untuk Super Admin). Sebagian halaman `adminopd/*` untuk Super Admin tanpa `opd_id` di sesi berakhir di
+  /login; `adminopd/cascading?periode=` dulu HTTP 500 (`CascadingModel::programPkByEs3(int)` menerima null) — kini
+  diperbaiki (`(int)`), halaman menampilkan "Akun Tidak Terikat Perangkat Daerah".
 
 - `tests/unit/CapaianTotalTest.php`: 2 kasus sudah gagal di `63a8275` (kebijakan `not_evaluable → 0%` 16 Sep belum diselaraskan).
-- `AdminOpd\PkController::cetak()` tidak memeriksa kepemilikan OPD.
+- `AdminOpd\PkController::cetak()`, `edit()` dan `index(?pk_id=)` dulu memuat PK hanya dari id, sehingga admin OPD bisa
+  mencetak PK OPD lain (nama & NIP pejabatnya). **Diperbaiki (AKSARA+)**: `pkDiLuarLingkup()` menolak PK OPD lain untuk
+  `admin_opd`/`admin_kecamatan`; jalur `/adminkab` tetap lintas OPD (sesi admin_kab membawa `opd_id` unit Kabupaten, jadi
+  `canAccessOpd()` apa adanya akan memutus cetak lintas OPD mereka). Perlu diteruskan ke tim upstream.
 - `PegawaiSyncService::syncJabatan()` membaca `nama_eselon`, padahal feed mengirim `eselon_id`, sehingga `jabatan.eselon` kosong
   99,6%. `pegawai.atasan_id` basi dan tidak dipakai. 42 pegawai BKPSDM tercatat di `opd_id = 210` yang tidak ada.
 - mPDF memerlukan folder tmp yang bisa ditulis PHP (`adminkab/target/cetak` 500 bila tidak).

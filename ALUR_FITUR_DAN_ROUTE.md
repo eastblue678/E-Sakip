@@ -275,7 +275,7 @@ supaya satu alamat melayani semua peran; `ModulePermissionFilter` tidak berlaku,
 | GET | `/ruang-opd/(:num)/cascading-pegawai` | `RuangOpdController::cascadingPegawai` | Pohon RHK pegawai dari eKin |
 | GET | `/ruang-opd/(:num)/pk-pegawai` | `RuangOpdController::pkPegawai` | Daftar PK pegawai dari eKin (`?status&q`) |
 | GET | `/ruang-opd/(:num)/pk-pegawai/(:num)` | `RuangOpdController::pkPegawaiDokumen` | Dokumen PK satu pegawai (baca-saja, bisa dicetak peramban) |
-| GET | `/perjanjian-kinerja` | `PerjanjianKinerjaController::index` | Semua PK (`?tahun&jenis&opd_id&q&hal`), aksi ke rute lama `adminopd|adminkab/pk/{jenis}/…` |
+| GET | `/perjanjian-kinerja` | `PerjanjianKinerjaController::index` | Semua PK (`?tahun&jenis&opd_id&q&pegawai&hal`; `pegawai` = id pihak pertama), aksi ke rute lama `adminopd|adminkab/pk/{jenis}/…` |
 
 ---
 
@@ -375,7 +375,9 @@ Route PK memakai pola `pk/(:any)` — segmen `(:any)` adalah **jenis PK** (`bupa
 
 > AKSARA+: butir menu kabupaten kini **Perjanjian Kinerja** → `/perjanjian-kinerja` (semua jenis, semua
 > OPD). Rute di bawah tetap dipakai untuk lihat/ubah PK Bupati dan untuk **cetak PK OPD mana pun**
-> (`adminkab/pk/{jenis}/cetak/{id}` — `PkController::cetak` tidak membaca OPD dari sesi).
+> (`adminkab/pk/{jenis}/cetak/{id}` — `PkController::cetak` tidak membatasi OPD untuk peran kabupaten).
+> Lewat `adminopd/pk/...`, `admin_opd`/`admin_kecamatan` hanya dapat mencetak, membuka formulir ubah, atau
+> menampilkan (`?pk_id=`) PK OPD sesinya sendiri (`PkController::pkDiLuarLingkup`, AKSARA+).
 
 | Method | Route | Handler |
 |---|---|---|

@@ -37,6 +37,21 @@ class PkController extends BaseController
         return in_array($seg, ['adminkab', 'adminopd'], true) ? $seg : 'adminopd';
     }
 
+    /**
+     * AKSARA+ — otorisasi objek untuk BACA (cetak, formulir ubah, tampilan pk_id).
+     *
+     * MENGAPA: update() dan delete() sudah memeriksa canAccessOpd, tetapi cetak/edit/index memuat PK
+     * hanya dari id — admin OPD bisa mencetak PK OPD lain (berisi nama & NIP pejabatnya) dengan mengganti
+     * angka di alamat. Pemeriksaan dibatasi ke peran OPD: peran kabupaten membuka PK lintas OPD lewat
+     * /adminkab (disengaja, mis. dari Ruang OPD), dan sesi admin_kab membawa opd_id unit Kabupaten,
+     * sehingga canAccessOpd begitu saja akan memutus cetak lintas OPD mereka.
+     */
+    private function pkDiLuarLingkup($pkOpdId): bool
+    {
+        return in_array((string) session()->get('role'), ['admin_opd', 'admin_kecamatan'], true)
+            && ! $this->canAccessOpd($pkOpdId);
+    }
+
     private function jabatanPkPayload(array $post, string $side): array
     {
         $statusKey = 'status_jabatan_' . $side;
@@ -97,6 +112,12 @@ class PkController extends BaseController
             // 🔥 NORMALISASI (kadang return array[0])
             if (is_array($pkData) && isset($pkData[0])) {
                 $pkData = $pkData[0];
+            }
+
+            // AKSARA+: PK OPD lain tidak ditampilkan (lihat pkDiLuarLingkup).
+            if (! empty($pkData) && $this->pkDiLuarLingkup($pkData['opd_id'] ?? null)) {
+                return redirect()->to('/' . $areaBase . '/pk/' . $seg . ($tahun ? '?tahun=' . (int) $tahun : ''))
+                    ->with('error', 'Anda hanya dapat membuka Perjanjian Kinerja perangkat daerah Anda sendiri.');
             }
 
             // ==================================================
@@ -173,6 +194,11 @@ class PkController extends BaseController
         $data = $this->pkModel->getPkById($id);
         if (!$data) {
             return redirect()->to('/adminOpd/pk/' . $seg)->with('error', 'Data PK tidak ditemukan');
+        }
+        // AKSARA+: jangan cetak PK OPD lain untuk peran OPD (lihat pkDiLuarLingkup).
+        if ($this->pkDiLuarLingkup($data['opd_id'] ?? null)) {
+            return redirect()->to('/' . $this->areaBase() . '/pk/' . $seg)
+                ->with('error', 'Anda hanya dapat mencetak Perjanjian Kinerja perangkat daerah Anda sendiri.');
         }
         $tahun = $data['tahun'];
         $data['logo_url'] = FCPATH . 'assets/images/logo.png';
@@ -302,6 +328,11 @@ class PkController extends BaseController
         $pk = $this->pkModel->getPkById($id);
         if (!$pk)
             return redirect()->to('/' . $areaBase . '/pk/' . $seg)->with('error', 'Data PK tidak ditemukan');
+        // AKSARA+: formulir ubah PK OPD lain tidak ditawarkan (update() sudah menolak simpannya).
+        if ($this->pkDiLuarLingkup($pk['opd_id'] ?? null)) {
+            return redirect()->to('/' . $areaBase . '/pk/' . $seg)
+                ->with('error', 'Anda tidak memiliki akses untuk mengubah PK OPD lain.');
+        }
 
 
         $pegawaiOpd = $this->pegawaiModel->getPegawaiDenganJabatan($opdId, $jenis);

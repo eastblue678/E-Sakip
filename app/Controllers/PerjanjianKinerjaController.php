@@ -15,7 +15,8 @@ use App\Services\RuangOpdTautan;
  * menautkan ke rute LAMA yang boleh dipakai peran itu (lihat/ubah/cetak) — semua
  * alamat lama tetap berlaku, halaman ini hanya daftar dan pintu.
  *
- *   GET perjanjian-kinerja?tahun=&jenis=&opd_id=&q=&hal=
+ *   GET perjanjian-kinerja?tahun=&jenis=&opd_id=&q=&pegawai=&hal=
+ *   (pegawai = id pegawai pihak pertama; dipakai tombol "PK AKSARA" di PK Pegawai Ruang OPD)
  *
  * Lingkup dijaga di sini (jalur di luar adminkab/* & adminopd/*, jadi modperm tidak
  * berlaku): admin OPD/kecamatan hanya OPD sesinya (opd_id dari query diabaikan);
@@ -78,24 +79,37 @@ class PerjanjianKinerjaController extends BaseController
             }
         }
 
+        // Peran OPD melihat SEMUA PK yang tersimpan di OPD-nya (kecuali PK Bupati) — daftar tidak boleh
+        // menyembunyikan dokumen. Dulu jenis disaring menurut NAMA PERAN: kecamatan yang akunnya berperan
+        // admin_opd kehilangan PK Camat-nya. PK puncak yang "wajar" (JPT atau Camat) kini ditentukan JENIS
+        // OPD sesi; puncak yang tidak wajar (mis. PK JPT tersimpan di kecamatan) tetap tampil bila ada.
+        $opdKecamatan = $kel === 'opd' && self::opdKecamatan($opdSesi, $peran);
+        $puncakLain   = $opdKecamatan ? 'jpt' : 'camat';
         $jenisBoleh = self::JENIS;
         if ($kel === 'opd') {
             unset($jenisBoleh['bupati']);
-            unset($jenisBoleh[$peran === 'admin_kecamatan' ? 'jpt' : 'camat']);
         }
         $jenis = (string) $req->getGet('jenis');
         if (! isset($jenisBoleh[$jenis])) {
             $jenis = '';
         }
         $q = mb_substr(trim((string) $req->getGet('q')), 0, 60);
+        // Pihak pertama menurut id (bukan nama: alamat tercatat di log server). Lingkup OPD tetap berlaku
+        // untuk peran OPD; peran kabupaten melihat PK orang itu di OPD mana pun (mis. PK Lurah yang
+        // disimpan di kecamatan induknya).
+        $pegawai = max(0, (int) $req->getGet('pegawai'));
 
         // ---------- data
-        $semua = $svc->daftarPk($opdId, $tahun, ['jenis' => array_keys($jenisBoleh), 'q' => $q]);
+        $semua = $svc->daftarPk($opdId, $tahun, ['jenis' => array_keys($jenisBoleh), 'q' => $q, 'pihak_1' => $pegawai]);
         $hitung = array_fill_keys(array_keys($jenisBoleh), 0);
         foreach ($semua as $r) {
             if (isset($hitung[$r['jenis']])) {
                 $hitung[$r['jenis']]++;
             }
+        }
+        // Saringan jenis: puncak yang tidak wajar untuk jenis OPD ini hanya ditawarkan bila memang ada datanya.
+        if ($kel === 'opd' && $hitung[$puncakLain] === 0 && $jenis !== $puncakLain) {
+            unset($jenisBoleh[$puncakLain], $hitung[$puncakLain]);
         }
         $baris  = $jenis === '' ? $semua : array_values(array_filter($semua, static fn ($r) => $r['jenis'] === $jenis));
         $total  = count($baris);
@@ -107,7 +121,7 @@ class PerjanjianKinerjaController extends BaseController
         // ---------- tombol tambah (hanya peran yang memang boleh menambah di rute lama)
         $tambah = [];
         if ($kel === 'opd' && user_can('pk_opd.create')) {
-            $tambah = $peran === 'admin_kecamatan'
+            $tambah = $opdKecamatan
                 ? ['kecamatan' => 'PK Camat (Eselon III)', 'administrator' => self::JENIS['administrator'], 'pengawas' => self::JENIS['pengawas']]
                 : ['jpt' => self::JENIS['jpt'], 'administrator' => self::JENIS['administrator'], 'pengawas' => self::JENIS['pengawas']];
             $tambah = array_combine(array_map(static fn ($s) => 'adminopd/pk/' . $s . '/tambah', array_keys($tambah)), $tambah);
@@ -135,6 +149,8 @@ class PerjanjianKinerjaController extends BaseController
             'daftarOpd'  => $daftarOpd,
             'ruangIds'   => array_column($daftarOpd, 'id'),
             'q'          => $q,
+            'pegawai'    => $pegawai,
+            'pegawaiNama' => $pegawai > 0 ? ($semua[0]['nama_1'] ?? null) : null,
             'baris'      => $baris,
             'isi'        => $isi,
             'total'      => $total,
@@ -144,5 +160,22 @@ class PerjanjianKinerjaController extends BaseController
             'periode'    => $svc->periodeUntuk($tahun),
             'shellCss'   => view('ruang_opd/_gaya', [], ['saveData' => false, 'debug' => false]),
         ]);
+    }
+
+    /**
+     * OPD sesi berjenis kecamatan? Dibaca dari opd.jenis; bila kolom/barisnya tidak ada, jatuh ke
+     * nama peran (perilaku lama) supaya basis data tanpa kolom jenis tetap bekerja.
+     */
+    private static function opdKecamatan(int $opdId, string $peran): bool
+    {
+        $db = \Config\Database::connect();
+        if ($opdId > 0 && $db->fieldExists('jenis', 'opd')) {
+            $jenis = $db->table('opd')->select('jenis')->where('id', $opdId)->get()->getRow('jenis');
+            if ($jenis !== null && $jenis !== '') {
+                return $jenis === \App\Models\OpdModel::JENIS_KECAMATAN;
+            }
+        }
+
+        return $peran === 'admin_kecamatan';
     }
 }

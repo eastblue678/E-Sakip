@@ -41,8 +41,10 @@ $this->setVar('shellCss', $shellCss . <<<'CSS'
   .pk-aksi { text-align:left; }
 }
 CSS);
-$qs = static function (array $ubah = []) use ($tahun, $jenis, $opdId, $q, $kel): string {
-    $p = array_merge(['tahun' => $tahun, 'jenis' => $jenis, 'opd_id' => $kel === 'opd' ? null : $opdId, 'q' => $q], $ubah);
+$pegawai = (int) ($pegawai ?? 0);
+$qs = static function (array $ubah = []) use ($tahun, $jenis, $opdId, $q, $kel, $pegawai): string {
+    $p = array_merge(['tahun' => $tahun, 'jenis' => $jenis, 'opd_id' => $kel === 'opd' ? null : $opdId, 'q' => $q,
+        'pegawai' => $pegawai > 0 ? $pegawai : null], $ubah);
 
     return '?' . http_build_query(array_filter($p, static fn ($v) => $v !== null && $v !== ''));
 };
@@ -85,6 +87,7 @@ $jumlahSemua = array_sum($hitung);
   <form method="get" action="<?= base_url('perjanjian-kinerja') ?>" class="ro-alat mb-3">
     <input type="hidden" name="tahun" value="<?= (int) $tahun ?>">
     <?php if ($jenis !== ''): ?><input type="hidden" name="jenis" value="<?= esc($jenis, 'attr') ?>"><?php endif; ?>
+    <?php if ($pegawai > 0): ?><input type="hidden" name="pegawai" value="<?= $pegawai ?>"><?php endif; ?>
     <label class="ro-cari mb-0">
       <i class="fas fa-magnifying-glass"></i>
       <input type="search" name="q" value="<?= esc($q, 'attr') ?>" class="form-control" placeholder="Cari nama atau jabatan pihak pertama/kedua<?= $kel !== 'opd' ? ', atau nama OPD' : '' ?>…" aria-label="Cari">
@@ -100,6 +103,11 @@ $jumlahSemua = array_sum($hitung);
     <button type="submit" class="btn btn-success"><i class="fas fa-filter me-1"></i>Terapkan</button>
   </form>
 
+  <?php if ($pegawai > 0): ?>
+    <p class="small mb-2"><span class="ro-lencana" style="background:#e3f1e8;color:#0b6b3a;"><i class="fas fa-user-tie"></i>
+      Pihak pertama: <?= esc((string) ($pegawaiNama ?? ('pegawai #' . $pegawai))) ?></span>
+      <a class="ms-2" href="<?= base_url('perjanjian-kinerja') . $qs(['pegawai' => null, 'hal' => null]) ?>"><i class="fas fa-xmark me-1"></i>tampilkan semua pihak pertama</a></p>
+  <?php endif; ?>
   <div class="ro-pil mb-3" role="group" aria-label="Jenis PK">
     <a href="<?= base_url('perjanjian-kinerja') . $qs(['jenis' => null, 'hal' => null]) ?>" class="<?= $jenis === '' ? 'aktif' : '' ?>">Semua jenis<span class="n"><?= (int) $jumlahSemua ?></span></a>
     <?php foreach ($jenisBoleh as $k => $lbl): ?>

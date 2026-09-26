@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Services\EkinClient;
+use App\Services\MasukSebagaiService;
 use App\Services\RuangOpdService;
 use App\Services\RuangOpdTautan;
 use CodeIgniter\Exceptions\PageNotFoundException;
@@ -265,18 +266,28 @@ class RuangOpdController extends BaseController
         $peran   = (string) session('role');
         $periode = $this->svc()->periodeUntuk($tahun);
         $opdId   = (int) $opd['id'];
+        $lintas  = in_array($peran, RuangOpdTautan::PERAN_LINTAS, true);
+        $ikpKab  = $this->svc()->ikpKabBerlaku($opdId);
+
+        // Pintasan audiensi "Masuk sebagai admin OPD ini": hanya bila memang ADA akun aktif
+        // untuk OPD ini (RSUD, UPT, kelurahan tidak punya) — dulu tautannya berakhir di daftar kosong.
+        $masukSebagai = $lintas
+            && MasukSebagaiService::bolehDipakai()
+            && ! MasukSebagaiService::sedangMeniru()
+            && (new MasukSebagaiService())->adaAkunUntukOpd($opdId);
 
         return [
             'opd'       => $opd,
             'tahun'     => $tahun,
             'tahunList' => $this->svc()->daftarTahun(),
             'peran'     => $peran,
-            'lintas'    => in_array($peran, RuangOpdTautan::PERAN_LINTAS, true),
+            'lintas'    => $lintas,
+            'masukSebagai' => $masukSebagai,
             'kepala'    => $this->svc()->kepalaPerOpd($tahun)[$opdId] ?? null,
             // Pemberi tautan untuk view: fn(item, ctx) => ['url','publik','baru'] | null
             // ctx['tahun'] menimpa tahun halaman (mis. tautan LAKIP tahun lalu).
             'buka'      => static fn (string $item, array $ctx = []) => RuangOpdTautan::untuk(
-                $peran, $item, $opdId, (int) ($ctx['tahun'] ?? $tahun), $ctx + ['periode' => $periode], 'user_can'
+                $peran, $item, $opdId, (int) ($ctx['tahun'] ?? $tahun), $ctx + ['periode' => $periode, 'ikp_kab' => $ikpKab], 'user_can'
             ),
             'shellCss'  => view('ruang_opd/_gaya', [], ['saveData' => false, 'debug' => false]),
         ];

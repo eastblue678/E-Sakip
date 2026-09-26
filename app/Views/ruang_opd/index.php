@@ -164,7 +164,8 @@ $this->setVar('shellCss', $shellCss);
                     <span class="ro-opd-kepala">Kepala belum tercatat di PK <?= (int) $tahun ?></span>
                   <?php endif; ?>
                 </div>
-                <span class="ro-skor <?= $warnaSkor($m['_skor'] ?? null) ?>" title="Skor kelengkapan dokumen"><?= ($m['_skor'] ?? null) === null ? '–' : (int) $m['_skor'] . '%' ?></span>
+                <?php $wajibSakip = in_array($o['kelompok'], ['pd', 'kecamatan'], true); ?>
+                <span class="ro-skor <?= $warnaSkor($m['_skor'] ?? null) ?>" title="<?= $wajibSakip ? 'Skor kelengkapan dokumen SAKIP' : 'Tidak diberi skor: unit ini tidak wajib menyusun dokumen SAKIP sendiri' ?>"><?= ($m['_skor'] ?? null) === null ? '–' : (int) $m['_skor'] . '%' ?></span>
               </div>
             </td>
             <?php foreach ($tahapKol as $ks): ?>
@@ -190,7 +191,9 @@ $this->setVar('shellCss', $shellCss);
     <div class="ro-kosong-cari" id="ro-kosong"><i class="fas fa-magnifying-glass me-1"></i>Tidak ada unit yang cocok dengan saringan ini.</div>
   </div>
   <p class="ro-catatan mt-2"><i class="fas fa-circle-info me-1"></i>
-    Skor kelengkapan = rata-rata sel berwarna (lengkap 1, sebagian ½, belum ada 0); sel abu tidak dihitung.
+    Skor kelengkapan dokumen SAKIP = rata-rata sel berwarna Perencanaan s.d. Pelaporan (lengkap 1, sebagian ½, belum ada 0);
+    sel abu (tidak berlaku / belum jatuh tempo) tidak dihitung. Kolom Pegawai (eKin) ditampilkan tetapi tidak ikut skor,
+    dan unit yang tidak wajib menyusun dokumen SAKIP sendiri (kelurahan, UPT) tidak diberi skor — keduanya juga tidak masuk rata-rata.
     Kepala menurut Perjanjian Kinerja JPT/Camat <?= (int) $tahun ?> (termasuk Plt./Plh.).</p>
 </div>
 

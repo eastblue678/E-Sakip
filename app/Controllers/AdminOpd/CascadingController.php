@@ -318,7 +318,10 @@ class CascadingController extends BaseController
 
             // Program & kegiatan PK per kabid (Eselon III). Hanya jalur admin;
             // halaman publik tidak pernah membangun peta ini.
-            $programEs3 = $this->cascadingModel->programPkByEs3($this->opdId, $start, $end);
+            // AKSARA+: (int) — Super Admin tidak terikat OPD (opd_id sesi null) dan
+            // programPkByEs3(int) melempar TypeError -> HTTP 500. Dengan 0, model
+            // mengembalikan [] dan halaman menampilkan "Akun Tidak Terikat Perangkat Daerah".
+            $programEs3 = $this->cascadingModel->programPkByEs3((int) $this->opdId, $start, $end);
 
             // Pohon Kinerja OPD tampil inline (tidak harus klik cetak)
             $tree = $this->buildOpdTree($rows, $programEs3);
@@ -468,7 +471,7 @@ class CascadingController extends BaseController
             'rows'          => $rows,
             'rowspan'       => $this->buildRowspanMeta($rows),
             'firstShow'     => $this->buildFirstShowMeta($rows),
-            'programEs3'    => $this->cascadingModel->programPkByEs3($this->opdId, (int) $start, (int) $end),
+            'programEs3'    => $this->cascadingModel->programPkByEs3((int) $this->opdId, (int) $start, (int) $end),
             // Kolom sasaran eselon di TABEL cukup menampilkan sasarannya saja;
             // rincian Program & Kegiatan PK tetap tampil di Pohon Kinerja.
             'showProgramPk' => false,
@@ -516,7 +519,7 @@ class CascadingController extends BaseController
             'rows' => $rows,
             'rowspan' => $rowspan,
             'firstShow' => $firstShow,
-            'programEs3' => $this->cascadingModel->programPkByEs3($this->opdId, $start, $end),
+            'programEs3' => $this->cascadingModel->programPkByEs3((int) $this->opdId, $start, $end),
             // Kolom sasaran eselon di TABEL cukup menampilkan sasarannya saja;
             // rincian Program & Kegiatan PK tetap tampil di Pohon Kinerja.
             'showProgramPk' => false,
@@ -579,7 +582,7 @@ class CascadingController extends BaseController
 
         $tree = $this->buildOpdTree(
             $rows,
-            $this->cascadingModel->programPkByEs3($this->opdId, $start, $end)
+            $this->cascadingModel->programPkByEs3((int) $this->opdId, $start, $end)
         );
 
         // Ambil visi via JOIN rpjmd_visi

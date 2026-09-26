@@ -56,7 +56,9 @@ final class RuangOpdTautan
     /**
      * @param string                $item  dashboard|renstra|rkt|iku|cascading|pohon|pemilik|pk|pk_lihat|pk_cetak|
      *                                     pk_edit|renaksi|monev|ikp|ikp_realisasi|lakip|evaluasi
-     * @param array<string,mixed>   $ctx   periode ('2025-2029'), jenis & id (PK)
+     * @param array<string,mixed>   $ctx   periode ('2025-2029'), jenis & id (PK),
+     *                                     ikp_kab (bool: OPD ini tercakup rekap IKP kabupaten —
+     *                                     RuangOpdService::ikpKabBerlaku; tanpa kunci ini = tidak)
      * @param callable(string):bool $boleh pemeriksa izin (user_can)
      *
      * @return array{url:string, publik:bool, baru:bool}|null url relatif (tanpa base_url)
@@ -69,6 +71,10 @@ final class RuangOpdTautan
         }
 
         $periode = (string) ($ctx['periode'] ?? '');
+        // Rekap IKP kabupaten (adminkab/ikp/opd/{id}, bupati/ikp/opd/{id}) hanya menerima
+        // OPD jenis opd/kecamatan (AdminKab\IkpController::opdSah); kelurahan & UPT = 404.
+        // Bawaan TIDAK: pemanggil yang lupa menyebutnya kehilangan tombol, bukan memberi tautan putus.
+        $ikpKab  = ! empty($ctx['ikp_kab']);
         $jenisPk = (string) ($ctx['jenis'] ?? '');
         $idPk    = (int) ($ctx['id'] ?? 0);
         $segPk   = self::SEGMEN_PK[$jenisPk] ?? null;
@@ -131,7 +137,7 @@ final class RuangOpdTautan
                 'pk_lihat'  => $segBupati ? $in('bupati/pk/' . $segBupati . $q(['tahun' => $tahun] + ($segBupati === 'bupati' ? [] : ['opd_id' => $opdId]))) : null,
                 'renaksi'   => $in('bupati/renaksi_pk/es3' . $q(['opd_id' => $opdId, 'tahun' => $tahun])),
                 'monev'     => $in('bupati/monev_pk/es3' . $q(['opd_id' => $opdId, 'tahun' => $tahun])),
-                'ikp'       => $in('bupati/ikp/opd/' . $opdId . $q(['tahun' => $tahun])),
+                'ikp'       => $ikpKab ? $in('bupati/ikp/opd/' . $opdId . $q(['tahun' => $tahun])) : null,
                 'lakip'     => $in('bupati/lakip' . $q(['mode' => 'opd', 'opd_id' => $opdId, 'tahun' => $tahun])),
                 default     => null,   // pemilik, pk_cetak, pk_edit, evaluasi, ikp_realisasi: tidak ada layar Bupati
             };
@@ -168,7 +174,7 @@ final class RuangOpdTautan
                 ? $in('adminkab/renaksi_pk/es3' . $q(['opd_id' => $opdId, 'tahun' => $tahun])) : null,
             'monev'     => $kab && $boleh('pk_bupati.view')
                 ? $in('adminkab/monev_pk/es3' . $q(['opd_id' => $opdId, 'tahun' => $tahun])) : null,
-            'ikp'       => $boleh('ikp_kab.view') ? $in('adminkab/ikp/opd/' . $opdId . $q(['tahun' => $tahun])) : null,
+            'ikp'       => $ikpKab && $boleh('ikp_kab.view') ? $in('adminkab/ikp/opd/' . $opdId . $q(['tahun' => $tahun])) : null,
             'lakip'     => $boleh('lakip_kab.view')
                 ? $in('adminkab/lakip' . $q(['mode' => 'opd', 'opd_id' => $opdId, 'tahun' => $tahun])) : $pub($publik['lakip']),
             'evaluasi'  => $in('adminkab/evaluasi_inspektorat'),

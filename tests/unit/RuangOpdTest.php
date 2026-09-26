@@ -33,7 +33,7 @@ final class RuangOpdTest extends CIUnitTestCase
         $hasil = [];
         foreach (self::ITEM as $item) {
             foreach (self::JENIS as $jenis) {
-                $t = RuangOpdTautan::untuk($peran, $item, 20, 2026, ['periode' => '2025-2029', 'jenis' => $jenis, 'id' => 7], $boleh);
+                $t = RuangOpdTautan::untuk($peran, $item, 20, 2026, ['periode' => '2025-2029', 'jenis' => $jenis, 'id' => 7, 'ikp_kab' => true], $boleh);
                 if ($t !== null) {
                     $hasil[$item . ':' . $jenis] = $t['url'];
                 }
@@ -99,7 +99,28 @@ final class RuangOpdTest extends CIUnitTestCase
         // PkRenaksiController::ensureRole menolak super admin: tautan ke sana pasti berakhir galat.
         $this->assertNull(RuangOpdTautan::untuk('admin', 'renaksi', 20, 2026, [], static fn () => true));
         $this->assertNull(RuangOpdTautan::untuk('admin', 'monev', 20, 2026, [], static fn () => true));
-        $this->assertSame('adminkab/ikp/opd/20?tahun=2026', RuangOpdTautan::untuk('admin', 'ikp', 20, 2026, [], static fn () => true)['url']);
+        $this->assertSame('adminkab/ikp/opd/20?tahun=2026', RuangOpdTautan::untuk('admin', 'ikp', 20, 2026, ['ikp_kab' => true], static fn () => true)['url']);
+    }
+
+    public function testKelurahanDanUptTidakDiberiTautanRekapIkpKabupaten(): void
+    {
+        // AdminKab\IkpController::opdSah hanya menerima jenis opd/kecamatan: kelurahan/UPT = 404.
+        foreach (['admin', 'admin_kab', 'admin_inspektorat', 'bupati'] as $peran) {
+            $this->assertNull(RuangOpdTautan::untuk($peran, 'ikp', 42, 2026, ['ikp_kab' => false], static fn () => true), $peran);
+            $this->assertNull(RuangOpdTautan::untuk($peran, 'ikp', 42, 2026, [], static fn () => true), $peran . ': bawaan = tidak');
+            $this->assertNotNull(RuangOpdTautan::untuk($peran, 'ikp', 20, 2026, ['ikp_kab' => true], static fn () => true), $peran);
+        }
+    }
+
+    public function testLabelJenjangKecamatanMengikutiPemilikKinerja(): void
+    {
+        $kec = RuangOpdService::labelJenjang(true);
+        $this->assertSame('Eselon IV', $kec['es3'], 'Camat = Eselon III, jadi simpul es3 kecamatan = Eselon IV');
+        $this->assertSame('Pelaksana / JF', $kec['es4']);
+        $this->assertSame('Eselon III', RuangOpdService::labelJenjang(false)['es3']);
+        $sel = RuangOpdService::selCascading(['es3' => ['simpul' => 2, 'berpemilik' => 2]], true, true);
+        $this->assertStringContainsString('Eselon IV 2', $sel['j']);
+        $this->assertStringNotContainsString('Eselon III', $sel['j']);
     }
 
     public function testPeranTakDikenalTidakMendapatTautan(): void
@@ -124,6 +145,21 @@ final class RuangOpdTest extends CIUnitTestCase
         $sel = ['a' => ['s' => 'hijau'], 'b' => ['s' => 'kuning'], 'c' => ['s' => 'merah'], 'd' => ['s' => 'abu'], '_skor' => null];
         $this->assertSame(50, RuangOpdService::skor($sel));
         $this->assertNull(RuangOpdService::skor(['x' => ['s' => 'abu']]));
+        // Kolom eKin tidak ikut skor dokumen SAKIP: unit yang hanya punya eKin hijau tidak menjadi 100%.
+        $this->assertNull(RuangOpdService::skor(['renstra' => ['s' => 'abu'], 'ekin' => ['s' => 'hijau']]));
+        $this->assertSame(0, RuangOpdService::skor(['renstra' => ['s' => 'merah'], 'ekin' => ['s' => 'hijau']]));
+    }
+
+    public function testLakipTahunBerjalanYangSedangDisusunTidakMenurunkanSkor(): void
+    {
+        $kini = (int) RuangOpdService::kini()->format('Y');
+        $draf = RuangOpdService::selLakip([$kini => ['n' => 4, 'selesai' => 1]], $kini, true);
+        $this->assertSame('abu', $draf['s'], 'belum jatuh tempo: tidak dihitung');
+        $this->assertSame('hijau', RuangOpdService::selLakip([$kini => ['n' => 4, 'selesai' => 4]], $kini, true)['s']);
+        $this->assertSame('abu', RuangOpdService::selLakip([], $kini, true)['s']);
+        // Tahun lampau: draf tetap kuning, tidak ada tetap merah.
+        $this->assertSame('kuning', RuangOpdService::selLakip([$kini - 2 => ['n' => 4, 'selesai' => 1]], $kini - 2, true)['s']);
+        $this->assertSame('merah', RuangOpdService::selLakip([], $kini - 2, true)['s']);
     }
 
     public function testSelPerjanjianKinerja(): void
@@ -141,11 +177,31 @@ final class RuangOpdTest extends CIUnitTestCase
         $this->assertSame('abu', RuangOpdService::selEkin(null, 'eKin mati')['s']);
         $this->assertSame('eKin mati', RuangOpdService::selEkin(null, 'eKin mati')['j']);
         $this->assertSame('belum di eKin', RuangOpdService::selEkin(false)['k']);
-        $r = ['pegawai' => ['total' => 20, 'ber_skp' => 19], 'bulanan' => ['dinilai' => 15], 'pk_pegawai' => ['ditandatangani' => 10, 'lewat_aksara' => 3]];
-        $sel = RuangOpdService::selEkin($r);
+        // Contoh 26 September: bulan berjalan (September) baru draf/diajukan, Agustus sudah dinilai semua.
+        $r = ['pegawai' => ['total' => 20, 'ber_skp' => 19],
+              'bulanan' => ['bulan' => 9, 'dinilai' => 0, 'diajukan' => 12, 'draf' => 7, 'belum' => 0],
+              'predikat' => ['sangat_baik' => 4, 'baik' => 15], 'predikat_bulan' => 8,
+              'pk_pegawai' => ['ditandatangani' => 10, 'lewat_aksara' => 3]];
+        $this->assertSame(['bulan' => 8, 'dinilai' => 19], RuangOpdService::ekinDinilai($r));
+        $sel = RuangOpdService::selEkin($r, '', 8);
         $this->assertSame('hijau', $sel['s']);
         $this->assertSame('95% SKP', $sel['t']);
-        $this->assertSame('dinilai 15 · PK 13', $sel['k']);
+        $this->assertSame('dinilai Agu 19/19 · PK 10 +3 PK AKSARA', $sel['k'], '"lewat AKSARA" tidak dijumlahkan ke ditandatangani');
+        $this->assertStringContainsString('Agustus', $sel['j']);
+
+        // Penilaian Agustus belum ada sama sekali (terakhir Juli) -> tidak hijau walau semua ber-SKP.
+        $telat = ['predikat_bulan' => 7] + $r;
+        $this->assertSame('kuning', RuangOpdService::selEkin($telat, '', 8)['s']);
+
+        // Pegawai dimuat tetapi belum ada yang ber-SKP.
+        $nol = RuangOpdService::selEkin(['pegawai' => ['total' => 3, 'ber_skp' => 0], 'pk_pegawai' => ['lewat_aksara' => 1]], '', 8);
+        $this->assertSame('merah', $nol['s']);
+        $this->assertSame('belum ada SKP +1 PK AKSARA', $nol['k']);
+
+        // eKin lama tanpa predikat_bulan: jatuh ke bulanan.bulan/dinilai.
+        $lama = $r;
+        unset($lama['predikat_bulan']);
+        $this->assertSame(['bulan' => 9, 'dinilai' => 0], RuangOpdService::ekinDinilai($lama));
     }
 
     public function testNamaRapiDanSebutan(): void

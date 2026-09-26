@@ -12,7 +12,7 @@ $this->setVar('shellCss', $shellCss);
 
 $statusLbl = [
     'ditandatangani' => ['s-hijau', 'Ditandatangani'],
-    'lewat_aksara'   => ['s-hijau', 'PK di AKSARA'],
+    'lewat_aksara'   => ['s-biru', 'PK di AKSARA'],
     'diajukan'       => ['s-kuning', 'Diajukan, menunggu tanda tangan'],
     'draf'           => ['s-abu', 'Draf'],
     'dikembalikan'   => ['s-merah', 'Dikembalikan'],
@@ -57,7 +57,7 @@ $metodeLbl = ['sum' => 'Akumulasi', 'akhir' => 'Posisi akhir', 'rata' => 'Rata-r
   <?php endif; ?>
   <?php if (($dok['status'] ?? '') === 'lewat_aksara'): ?>
     <div class="alert alert-light border small ro-noprint"><i class="fas fa-circle-info me-1"></i>Pegawai ini pejabat struktural: Perjanjian Kinerjanya adalah dokumen PK di AKSARA (menu Perjanjian Kinerja). Tampilan di bawah adalah salinan yang dibaca eKin.
-      <a class="ms-1" href="<?= base_url('perjanjian-kinerja?' . http_build_query(['tahun' => $tahun, 'opd_id' => $opd['id'], 'q' => (string) ($dok['pegawai']['jabatan'] ?? '')])) ?>">Buka PK di AKSARA</a></div>
+      <a class="ms-1" href="<?= base_url('perjanjian-kinerja?' . http_build_query(['tahun' => $tahun, 'pegawai' => (int) ($dok['pegawai']['id'] ?? 0)])) ?>">Buka PK di AKSARA</a></div>
   <?php endif; ?>
 
   <!-- ======================= HALAMAN 1: PERNYATAAN ======================= -->
@@ -91,7 +91,7 @@ $metodeLbl = ['sum' => 'Akumulasi', 'akhir' => 'Posisi akhir', 'rata' => 'Rata-r
       </div>
       <div>
         <div>PIHAK PERTAMA,</div>
-        <div class="ruang"><?= in_array($dok['status'] ?? '', ['diajukan', 'ditandatangani', 'lewat_aksara'], true) ? '<span class="ro-chip s-hijau"><i class="fas fa-paper-plane me-1"></i>diajukan</span>' : '<span class="ro-chip s-abu">draf</span>' ?></div>
+        <div class="ruang"><?php if (($dok['status'] ?? '') === 'lewat_aksara'): ?><span class="ro-chip s-abu">dokumen PK AKSARA</span><?php else: ?><?= in_array($dok['status'] ?? '', ['diajukan', 'ditandatangani'], true) ? '<span class="ro-chip s-hijau"><i class="fas fa-paper-plane me-1"></i>diajukan</span>' : '<span class="ro-chip s-abu">draf</span>' ?><?php endif; ?></div>
         <div class="nama"><?= esc((string) $p1['nama']) ?></div>
         <div>NIP. <?= esc((string) ($p1['nip'] ?? '')) ?></div>
       </div>
