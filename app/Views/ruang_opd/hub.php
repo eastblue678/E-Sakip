@@ -432,7 +432,10 @@ $lompat = [
         <?php /* "lewat AKSARA" = pejabat struktural yang PK-nya dokumen PK AKSARA; AKSARA tidak menyimpan status tanda
                  tangan, jadi TIDAK dijumlahkan ke "ditandatangani". */ ?>
         <div><span class="nm">PK pegawai ditandatangani</span><b><?= (int) $pp['ditandatangani'] ?></b>
-          <small>di eKin · <?= (int) $pp['diajukan'] ?> diajukan · <?= (int) $pp['draf'] ?> draf<?= (int) $pp['dikembalikan'] > 0 ? ' · ' . (int) $pp['dikembalikan'] . ' dikembalikan' : '' ?><?= (int) $pp['lewat_aksara'] > 0 ? ' · ' . (int) $pp['lewat_aksara'] . ' pejabat memakai PK AKSARA' : '' ?></small></div>
+          <small>di eKin · <?= (int) $pp['diajukan'] ?> diajukan · <?= (int) $pp['draf'] ?> draf<?= (int) $pp['dikembalikan'] > 0 ? ' · ' . (int) $pp['dikembalikan'] . ' dikembalikan' : '' ?><?= (int) $pp['lewat_aksara'] > 0 ? ' · ' . (int) $pp['lewat_aksara'] . ' pejabat memakai PK AKSARA' : '' ?><?php
+          // Kunci tambahan eKin: pegawai yang peran PK AKSARA-nya belum pernah diselaraskan (status masih dugaan dari SKP).
+          $belumSelaras = (int) ($e['pk_aksara']['belum_diperiksa'] ?? 0);
+          if ($belumSelaras > 0): ?> · <span class="text-warning-emphasis" title="Peran PK AKSARA pegawai ini belum pernah diselaraskan eKin (ekin:sinkron-pk-aksara); angkanya masih dugaan dari SKP"><?= $belumSelaras ?> belum diselaraskan dengan AKSARA</span><?php endif; ?></small></div>
         <div><span class="nm">Cascading pegawai</span><b><?= (int) $cs['porsi_lengkap'] ?>/<?= (int) $cs['rhk_ber_bawahan'] ?></b>
           <small>RHK berbawahan yang porsinya lengkap · <?= (int) $cs['porsi_kurang'] ?> kurang</small></div>
       </div>
