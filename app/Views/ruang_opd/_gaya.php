@@ -63,6 +63,9 @@
 .ro-chip { display: inline-flex; align-items: center; gap: 6px; font-size: .72rem; font-weight: 700; color: var(--c); background: var(--bg);
     padding: .28em .65em; border-radius: 999px; white-space: nowrap; }
 .ro-chip.polos { color: #45594c; background: #f0f3f1; }
+/* Chip di kotak sempit (mis. simpul pohon Cascading Pegawai di ponsel): boleh turun baris, tidak melebar keluar layar. */
+.ro-chip { max-width: 100%; }
+.meta .ro-chip, .ro-pohon .ro-chip { white-space: normal; }
 
 /* ---------- Ringkasan kabupaten per kolom ---------- */
 .ro-ringkas { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
