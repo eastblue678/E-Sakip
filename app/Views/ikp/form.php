@@ -216,7 +216,7 @@ $polaWarna      = ['hitungan' => '#1971c2', 'posisi' => '#0a8f50', 'rilis' => '#
                 <span class="form-label d-block">Tahun rilis</span>
                 <div class="form-check">
                     <input class="form-check-input" type="checkbox" name="rilis_tahun_berikut" value="1" id="rilis_tahun_berikut" <?= $tahunBerikut ? 'checked' : '' ?>>
-                    <label class="form-check-label" for="rilis_tahun_berikut">Nilai tahun N baru dirilis tahun N+1</label>
+                    <label class="form-check-label" for="rilis_tahun_berikut">Nilai tahun ini baru dirilis tahun berikutnya (opini BPK, IPM)</label>
                 </div>
                 <div class="form-text">Contoh: opini BPK atas LKPD 2026 terbit Mei 2027; realisasi 2026 diisi saat itu.</div>
             </div>

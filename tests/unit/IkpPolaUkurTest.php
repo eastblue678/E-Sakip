@@ -105,6 +105,11 @@ final class IkpPolaUkurTest extends CIUnitTestCase
         $this->assertSame('tahunan', ikp_periode_dari_bulan([11]));
         $this->assertSame('khusus', ikp_periode_dari_bulan([1, 2, 3, 4]));
         $this->assertSame('khusus', ikp_periode_dari_bulan([5, 7]));
+        // Sama dengan eKin PolaUkur::periodeDari(): berjarak sama walau tidak berakhir Desember.
+        $this->assertSame('semesteran', ikp_periode_dari_bulan([3, 9]));
+        $this->assertSame('semesteran', ikp_periode_dari_bulan([1, 7]));
+        $this->assertSame('triwulanan', ikp_periode_dari_bulan([2, 5, 8, 11]));
+        $this->assertSame('khusus', ikp_periode_dari_bulan([3, 6, 12]));
     }
 
     /* =========================== ikp_pola() =========================== */
