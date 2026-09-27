@@ -99,8 +99,8 @@ CSS);
     <div class="kpi-num" style="color:<?= esc($a['status_sd']['color_hex'], 'attr') ?>"><?= esc($persenTeks($a['rata_sd'])) ?></div>
     <div class="kpi-sub"><?= esc($a['status_sd']['name']) ?></div></div></div>
   <div class="col-6 col-xl-3"><div class="kpi"><div class="kpi-title">Realisasi <?= esc($namaBulan) ?></div>
-    <div class="kpi-num"><?= (int) $a['lapor_bulan'] ?><span style="font-size:1rem;color:#6b7a70;"> / <?= (int) $a['jumlah'] ?></span></div>
-    <div class="kpi-sub">IKP sudah dilaporkan</div></div></div>
+    <div class="kpi-num"><?= (int) $a['lapor_bulan'] ?><span style="font-size:1rem;color:#6b7a70;"> / <?= (int) $a['wajib_bulan'] ?></span></div>
+    <div class="kpi-sub">IKP yang diukur bulan ini sudah dilaporkan<?= (int) $a['jumlah'] > (int) $a['wajib_bulan'] ? ' · ' . ((int) $a['jumlah'] - (int) $a['wajib_bulan']) . ' tidak diukur / menunggu rilis' : '' ?></div></div></div>
 </div>
 
 <?php if ($data['ikp'] === []): ?>
@@ -127,7 +127,7 @@ CSS);
             <div class="judul"><?= $n + 1 ?>. <?= esc(ikp_rapikan_teks($ikp['output_prioritas'])) ?></div>
             <div class="meta">
               <span><?= esc($ikp['satuan_label'] !== '' ? $ikp['satuan_label'] : '–') ?></span>
-              <span><?= esc($metodeNm[$ikp['metode'] ?? ''] ?? 'Metode belum dipilih') ?></span>
+              <span><?= esc(ikp_pola_ringkas($r['pola'], (int) $tahun)) ?><?= ! empty($r['pola']['penerbit']) ? ' · ' . esc($r['pola']['penerbit']) : '' ?></span>
               <span>Target <?= (int) $tahun ?>: <?= $r['target_tahunan'] !== null ? esc(ikp_fmt($r['target_tahunan'])) : '–' ?></span>
             </div>
           </div>

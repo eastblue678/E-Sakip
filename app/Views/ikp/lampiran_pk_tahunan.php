@@ -35,7 +35,7 @@ $lebarTahun = $periode === [] ? 0 : (int) floor(45 / count($periode));
         <th style="width: 4%;">NO.</th>
         <th style="width: 29%;">OUTPUT PRIORITAS (INDIKATOR IKP)</th>
         <th style="width: 8%;">SATUAN</th>
-        <th style="width: 7%;">METODE</th>
+        <th style="width: 7%;">POLA UKUR</th>
         <th style="width: 7%;">TARGET 5 TAHUN</th>
         <?php foreach ($periode as $th): ?>
           <th style="width: <?= $lebarTahun ?>%;" class="<?= (int) $th === (int) $lampTahun ? 'lp-sorot' : '' ?>"><?= (int) $th ?></th>
@@ -56,7 +56,8 @@ $lebarTahun = $periode === [] ? 0 : (int) floor(45 / count($periode));
           <td class="lp-c"><?= $i + 1 ?>.</td>
           <td><?= pdf_teks(ikp_rapikan_teks($r['output_prioritas'])) ?></td>
           <td class="lp-c"><?= pdf_teks($r['satuan_label'] !== '' ? $r['satuan_label'] : '-') ?></td>
-          <td class="lp-c lp-mini"><?= esc($metodeSingkat[$r['metode'] ?? ''] ?? 'Belum dipilih') ?></td>
+          <?php $polaR = $r['pola'] ?? ikp_pola($r); ?>
+          <td class="lp-c lp-mini"><?= esc($polaR['metode'] !== '' ? ikp_pola_ringkas($polaR) : 'Belum dipilih') ?></td>
           <td class="lp-c"><?= pdf_teks($t5) ?></td>
           <?php foreach ($periode as $th): ?>
             <td class="lp-c<?= (int) $th === (int) $lampTahun ? ' lp-sorot' : '' ?>"><?= pdf_teks($nilaiTahun($lampTahunan[$id][$th] ?? [])) ?></td>

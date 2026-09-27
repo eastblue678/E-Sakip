@@ -102,8 +102,8 @@ CSS);
   </div>
   <div class="col-6 col-xl-3">
     <div class="kpi"><div class="kpi-title">Realisasi <?= esc($namaBulan) ?></div>
-      <div class="kpi-num"><?= (int) $a['lapor_bulan'] ?><span style="font-size:1rem;color:#6b7a70;"> / <?= (int) $a['jumlah'] ?></span></div>
-      <div class="kpi-sub">IKP sudah berisi realisasi</div></div>
+      <div class="kpi-num"><?= (int) $a['lapor_bulan'] ?><span style="font-size:1rem;color:#6b7a70;"> / <?= (int) $a['wajib_bulan'] ?></span></div>
+      <div class="kpi-sub">IKP yang diukur bulan ini sudah berisi realisasi<?= (int) $a['jumlah'] > (int) $a['wajib_bulan'] ? ' · ' . ((int) $a['jumlah'] - (int) $a['wajib_bulan']) . ' tidak diukur / menunggu rilis' : '' ?></div></div>
   </div>
   <div class="col-6 col-xl-3">
     <div class="kpi"><div class="kpi-title">Sebaran status</div>
@@ -147,7 +147,7 @@ CSS);
         <div class="judul"><?= esc(ikp_rapikan_teks($ikp['output_prioritas'])) ?></div>
         <div class="meta">
           <span><i class="fas fa-ruler me-1"></i><?= esc($ikp['satuan_label'] !== '' ? $ikp['satuan_label'] : '–') ?></span>
-          <span><i class="fas fa-calculator me-1"></i><?= esc($metodeNm[$ikp['metode'] ?? ''] ?? 'Metode belum dipilih') ?></span>
+          <span><i class="fas fa-calculator me-1"></i><?= esc(ikp_pola_ringkas($r['pola'], (int) $tahun)) ?><?= ! empty($r['pola']['penerbit']) ? ' · ' . esc($r['pola']['penerbit']) : '' ?></span>
           <span><i class="fas fa-flag-checkered me-1"></i>Target 5 th: <?= esc($t5) ?></span>
           <span><i class="fas fa-bullseye me-1"></i>Target <?= (int) $tahun ?>: <?= esc($tth) ?></span>
           <?php if (! empty($ikp['pj_nama'])): ?><span><i class="fas fa-user-tie me-1"></i><?= esc($ikp['pj_nama']) ?></span><?php endif; ?>
@@ -189,13 +189,21 @@ CSS);
           <tr>
             <th>Target</th>
             <?php for ($m = 1; $m <= 12; $m++): $v = $r['bulan'][$m]['target']; ?>
-              <td class="<?= $m > $bulan ? 'lewat' : '' ?><?= $m === $bulan ? ' pilih' : '' ?>"><?= $v === null ? '–' : esc(ikp_fmt($v)) ?></td>
+              <?php if (! $r['bulan'][$m]['diukur']): ?>
+                <td class="<?= $m > $bulan ? 'lewat' : '' ?><?= $m === $bulan ? ' pilih' : '' ?> text-muted" title="<?= esc($r['bulan'][$m]['keadaan_ket'], 'attr') ?>">—</td>
+              <?php else: ?>
+                <td class="<?= $m > $bulan ? 'lewat' : '' ?><?= $m === $bulan ? ' pilih' : '' ?>"><?= $v === null ? '–' : esc(ikp_fmt($v)) ?></td>
+              <?php endif; ?>
             <?php endfor; ?>
           </tr>
           <tr>
             <th>Realisasi</th>
             <?php for ($m = 1; $m <= 12; $m++): $v = $r['bulan'][$m]['realisasi']; ?>
-              <td class="fw-semibold<?= $m > $bulan ? ' lewat' : '' ?><?= $m === $bulan ? ' pilih' : '' ?>"><?= $v === null ? '–' : esc(ikp_fmt($v)) ?></td>
+              <?php if (! $r['bulan'][$m]['diukur']): ?>
+                <td class="text-muted<?= $m > $bulan ? ' lewat' : '' ?><?= $m === $bulan ? ' pilih' : '' ?>" title="<?= esc($r['bulan'][$m]['keadaan_ket'], 'attr') ?>">—</td>
+              <?php else: ?>
+                <td class="fw-semibold<?= $m > $bulan ? ' lewat' : '' ?><?= $m === $bulan ? ' pilih' : '' ?>" <?= $r['bulan'][$m]['keadaan'] === 'belum_waktunya' && $r['pola']['pola'] === 'rilis' ? 'title="' . esc($r['bulan'][$m]['keadaan_ket'], 'attr') . '"' : '' ?>><?= $v === null ? ($r['bulan'][$m]['keadaan'] === 'belum_waktunya' && $r['pola']['pola'] === 'rilis' ? '<span class="text-muted" style="font-weight:400">rilis</span>' : '–') : esc(ikp_fmt($v)) ?></td>
+              <?php endif; ?>
             <?php endfor; ?>
           </tr>
           <tr>
@@ -203,6 +211,8 @@ CSS);
             <?php for ($m = 1; $m <= 12; $m++): $p = $x['per_bulan'][$m]; ?>
               <?php if ($m > $bulan): ?>
                 <td class="lewat">–</td>
+              <?php elseif (! $r['bulan'][$m]['diukur']): ?>
+                <td class="text-muted<?= $m === $bulan ? ' pilih' : '' ?>" title="<?= esc($r['bulan'][$m]['keadaan_ket'], 'attr') ?>">—</td>
               <?php elseif ($p === null): ?>
                 <td class="text-muted<?= $m === $bulan ? ' pilih' : '' ?>">–</td>
               <?php else: $sp = ikp_status(['status' => 'calculated', 'percentage' => $p, 'error' => null]); ?>
@@ -220,6 +230,7 @@ CSS);
           <div><b>TW <?= $romawi[$q] ?></b><?= ! empty($tw['berjalan']) ? ' <span class="text-muted">(berjalan' . (! empty($tw['sampai_bulan']) ? ', capaian s.d. ' . esc(ikp_nama_bulan((int) $tw['sampai_bulan'], true)) : '') . ')</span>' : '' ?></div>
           <div>Target <?= $tw['target'] === null ? '–' : esc(ikp_fmt($tw['target'])) ?> &middot; Realisasi <?= $tw['realisasi'] === null ? '–' : esc(ikp_fmt($tw['realisasi'])) ?></div>
           <div style="color:<?= esc($c['hex'], 'attr') ?>; font-weight:700;"><?= $tw['capaian'] === null ? esc($tw['status_label']) : esc(ikp_fmt((float) $tw['capaian'], 2)) . '% · ' . esc($tw['status_label']) ?></div>
+          <?php if (($tw['diukur'] ?? true) === false): ?><div class="text-muted">tanpa bulan ukur</div><?php endif; ?>
         </div>
       <?php endforeach; ?>
     </div>
@@ -228,8 +239,9 @@ CSS);
 <?php endforeach; ?>
 
 <div class="catatan-kecil mt-2">
-  <i class="fas fa-circle-info me-1"></i> Kolom abu-abu = bulan setelah <?= esc($namaBulan) ?>. Capaian per bulan: Akumulasi = realisasi ÷ target bulan itu;
-  Posisi = posisi bulan itu ÷ target posisinya. Triwulan dihitung otomatis dari data bulanan.
+  <i class="fas fa-circle-info me-1"></i> Kolom abu-abu = bulan setelah <?= esc($namaBulan) ?>. Capaian per bulan: Hitungan = realisasi ÷ target bulan itu;
+  Posisi = posisi bulan itu ÷ target posisinya; Rilis = nilai resmi ÷ target bulan rilis. Tanda "—" = bulan yang tidak diukur menurut pola ukur IKP itu
+  (tidak dihitung dan tidak ikut rata-rata). Triwulan dihitung otomatis dari data bulanan.
 </div>
 
 <script>

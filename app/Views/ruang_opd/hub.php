@@ -307,7 +307,7 @@ $lompat = [
         <div class="ro-gulir" style="max-height:260px;">
           <table class="ro-mini"><thead><tr><th>IKP (capaian terendah dulu)</th><th>Program Unggulan</th><th class="num">Capaian</th></tr></thead><tbody>
             <?php foreach ($butir as $x): ?>
-              <tr><td><?= esc($x['nama']) ?></td><td class="text-muted"><?= esc($x['pu'] ?: '–') ?></td>
+              <tr><td><?= esc($x['nama']) ?><?php if (! empty($x['pola'])): ?><div class="text-muted" style="font-size:.68rem"><?= esc($x['pola']) ?></div><?php endif; ?></td><td class="text-muted"><?= esc($x['pu'] ?: '–') ?></td>
                 <td class="num"><span class="ro-chip s-<?= esc($x['status']['kelompok'], 'attr') ?>"><i class="ro-titik"></i><?= $x['persen'] === null ? esc($x['status']['name'] ?? 'belum') : esc(ikp_fmt($x['persen'], 1)) . '%' ?></span></td></tr>
             <?php endforeach; ?>
           </tbody></table>

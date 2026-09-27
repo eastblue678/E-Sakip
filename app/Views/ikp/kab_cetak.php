@@ -34,7 +34,7 @@ $bl = ikp_nama_bulan($bulan, true);
     <td>IKP terdaftar<br><b><?= (int) $total['ikp'] ?></b> di <?= (int) $total['opd_ber_ikp'] ?> dari <?= (int) $total['opd'] ?> perangkat daerah</td>
     <td>Breakdown target lengkap<br><b><?= (int) $total['lengkap'] ?></b> IKP</td>
     <td>Rata-rata capaian s.d. <?= esc($bl) ?><br><b style="color: <?= esc($total['status_sd']['color_hex'], 'attr') ?>;"><?= esc($persenTeks($total['rata_sd'])) ?></b> (<?= esc($total['status_sd']['name']) ?>)</td>
-    <td>Melapor realisasi <?= esc($bl) ?><br><b><?= (int) $total['lapor_opd'] ?></b> perangkat daerah · <?= (int) $total['lapor_ikp'] ?> IKP</td>
+    <td>Melapor realisasi <?= esc($bl) ?><br><b><?= (int) $total['lapor_opd'] ?></b> perangkat daerah · <?= (int) $total['lapor_ikp'] ?> dari <?= (int) $total['wajib_ikp'] ?> IKP yang diukur</td>
     <td>Sebaran status IKP<br>hijau <?= (int) $total['hijau'] ?> · kuning <?= (int) $total['kuning'] ?> · merah <?= (int) $total['merah'] ?> · belum dinilai <?= (int) $total['abu'] ?></td>
   </tr>
 </table>
@@ -61,7 +61,7 @@ $bl = ikp_nama_bulan($bulan, true);
         <td><?= esc($b['opd']['nama_opd']) ?><?= $a['tanpa_metode'] > 0 ? '<br><span class="pdf-muted">' . (int) $a['tanpa_metode'] . ' IKP belum memilih metode</span>' : '' ?></td>
         <td class="c"><?= $a['jumlah'] > 0 ? (int) $a['jumlah'] : '<span class="pdf-muted">belum ada</span>' ?></td>
         <td class="c"><?= $a['jumlah'] > 0 ? (int) $a['lengkap'] . ' / ' . (int) $a['jumlah'] : '–' ?></td>
-        <td class="c"><?= $a['jumlah'] > 0 ? (int) $a['lapor_bulan'] . ' / ' . (int) $a['jumlah'] : '–' ?></td>
+        <td class="c"><?= $a['wajib_bulan'] > 0 ? (int) $a['lapor_bulan'] . ' / ' . (int) $a['wajib_bulan'] : ($a['jumlah'] > 0 ? 'tidak diukur' : '–') ?></td>
         <td class="c"><?= $a['sel_wajib'] > 0 ? round($a['sel_terisi'] / $a['sel_wajib'] * 100) . '%' : '–' ?></td>
         <td class="c st" style="color: <?= esc($st['color_hex'], 'attr') ?>;"><?= esc($persenTeks($a['rata_sd'])) ?></td>
         <td class="c"><?= esc($st['name']) ?></td>

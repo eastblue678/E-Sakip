@@ -364,16 +364,22 @@ class IkpInovasiController extends BaseController
 
         // Target bulanan & triwulan tahun PK (Lampiran V) — triwulan dihitung
         // rumus yang sama dengan halaman OPD (ikp_nilai_triwulan).
+        // Pola ukur: bulan non-ukur tidak punya target (tercetak "—"), indeks
+        // resmi hanya bertarget di bulan rilisnya — sama dengan layar OPD.
         $barisBulan = [];
         foreach ($daftar as $r) {
-            $id  = (int) $r['id'];
-            $t   = [];
+            $id   = (int) $r['id'];
+            $pola = $r['pola'] ?? ikp_pola($r);
+            $t    = [];
             for ($m = 1; $m <= 12; $m++) {
                 $t[$m] = $bulanan[$id][$m]['target'] ?? null;
             }
+            $t = ikp_saring_ukur($pola, $t);
             $barisBulan[$id] = [
                 'bulan'    => $t,
-                'triwulan' => ikp_nilai_triwulan($t, (string) ($r['metode'] ?? '')),
+                'ukur'     => $pola['bulan_ukur'],
+                'pola'     => $pola,
+                'triwulan' => ikp_nilai_triwulan($t, (string) $pola['metode']),
             ];
         }
 

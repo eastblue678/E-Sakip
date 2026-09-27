@@ -317,8 +317,10 @@ class IkpController extends BaseController
      * Rangkuman per OPD. Untuk tiap OPD:
      *   opd, ringkas (IkpRekapService::ringkasOpd), ikp[] per IKP:
      *     rekap (elemen rekapOpd), sd (capaian Jan..bulan), bln (capaian bulan itu),
-     *     per_bulan [1..12 => ?persen], lapor (realisasi bulan itu terisi?)
-     *   agregat: jumlah, lengkap, lapor_bulan, sel_terisi, sel_wajib, rata_sd, status_sd,
+     *     per_bulan [1..12 => ?persen], keadaan [1..12 => tidak_diukur|belum_waktunya|diukur],
+     *     lapor (realisasi bulan itu terisi?), wajib (bulan itu bulan ukur yang sudah tiba?)
+     *   agregat: jumlah, lengkap, lapor_bulan, wajib_bulan, tidak_diukur_bulan, menunggu_rilis,
+     *            sel_terisi, sel_wajib (hanya bulan ukur yang sudah tiba), rata_sd, status_sd,
      *            rata_bln, status_bln, per_bulan [1..12 => ?rata], warna [hijau,kuning,merah,abu],
      *            tanpa_metode, bulan_terakhir
      *
@@ -328,6 +330,13 @@ class IkpController extends BaseController
      */
     protected function rekapLintas(int $tahun, int $bulan, array $opdList): array
     {
+        // POLA UKUR: "wajib lapor" hanya bulan ukur yang sudah tiba (rilis:
+        // bulan rilisnya; rilis_tahun_berikut: tahun N+1). Bulan non-ukur tidak
+        // dihitung capaiannya dan tidak dianggap "belum lapor".
+        $kini   = new \DateTimeImmutable('now', new \DateTimeZone('Asia/Jakarta'));
+        $thKini = (int) $kini->format('Y');
+        $blKini = (int) $kini->format('n');
+
         $out = [];
         foreach ($opdList as $opd) {
             $rekap   = $this->rekap->rekapOpd((int) $opd['id'], $tahun);
@@ -339,11 +348,15 @@ class IkpController extends BaseController
             $perBulan = array_fill(1, 12, []);
             $warna    = ['hijau' => 0, 'kuning' => 0, 'merah' => 0, 'abu' => 0];
             $lapor    = 0;
+            $wajibBln = 0;
             $selIsi   = 0;
+            $selWajib = 0;
             $tanpaMetode = 0;
+            $tidakDiukurBln = 0;
 
             foreach ($rekap as $r) {
-                $metode = (string) ($r['ikp']['metode'] ?? '');
+                $pola   = $r['pola'];
+                $metode = (string) $pola['metode'];
                 $t = [];
                 $v = [];
                 for ($m = 1; $m <= 12; $m++) {
@@ -354,20 +367,32 @@ class IkpController extends BaseController
                     $tanpaMetode++;
                 }
 
-                $sd  = $this->capaian($metode, $t, $v, 1, $bulan);
-                $bln = $this->capaian($metode, $t, $v, $bulan, $bulan);
+                $sd  = $this->capaian($pola, $t, $v, 1, $bulan, $tahun);
+                $bln = $this->capaian($pola, $t, $v, $bulan, $bulan, $tahun);
                 $pb  = [];
+                $pbKeadaan = [];
                 for ($m = 1; $m <= 12; $m++) {
-                    $pb[$m] = $m <= $bulan ? $this->capaian($metode, $t, $v, $m, $m)['persen'] : null;
+                    $keadaan       = ikp_keadaan_bulan($pola, $tahun, $m, $thKini, $blKini);
+                    $pbKeadaan[$m] = $keadaan['kode'];
+                    $pb[$m]        = $m <= $bulan ? $this->capaian($pola, $t, $v, $m, $m, $tahun)['persen'] : null;
                     if ($pb[$m] !== null) {
                         $perBulan[$m][] = $pb[$m];
                     }
-                    if ($m <= $bulan && $v[$m] !== null) {
-                        $selIsi++;
+                    if ($m <= $bulan && $keadaan['kode'] === 'diukur') {
+                        $selWajib++;
+                        if ($v[$m] !== null) {
+                            $selIsi++;
+                        }
                     }
                 }
-                if ($v[$bulan] !== null) {
-                    $lapor++;
+                $wajib = $pbKeadaan[$bulan] === 'diukur';
+                if ($wajib) {
+                    $wajibBln++;
+                    if ($v[$bulan] !== null) {
+                        $lapor++;
+                    }
+                } elseif ($pbKeadaan[$bulan] === 'tidak_diukur') {
+                    $tidakDiukurBln++;
                 }
                 if ($sd['persen'] !== null) {
                     $persenSd[] = $sd['persen'];
@@ -378,11 +403,15 @@ class IkpController extends BaseController
                 $warna[$sd['status']['kelompok']]++;
 
                 $ikp[] = [
-                    'rekap'     => $r,
-                    'sd'        => $sd,
-                    'bln'       => $bln,
-                    'per_bulan' => $pb,
-                    'lapor'     => $v[$bulan] !== null,
+                    'rekap'      => $r,
+                    'sd'         => $sd,
+                    'bln'        => $bln,
+                    'per_bulan'  => $pb,
+                    // tidak_diukur | belum_waktunya | diukur per bulan (sel "—" di kisi)
+                    'keadaan'    => $pbKeadaan,
+                    'lapor'      => $v[$bulan] !== null,
+                    // false = bulan terpilih bukan bulan ukur / rilisnya belum tiba: bukan "belum lapor".
+                    'wajib'      => $wajib,
                 ];
             }
 
@@ -401,8 +430,11 @@ class IkpController extends BaseController
                     'jumlah'         => count($rekap),
                     'lengkap'        => (int) $ringkas['lengkap_breakdown'],
                     'lapor_bulan'    => $lapor,
+                    // IKP yang WAJIB melapor bulan terpilih (bulan ukurnya & sudah tiba).
+                    'wajib_bulan'    => $wajibBln,
+                    'tidak_diukur_bulan' => $tidakDiukurBln,
                     'sel_terisi'     => $selIsi,
-                    'sel_wajib'      => count($rekap) * $bulan,
+                    'sel_wajib'      => $selWajib,
                     'rata_sd'        => $rataSd,
                     'status_sd'      => $this->statusDariPersen($rataSd),
                     'rata_bln'       => $rataBl,
@@ -410,6 +442,7 @@ class IkpController extends BaseController
                     'per_bulan'      => $rataPerBulan,
                     'warna'          => $warna,
                     'tanpa_metode'   => $tanpaMetode,
+                    'menunggu_rilis' => (int) ($ringkas['menunggu_rilis'] ?? 0),
                     'bulan_terakhir' => $ringkas['bulan_terakhir'],
                 ],
             ];
@@ -419,19 +452,22 @@ class IkpController extends BaseController
     }
 
     /**
-     * Capaian satu IKP atas rentang bulan (rumus ikp_capaian) + status warna ambang.
+     * Capaian satu IKP atas rentang bulan (rumus ikp_capaian_pola: bulan
+     * non-ukur tidak dihitung) + status warna ambang.
      *
-     * @return array{persen: ?float, status: array, keterangan: ?string, bulan_terakhir: ?int}
+     * @return array{persen: ?float, status: array, keterangan: ?string, bulan_terakhir: ?int, tidak_diukur: bool, menunggu_rilis: bool}
      */
-    protected function capaian(string $metode, array $t, array $v, int $dari, int $sampai): array
+    protected function capaian(array $pola, array $t, array $v, int $dari, int $sampai, ?int $tahun = null): array
     {
-        $h = ikp_capaian($metode, $t, $v, $dari, $sampai);
+        $h = ikp_capaian_pola($pola, $t, $v, $dari, $sampai, [], $tahun);
 
         return [
             'persen'         => $h['status'] === 'calculated' && $h['percentage'] !== null ? (float) $h['percentage'] : null,
             'status'         => ikp_status($h),
             'keterangan'     => $h['calculation_description'] ?? null,
             'bulan_terakhir' => $h['bulan_terakhir'] ?? null,
+            'tidak_diukur'   => ! empty($h['tidak_diukur']),
+            'menunggu_rilis' => ! empty($h['menunggu_rilis']),
         ];
     }
 
@@ -449,12 +485,18 @@ class IkpController extends BaseController
         $opdBerIkp = array_filter($baris, static fn ($b) => $b['agregat']['jumlah'] > 0);
         $persen    = [];
         $t = ['opd' => count($baris), 'opd_ber_ikp' => count($opdBerIkp), 'ikp' => 0, 'lengkap' => 0,
-              'lapor_opd' => 0, 'lapor_ikp' => 0, 'hijau' => 0, 'kuning' => 0, 'merah' => 0, 'abu' => 0, 'tanpa_metode' => 0];
+              'lapor_opd' => 0, 'lapor_ikp' => 0, 'wajib_ikp' => 0, 'opd_wajib' => 0, 'menunggu_rilis' => 0,
+              'hijau' => 0, 'kuning' => 0, 'merah' => 0, 'abu' => 0, 'tanpa_metode' => 0];
         foreach ($baris as $b) {
             $a = $b['agregat'];
             $t['ikp']          += $a['jumlah'];
             $t['lengkap']      += $a['lengkap'];
             $t['lapor_ikp']    += $a['lapor_bulan'];
+            $t['wajib_ikp']    += $a['wajib_bulan'];
+            $t['menunggu_rilis'] += $a['menunggu_rilis'];
+            if ($a['wajib_bulan'] > 0) {
+                $t['opd_wajib']++;
+            }
             $t['tanpa_metode'] += $a['tanpa_metode'];
             if ($a['lapor_bulan'] > 0) {
                 $t['lapor_opd']++;

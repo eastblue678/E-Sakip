@@ -136,7 +136,7 @@ CSS);
         <div class="kpi-title">Melapor <?= esc($namaBulan) ?></div>
       </div>
       <div class="kpi-num"><?= (int) $total['lapor_opd'] ?><span style="font-size:1rem;color:#6b7a70;"> / <?= (int) $total['opd_ber_ikp'] ?> OPD</span></div>
-      <div class="kpi-sub"><?= (int) $total['lapor_ikp'] ?> dari <?= (int) $total['ikp'] ?> IKP sudah berisi realisasi bulan ini</div>
+      <div class="kpi-sub"><?= (int) $total['lapor_ikp'] ?> dari <?= (int) $total['wajib_ikp'] ?> IKP yang diukur bulan ini sudah berisi realisasi<?= (int) $total['ikp'] > (int) $total['wajib_ikp'] ? ' · ' . ((int) $total['ikp'] - (int) $total['wajib_ikp']) . ' IKP tidak diukur / menunggu rilis' : '' ?></div>
     </div>
   </div>
   <div class="col-12 col-sm-6 col-xl-3">
@@ -201,7 +201,7 @@ CSS);
           <tr class="<?= $a['jumlah'] === 0 ? 'baris-kosong' : '' ?>"
               data-no="<?= $n + 1 ?>" data-nama="<?= esc(mb_strtolower($b['opd']['nama_opd']), 'attr') ?>"
               data-jumlah="<?= (int) $a['jumlah'] ?>" data-lengkap="<?= $a['jumlah'] > 0 ? $pLengkap : -1 ?>"
-              data-lapor="<?= $a['jumlah'] > 0 ? round($a['lapor_bulan'] / $a['jumlah'] * 100, 2) : -1 ?>"
+              data-lapor="<?= $a['wajib_bulan'] > 0 ? round($a['lapor_bulan'] / $a['wajib_bulan'] * 100, 2) : -1 ?>"
               data-isi="<?= $a['jumlah'] > 0 ? $pIsi : -1 ?>"
               data-capaian="<?= $a['rata_sd'] === null ? -1 : $a['rata_sd'] ?>">
             <td class="num text-muted sembunyi-hp"><?= $n + 1 ?></td>
@@ -223,7 +223,8 @@ CSS);
                 </div>
               <?php else: ?>–<?php endif; ?>
             </td>
-            <td class="num" data-label="Realisasi <?= esc(ikp_nama_bulan($bulan, true), 'attr') ?>"><?= $a['jumlah'] > 0 ? (int) $a['lapor_bulan'] . '/' . (int) $a['jumlah'] : '–' ?></td>
+            <td class="num" data-label="Realisasi <?= esc(ikp_nama_bulan($bulan, true), 'attr') ?>"
+                title="IKP yang bulan ukurnya jatuh pada <?= esc(ikp_nama_bulan($bulan), 'attr') ?>; indeks resmi yang menunggu rilis dan posisi di luar bulan ukur tidak dihitung"><?= $a['wajib_bulan'] > 0 ? (int) $a['lapor_bulan'] . '/' . (int) $a['wajib_bulan'] : ($a['jumlah'] > 0 ? '<span class="text-muted">tidak diukur</span>' : '–') ?></td>
             <td data-label="Terisi s.d. <?= esc(ikp_nama_bulan($bulan, true), 'attr') ?>">
               <?php if ($a['jumlah'] > 0): ?>
                 <div class="d-flex align-items-center gap-2">

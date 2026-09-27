@@ -46,6 +46,7 @@ class IkpMonitoringController extends IkpKabupatenController
         $kuning    = 0;
         $jumlahIkp = 0;
         $belumNilai = 0;
+        $tidakDiukur = 0;
         $semuaIkp  = [];
         foreach ($baris as $b) {
             if ($b['agregat']['jumlah'] > 0) {
@@ -58,6 +59,10 @@ class IkpMonitoringController extends IkpKabupatenController
                 $jumlahIkp++;
                 if ($i['bln']['persen'] !== null) {
                     $persenBln[] = $i['bln']['persen'];
+                } elseif (empty($i['wajib'])) {
+                    // Pola ukur: bulan ini bukan bulan ukurnya / rilisnya belum tiba —
+                    // bukan "belum dinilai" dan tidak ikut rata-rata.
+                    $tidakDiukur++;
                 } else {
                     $belumNilai++;
                 }
@@ -75,7 +80,7 @@ class IkpMonitoringController extends IkpKabupatenController
         $terukur = array_values(array_filter($semuaIkp, static fn ($x) => $x['bln']['persen'] !== null
             && in_array($x['bln']['status']['kelompok'], ['merah', 'kuning'], true)));
         usort($terukur, static fn ($a, $b) => $a['bln']['persen'] <=> $b['bln']['persen']);
-        $belumLapor = array_values(array_filter($semuaIkp, static fn ($x) => ! $x['lapor']
+        $belumLapor = array_values(array_filter($semuaIkp, static fn ($x) => ! $x['lapor'] && ! empty($x['wajib'])
             && ($x['rekap']['bulan'][$bulan]['target'] ?? null) !== null));
         $perhatian = array_slice(array_merge($terukur, $belumLapor), 0, 5);
 
@@ -112,6 +117,7 @@ class IkpMonitoringController extends IkpKabupatenController
                 'status_bln'  => $this->statusDariPersen($rataBln),
                 'terukur'     => count($persenBln),
                 'belum_nilai' => $belumNilai,
+                'tidak_diukur'=> $tidakDiukur,
                 'merah'       => $merah,
                 'kuning'      => $kuning,
             ],

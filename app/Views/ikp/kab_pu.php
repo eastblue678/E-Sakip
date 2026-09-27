@@ -132,7 +132,7 @@ CSS);
             <th>Perangkat Daerah</th>
             <th>Indikator IKP (output prioritas)</th>
             <th class="text-center">Satuan</th>
-            <th class="text-center">Metode</th>
+            <th class="text-center">Pola ukur</th>
             <th class="text-center">Target 5 th</th>
             <th class="text-center">Target <?= (int) $tahun ?></th>
             <th class="text-center">Realisasi terakhir</th>
@@ -152,7 +152,7 @@ CSS);
               <td><a class="text-decoration-none fw-semibold" href="<?= base_url('adminkab/ikp/opd/' . (int) $x['opd']['id']) . $qs() ?>"><?= esc($x['opd']['nama_opd']) ?></a></td>
               <td><?= esc(ikp_rapikan_teks($ikp['output_prioritas'])) ?></td>
               <td class="text-center" data-label="Satuan"><?= esc($ikp['satuan_label'] !== '' ? $ikp['satuan_label'] : '–') ?></td>
-              <td class="text-center small" data-label="Metode"><?= esc($metodeNm[$ikp['metode'] ?? ''] ?? 'Belum dipilih') ?></td>
+              <td class="text-center small" data-label="Pola ukur"><?= esc(ikp_pola_ringkas($x['rekap']['pola'], (int) $tahun)) ?></td>
               <td class="text-center" data-label="Target 5 th"><?= esc(mb_strimwidth((string) $t5, 0, 40, '…')) ?></td>
               <td class="text-center" data-label="Target <?= (int) $tahun ?>"><?= $x['rekap']['target_tahunan'] !== null ? esc(ikp_fmt($x['rekap']['target_tahunan'])) : '–' ?></td>
               <td class="text-center" data-label="Realisasi terakhir">

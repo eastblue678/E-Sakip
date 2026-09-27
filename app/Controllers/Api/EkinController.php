@@ -275,9 +275,12 @@ class EkinController extends BaseController
                 $i     = $r['ikp'];
                 $bulan = [];
                 for ($m = 1; $m <= 12; $m++) {
+                    // Pola ukur: bulan non-ukur selalu null (diukur = false) — eKin
+                    // TIDAK boleh mencicil indeks resmi ke setiap bulan.
                     $bulan[$m] = [
                         'target'    => $r['bulan'][$m]['target'] ?? null,
                         'realisasi' => $r['bulan'][$m]['realisasi'] ?? null,
+                        'diukur'    => (bool) ($r['bulan'][$m]['diukur'] ?? true),
                     ];
                 }
                 $tw = [];
@@ -292,6 +295,8 @@ class EkinController extends BaseController
                         'warna'        => $t['warna'] ?? null,
                         // true = triwulan belum lengkap; capaian dihitung dari bulan yang sudah terisi.
                         'berjalan'     => (bool) ($t['berjalan'] ?? false),
+                        // false = triwulan tanpa bulan ukur (capaian tidak dihitung).
+                        'diukur'       => (bool) ($t['diukur'] ?? true),
                     ];
                 }
                 $tb = $r['tahun_berjalan'];
@@ -301,7 +306,8 @@ class EkinController extends BaseController
                     'program_unggulan'       => $i['pu_nama'] ?? null,
                     'indikator'              => (string) $i['output_prioritas'],
                     'satuan'                 => (string) ($i['satuan_label'] ?? ''),
-                    'metode'                 => $i['metode'] ?? null,
+                    'metode'                 => $r['pola']['metode'] !== '' ? $r['pola']['metode'] : ($i['metode'] ?? null),
+                ] + $this->polaApi($r['pola']) + [
                     'target_5_tahun'         => $i['target_5_tahun'] ?? null,
                     'target_tahunan'         => $r['target_tahunan'],
                     'target_tahunan_teks'    => $r['target_tahunan_teks'],
@@ -676,10 +682,12 @@ class EkinController extends BaseController
                     'program_unggulan'       => $i['pu_nama'] ?? null,
                     'indikator'              => (string) $i['output_prioritas'],
                     'satuan'                 => (string) ($i['satuan_label'] ?? ''),
-                    'metode'                 => $i['metode'] ?? null,
+                    'metode'                 => $r['pola']['metode'] !== '' ? $r['pola']['metode'] : ($i['metode'] ?? null),
+                ] + $this->polaApi($r['pola']) + [
                     'target_5_tahun'         => $i['target_5_tahun'] ?? null,
                     'target_tahunan'         => $r['target_tahunan'],
                     'target_tahunan_teks'    => $r['target_tahunan_teks'],
+                    // Hanya bulan ukur yang bertarget; bulan lain null (lihat bulan_ukur).
                     'target_bulanan'         => $tb,
                     'realisasi_bulanan'      => $rb,
                     'pj_pegawai_id'          => $i['pj_pegawai_id'] !== null ? (int) $i['pj_pegawai_id'] : null,
@@ -707,10 +715,13 @@ class EkinController extends BaseController
         }
         // Dibaca lewat IkpRekapService::bulanan() — sumber yang sama dengan
         // layar IKP, rekap Kabupaten/Bupati, dan endpoint opd/{id}/ikp.
+        $svc   = new IkpRekapService($this->db);
+        $pola  = $svc->polaPerIkp($ikpIds);
         $hasil = [];
-        foreach ((new IkpRekapService($this->db))->bulanan($ikpIds, $tahun) as $id => $bulan) {
+        foreach ($svc->bulanan($ikpIds, $tahun) as $id => $bulan) {
             foreach ($bulan as $m => $b) {
-                $hasil[$id][$m] = $b['target'];
+                // Pola ukur: target di bulan non-ukur tidak dikirim (null).
+                $hasil[$id][$m] = isset($pola[$id]) && ! ikp_bulan_diukur($pola[$id], (int) $m) ? null : $b['target'];
             }
         }
 
@@ -949,6 +960,23 @@ class EkinController extends BaseController
         }
 
         return array_values($ids);
+    }
+
+    /**
+     * Isian pola ukur untuk konsumen eKin (IKI & rencana aksi mengikuti pola):
+     * pola_ukur hitungan|posisi|rilis, periode_ukur, bulan_ukur [int], penerbit,
+     * rilis_tahun_berikut (bool), pola_ditebak (bool: belum dikonfirmasi admin OPD).
+     */
+    private function polaApi(array $pola): array
+    {
+        return [
+            'pola_ukur'           => $pola['pola'],
+            'periode_ukur'        => $pola['periode_ukur'],
+            'bulan_ukur'          => array_values(array_map('intval', $pola['bulan_ukur'])),
+            'penerbit'            => $pola['penerbit'],
+            'rilis_tahun_berikut' => (bool) $pola['rilis_tahun_berikut'],
+            'pola_ditebak'        => (bool) $pola['ditebak'],
+        ];
     }
 
     private function sukses($data, array $meta = [])

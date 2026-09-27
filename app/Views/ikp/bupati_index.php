@@ -158,6 +158,9 @@ $ambang = dash_threshold_rows();
       <div class="kpi-sub">
         <?= $sorot('fa-building', '#6b7a70', 'di ' . (int) $kartu['opd_ber_ikp'] . ' perangkat daerah') ?>
         <?= $sorot('fa-hourglass-half', '#8a968f', (int) $kartu['belum_nilai'] . ' belum dapat dinilai bulan ini') ?>
+        <?php if ((int) ($kartu['tidak_diukur'] ?? 0) > 0): ?>
+          <?= $sorot('fa-calendar-minus', '#8a968f', (int) $kartu['tidak_diukur'] . ' tidak diukur bulan ini (indeks resmi menunggu rilis / posisi di luar bulan ukur)') ?>
+        <?php endif; ?>
       </div>
     </div>
   </div>
@@ -198,7 +201,7 @@ $ambang = dash_threshold_rows();
               <td class="text-muted"><?= $a['jumlah'] > 0 ? (int) $a['jumlah'] : '–' ?></td>
               <?php for ($m = 1; $m <= $bulan; $m++): $p = $a['per_bulan'][$m]; ?>
                 <?php if ($p === null): ?>
-                  <td class="sel kosong" title="Belum ada capaian terukur">–</td>
+                  <td class="sel kosong" title="Belum ada capaian terukur (IKP yang tidak diukur bulan ini tidak dihitung)">–</td>
                 <?php else: $s = $statusDari($p); ?>
                   <td class="sel" style="background:<?= esc($s['color_soft'], 'attr') ?>; color:<?= esc($s['color_hex'], 'attr') ?>;" title="<?= esc($s['name'], 'attr') ?>"><?= esc(ikp_fmt($p, 0)) ?>%</td>
                 <?php endif; ?>

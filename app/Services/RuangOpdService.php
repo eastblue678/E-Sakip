@@ -27,7 +27,7 @@ use DateTimeZone;
  *     pada periode yang memuat tahun itu; Eselon IV & Pelaksana lewat es3_indikator_id
  *     (= PemilikKinerjaController::muatPohon / CascadingModel akar IKU);
  *   - kepala OPD: pihak pertama PK jpt/camat tahun itu (bukan opd.id_kepala_opd yang basi);
- *   - capaian IKP: ikp_capaian() apa adanya (= AdminKab\IkpController::rekapLintas).
+ *   - capaian IKP: ikp_capaian_pola() (taat pola ukur; = AdminKab\IkpController::rekapLintas).
  *
  * Warna sel: hijau = lengkap, kuning = sebagian, merah = belum ada padahal wajib,
  * abu = tidak berlaku / belum jatuh tempo / sumber tidak tersedia. Skor kelengkapan
@@ -960,7 +960,9 @@ final class RuangOpdService
                     $t[$m] = $r['bulan'][$m]['target'] ?? null;
                     $v[$m] = $r['bulan'][$m]['realisasi'] ?? null;
                 }
-                $h  = $bulan > 0 ? ikp_capaian((string) ($r['ikp']['metode'] ?? ''), $t, $v, 1, $bulan) : ['status' => 'incomplete', 'percentage' => null, 'error' => null];
+                // Pola ukur: bulan non-ukur tidak dihitung; indeks resmi yang belum
+                // dirilis = "Menunggu Rilis" (abu-abu, tidak ikut rata-rata).
+                $h  = $bulan > 0 ? ikp_capaian_pola($r['pola'], $t, $v, 1, $bulan, [], $tahun) : ['status' => 'incomplete', 'percentage' => null, 'error' => null];
                 $st = ikp_status($h);
                 $p  = ($h['status'] ?? '') === 'calculated' && $h['percentage'] !== null ? (float) $h['percentage'] : null;
                 if ($p !== null) {
@@ -972,6 +974,7 @@ final class RuangOpdService
                     'nama'   => (string) ($r['ikp']['output_prioritas'] ?? $r['ikp']['indikator_outcome'] ?? ''),
                     'satuan' => (string) ($r['ikp']['satuan_label'] ?? ''),
                     'pu'     => (string) ($r['ikp']['pu_nama'] ?? ''),
+                    'pola'   => ikp_pola_ringkas($r['pola'], $tahun),
                     'persen' => $p,
                     'status' => $st,
                 ];
