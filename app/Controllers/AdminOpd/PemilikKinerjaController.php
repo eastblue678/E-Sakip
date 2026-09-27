@@ -194,6 +194,7 @@ class PemilikKinerjaController extends BaseController
             'roster'       => $roster,
             'statistik'    => $this->statistik($pohon, $roster),
             'ikpOpsi'      => $this->opsiIkp($opdId, $tahun),
+            'ikpSimpul'    => (new \App\Services\IkpTurunService($this->db))->perSimpul($opdId, $tahun),
             'satuanOpsi'   => $this->opsiSatuan($opdId),
             'metodeOpsi'   => IkpModel::METODE,
             'metodeSingkat' => self::METODE_SINGKAT,
@@ -470,6 +471,13 @@ class PemilikKinerjaController extends BaseController
                 $model = new CascadingIndikatorTargetModel();
                 $ada   = $model->where(['cascading_indikator_id' => $indId, 'tahun' => $tahun])->first();
 
+                // IKP turun sampai pelaksana: target, metode, dan tautan IKP baris hasil pendelegasian
+                // diatur di Kinerja Prioritas → Turunkan IKP (porsi & peran harus konsisten dengan
+                // pemeriksa per jenjang). Di sini hanya satuan yang boleh berubah.
+                if ($ada && ($ada['sumber'] ?? null) === 'delegasi' && ($ada['ikp_id'] ?? null) !== null) {
+                    return;
+                }
+
                 if ($targetTeks === '' && $ikpId === null) {
                     // Tanpa target dan tanpa tautan IKP, baris target tahun ini
                     // tidak bermakna apa pun — dihapus supaya "kosong" benar-benar
@@ -487,6 +495,12 @@ class PemilikKinerjaController extends BaseController
                     'metode'      => $metode,
                     'ikp_id'      => $ikpId,
                 ];
+                if ($this->db->fieldExists('ikp_peran', 'cascading_indikator_target')) {
+                    // Tautan langsung dari modal ini = pemikul angka bersumber "lama" (lihat IkpTurunService).
+                    $baris += $ikpId !== null
+                        ? ['ikp_peran' => 'angka', 'sumber' => 'lama']
+                        : ['ikp_peran' => 'angka', 'sumber' => null, 'ikp_induk_id' => null];
+                }
                 if ($ada) {
                     $model->update((int) $ada['id'], $baris);
                 } else {
@@ -495,6 +509,12 @@ class PemilikKinerjaController extends BaseController
             }, 'simpan target indikator cascading');
 
             $baru = $this->indikatorTerkini([$indId], $tahun)[$indId] ?? null;
+            if (($baru['ikp_sumber'] ?? null) === 'delegasi') {
+                return $this->sukses(['indikator' => $baru], 'Satuan tersimpan. Target & tautan IKP indikator ini diatur di Kinerja Prioritas → Turunkan IKP.');
+            }
+            if ($ikpId !== null) {
+                (new \App\Services\IkpTurunService($this->db))->rapikanInduk($ikpId, $tahun);
+            }
 
             return $this->sukses(['indikator' => $baru], 'Satuan & target indikator tersimpan.');
         } catch (Throwable $e) {
@@ -856,7 +876,8 @@ class PemilikKinerjaController extends BaseController
         }
         $rows = $this->db->table('cascading_indikator_opd ci')
             ->select('ci.id, ci.indikator, ci.satuan, cit.target, cit.target_teks, cit.metode, cit.ikp_id,
-                      ikp.output_prioritas AS ikp_nama, ikp.dihapus_pada AS ikp_dihapus')
+                      ' . ($this->db->fieldExists('ikp_peran', 'cascading_indikator_target') ? 'cit.ikp_peran, cit.sumber AS ikp_sumber,' : "NULL AS ikp_peran, NULL AS ikp_sumber,") . '
+                      ikp.output_prioritas AS ikp_nama, ikp.dihapus_pada AS ikp_dihapus', false)
             ->join('cascading_indikator_target cit', 'cit.cascading_indikator_id = ci.id AND cit.tahun = ' . (int) $tahun, 'left', false)
             ->join('ikp', 'ikp.id = cit.ikp_id', 'left')
             ->whereIn('ci.id', array_map('intval', $indIds))
@@ -879,6 +900,9 @@ class PemilikKinerjaController extends BaseController
                 'ikp_id'      => $r['ikp_id'] !== null ? (int) $r['ikp_id'] : null,
                 'ikp_nama'    => (string) ($r['ikp_nama'] ?? ''),
                 'ikp_dihapus' => $r['ikp_dihapus'] !== null,
+                // IKP turun sampai pelaksana: peran (angka|pendukung) & sumber (delegasi = diatur di Turunkan IKP).
+                'ikp_peran'   => $r['ikp_id'] !== null ? ($r['ikp_peran'] === 'pendukung' ? 'pendukung' : 'angka') : null,
+                'ikp_sumber'  => $r['ikp_id'] !== null ? ($r['ikp_sumber'] ?? null) : null,
             ];
         }
 

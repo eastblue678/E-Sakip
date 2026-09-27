@@ -101,7 +101,8 @@ $areaOpd   = ($area ?? 'adminopd') === 'adminopd';   // tautan ke menu Cascading
     };
 
     // Satu simpul (Eselon III / IV / Pelaksana) beserta turunannya.
-    $renderSimpul = function (int $id) use (&$renderSimpul, $hitungTurunan, $simpulAll, $indAll, $label, $bolehUbah): string {
+    $ikpSimpul = $ikpSimpul ?? [];
+    $renderSimpul = function (int $id) use (&$renderSimpul, $hitungTurunan, $simpulAll, $indAll, $label, $bolehUbah, $ikpSimpul): string {
         $s      = $simpulAll[$id];
         $nTurun = $hitungTurunan($id);
         $banyakInd = count($s['indikator']) > 1;
@@ -116,6 +117,10 @@ $areaOpd   = ($area ?? 'adminopd') === 'adminopd';   // tautan ke menu Cascading
                     <?php endif; ?>
                     <span class="pmk-level"><?= esc($label[$s['level']]) ?></span>
                     <span class="pmk-status" data-status-simpul="<?= $id ?>"></span>
+                    <?php if (! empty($ikpSimpul[$id])): ?>
+                        <?php $angkaIkp = array_filter($ikpSimpul[$id], static fn ($x) => $x['peran'] === 'angka'); ?>
+                        <span class="pmk-chip-ikp<?= $angkaIkp === [] ? ' pendukung' : '' ?>" title="<?= esc(implode('; ', array_map(static fn ($x) => ($x['peran'] === 'angka' ? 'Memikul angka: ' : 'Mendukung: ') . $x['nama'], $ikpSimpul[$id])), 'attr') ?>"><?= $angkaIkp === [] ? '☆ Mendukung IKP' : '★ IKP' . (count($ikpSimpul[$id]) > 1 ? ' ×' . count($ikpSimpul[$id]) : '') ?></span>
+                    <?php endif; ?>
                     <?php if ($nTurun > 0): ?>
                         <span class="pmk-turunan"><?= $nTurun ?> simpul di bawahnya</span>
                     <?php endif; ?>

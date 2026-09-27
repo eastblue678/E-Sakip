@@ -199,7 +199,11 @@
                 + esc((M.metodeSingkat || {})[ind.metode] || ind.metode) + '</span>';
         }
         if (ind.ikp_id) {
-            h += '<span class="pmk-tag ikp" title="' + esc('Turunan IKP: ' + (ind.ikp_nama || '')) + '"><i class="fas fa-link"></i>IKP: <b>'
+            // IKP turun sampai pelaksana: pemikul angka (★) atau pendukung (☆) — baris "delegasi" diatur di Turunkan IKP.
+            var pendukung = ind.ikp_peran === 'pendukung';
+            h += '<span class="pmk-tag ikp" title="' + esc((pendukung ? 'Mendukung IKP: ' : 'Memikul angka IKP: ') + (ind.ikp_nama || '')
+                + (ind.ikp_sumber === 'delegasi' ? ' — diatur di Kinerja Prioritas › Turunkan IKP' : '')) + '"><i class="fas fa-link"></i>'
+                + (pendukung ? '☆ Mendukung IKP: <b>' : '★ IKP: <b>')
                 + esc(ind.ikp_nama || ('#' + ind.ikp_id)) + '</b>' + (ind.ikp_dihapus ? ' (sudah dihapus)' : '') + '</span>';
         }
         if (M.bolehUbah) {
@@ -714,8 +718,17 @@
             o.value = ind.ikp_id; o.textContent = (ind.ikp_nama || ('IKP #' + ind.ikp_id)) + ' (tidak aktif)';
             selIkp.appendChild(o); selIkp.value = String(ind.ikp_id);
         }
+        // Baris hasil "Turunkan IKP": target, metode & tautan IKP dikunci (diatur di halaman itu); satuan tetap bisa diubah.
+        var delegasi = ind.ikp_sumber === 'delegasi' && !!ind.ikp_id;
+        ['#pmkTarget', '#pmkMetode', '#pmkIkp'].forEach(function (q) { var el = modalIndEl.querySelector(q); if (el) el.disabled = delegasi; });
         segarkanInfoIkp();
         segarkanBantuMetode();
+        if (delegasi) {
+            var info = modalIndEl.querySelector('[data-isi="info-ikp"]');
+            if (info) info.innerHTML = '<div class="small"><i class="fas fa-lock me-1"></i>Indikator ini '
+                + (ind.ikp_peran === 'pendukung' ? 'mendukung' : 'memikul angka') + ' IKP lewat pendelegasian. Target, metode, dan tautan IKP-nya diatur di '
+                + '<b>Kinerja Prioritas › Turunkan IKP</b>; di sini hanya satuan yang dapat diubah.</div>';
+        }
         modalInd.show();
     }
     if (modalIndEl) {

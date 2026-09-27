@@ -96,8 +96,11 @@ class IkpController extends BaseController
         $jenis   = $this->jenisDiminta();
         $opdList = $this->daftarOpd($jenis);
         $baris   = $this->rekapLintas($tahun, $bulan, $opdList);
+        // IKP turun sampai pelaksana: per OPD berapa IKP sudah diturunkan / sampai pelaksana.
+        $turun   = (new \App\Services\IkpTurunService($this->db))->rekapKabupaten(array_map(static fn ($o) => (int) $o['id'], $opdList), $tahun);
 
         return view('ikp/kab_index', [
+            'turun'     => $turun,
             'title'     => 'Rekap Kinerja Prioritas (IKP) Lintas Perangkat Daerah',
             'tahun'     => $tahun,
             'bulan'     => $bulan,

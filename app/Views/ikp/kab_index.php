@@ -9,7 +9,11 @@
  * @var int[] $tahunList
  * @var array $baris
  * @var array $total
+ * @var array $turun  IkpTurunService::rekapKabupaten() [opd_id => ikp, turun, sampai_pelaksana]
  */
+$turun = $turun ?? [];
+$sampaiTotal = array_sum(array_column($turun, 'sampai_pelaksana'));
+$turunTotal  = array_sum(array_column($turun, 'turun'));
 $namaBulan = ikp_nama_bulan($bulan);
 $qs        = static fn (array $x = []) => '?' . http_build_query(array_merge(['tahun' => $tahun, 'bulan' => $bulan], $x));
 $persenTeks = static fn (?float $v) => $v === null ? '–' : ikp_fmt($v, 2) . '%';
@@ -112,7 +116,9 @@ CSS);
       <div class="kpi-num"><?= (int) $total['ikp'] ?></div>
       <div class="kpi-sub">
         di <?= (int) $total['opd_ber_ikp'] ?> dari <?= (int) $total['opd'] ?> perangkat daerah<br>
-        <?= (int) $total['lengkap'] ?> IKP dengan target tahunan &amp; bulanan lengkap
+        <?= (int) $total['lengkap'] ?> IKP dengan target tahunan &amp; bulanan lengkap<br>
+        <a href="<?= base_url('adminkab/ikp/turun?tahun=' . (int) $tahun) ?>" data-stat="kab-sampai"><?= (int) $sampaiTotal ?> IKP sudah turun sampai pelaksana</a>
+        <span class="text-muted">(<?= (int) $turunTotal ?> sudah diturunkan)</span>
       </div>
     </div>
   </div>
@@ -171,6 +177,7 @@ CSS);
       <option value="capaian|desc">Urut: capaian tertinggi</option>
       <option value="lapor|asc">Urut: pelaporan terendah</option>
       <option value="jumlah|desc">Urut: IKP terbanyak</option>
+      <option value="turun|asc">Urut: turun sampai pelaksana terendah</option>
     </select>
   </div>
 
@@ -188,6 +195,7 @@ CSS);
           <th class="urut" data-kunci="isi">Terisi s.d. <?= esc(ikp_nama_bulan($bulan, true)) ?><i class="fas fa-sort ar"></i></th>
           <th class="urut text-center" data-kunci="capaian">Rata-rata capaian<i class="fas fa-sort ar"></i></th>
           <th class="text-center">Sebaran status</th>
+          <th class="urut text-center" data-kunci="turun" title="IKP yang sudah diturunkan sampai jenjang pelaksana lewat pohon kinerja">Turun sampai pelaksana<i class="fas fa-sort ar"></i></th>
         </tr>
       </thead>
       <tbody>
@@ -203,7 +211,8 @@ CSS);
               data-jumlah="<?= (int) $a['jumlah'] ?>" data-lengkap="<?= $a['jumlah'] > 0 ? $pLengkap : -1 ?>"
               data-lapor="<?= $a['wajib_bulan'] > 0 ? round($a['lapor_bulan'] / $a['wajib_bulan'] * 100, 2) : -1 ?>"
               data-isi="<?= $a['jumlah'] > 0 ? $pIsi : -1 ?>"
-              data-capaian="<?= $a['rata_sd'] === null ? -1 : $a['rata_sd'] ?>">
+              data-capaian="<?= $a['rata_sd'] === null ? -1 : $a['rata_sd'] ?>"
+              data-turun="<?= ($turun[(int) $b['opd']['id']]['ikp'] ?? 0) > 0 ? round(($turun[(int) $b['opd']['id']]['sampai_pelaksana'] ?? 0) / $turun[(int) $b['opd']['id']]['ikp'] * 100, 2) : -1 ?>">
             <td class="num text-muted sembunyi-hp"><?= $n + 1 ?></td>
             <td class="ikp-opd">
               <a href="<?= base_url('adminkab/ikp/opd/' . (int) $b['opd']['id']) . $qs() ?>"><?= esc($b['opd']['nama_opd']) ?></a>
@@ -248,6 +257,15 @@ CSS);
                   <span style="background:#d64545"><?= (int) $a['warna']['merah'] ?></span>
                   <span style="background:#8a968f"><?= (int) $a['warna']['abu'] ?></span>
                 </span>
+              <?php else: ?>–<?php endif; ?>
+            </td>
+            <?php $tr = $turun[(int) $b['opd']['id']] ?? ['ikp' => 0, 'turun' => 0, 'sampai_pelaksana' => 0]; ?>
+            <td class="num" data-label="Turun sampai pelaksana">
+              <?php if ($tr['ikp'] > 0): ?>
+                <a href="<?= base_url('adminkab/ikp/turun?opd_id=' . (int) $b['opd']['id'] . '&tahun=' . (int) $tahun) ?>" class="text-decoration-none"
+                   title="<?= (int) $tr['turun'] ?> IKP sudah diturunkan; <?= (int) $tr['sampai_pelaksana'] ?> sampai pelaksana">
+                  <b><?= (int) $tr['sampai_pelaksana'] ?></b>/<?= (int) $tr['ikp'] ?>
+                </a>
               <?php else: ?>–<?php endif; ?>
             </td>
           </tr>

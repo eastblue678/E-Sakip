@@ -52,7 +52,25 @@ $kotakPemilik = static function (?array $orang, int $simpulId = 0) use ($pp): st
 
     return $buka . '>' . $isi . $tutup;
 };
+// AKSARA+ — chip "★ IKP" pada simpul yang memikul IKP (pemikul angka) / "☆ Mendukung IKP" (pendukung saja).
+$chipIkp = static function (int $simpulId) use ($pp): string {
+    $daftar = $pp['ikp'][$simpulId] ?? [];
+    if ($pp === null || $daftar === []) {
+        return '';
+    }
+    $angka = array_values(array_filter($daftar, static fn ($x) => $x['peran'] === 'angka'));
+    $judul = implode('; ', array_map(static fn ($x) => ($x['peran'] === 'angka' ? 'Memikul angka: ' : 'Mendukung: ') . $x['nama'], $daftar));
+
+    return '<div class="chip-ikp' . ($angka === [] ? ' pendukung' : '') . '" title="' . esc($judul, 'attr') . '">'
+        . ($angka === [] ? '☆ Mendukung IKP' : '★ IKP' . (count($daftar) > 1 ? ' ×' . count($daftar) : '')) . '</div>';
+};
 ?>
+<?php if ($pp !== null): ?>
+<style>
+  .chip-ikp { display: inline-block; margin: 4px auto 0; font-size: .66rem; font-weight: 800; color: #7a5a00; background: #fdf1c8; border: 1px solid #f1d98a; border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+  .chip-ikp.pendukung { color: #1864ab; background: #e7f0fb; border-color: #c4daf4; }
+</style>
+<?php endif; ?>
 
 <!-- LEGENDA WARNA -->
 <div class="pohon-legend">
@@ -157,7 +175,7 @@ $kotakPemilik = static function (?array $orang, int $simpulId = 0) use ($pp): st
                                                                                         <?php foreach ($es3['indikators'] as $indikatorEs3): ?>
                                                                                             <div class="box-iks"><?php if ($showKode): ?><span class="ind-kode">IK</span><?php endif; ?><?= nl2br(esc($indikatorEs3)) ?></div>
                                                                                         <?php endforeach; ?>
-                                                                                        <?= $pp !== null ? $kotakPemilik($pp['simpul'][(int) $es3Id] ?? [], (int) $es3Id) : '' ?>
+                                                                                        <?= $pp !== null ? $kotakPemilik($pp['simpul'][(int) $es3Id] ?? [], (int) $es3Id) : '' ?><?= $chipIkp((int) $es3Id) ?>
                                                                                         <?php // Program PK + kegiatan di bawahnya. Program diturunkan DARI kegiatannya,
                                                                                              // jadi pasangan program-kegiatan selalu konsisten. Node yang teksnya tidak
                                                                                              // cocok dengan PK mana pun sengaja dibiarkan kosong. ?>
@@ -190,7 +208,7 @@ $kotakPemilik = static function (?array $orang, int $simpulId = 0) use ($pp): st
                                                                                                         <?php foreach ($es4['indikators'] as $indikatorEs4): ?>
                                                                                                             <div class="box-iks"><?php if ($showKode): ?><span class="ind-kode">IK</span><?php endif; ?><?= nl2br(esc($indikatorEs4)) ?></div>
                                                                                                         <?php endforeach; ?>
-                                                                                                        <?= $pp !== null ? $kotakPemilik($pp['simpul'][(int) $es4Id] ?? [], (int) $es4Id) : '' ?>
+                                                                                                        <?= $pp !== null ? $kotakPemilik($pp['simpul'][(int) $es4Id] ?? [], (int) $es4Id) : '' ?><?= $chipIkp((int) $es4Id) ?>
                                                                                                     </div>
 
                                                                                                     <?php // L7: PELAKSANA — jenjang terakhir, di bawah Eselon IV / JF ?>
@@ -212,7 +230,7 @@ $kotakPemilik = static function (?array $orang, int $simpulId = 0) use ($pp): st
                                                                                                                         <?php foreach ($pel['indikators'] as $indikatorPel): ?>
                                                                                                                             <div class="box-iks"><?php if ($showKode): ?><span class="ind-kode">IK</span><?php endif; ?><?= nl2br(esc($indikatorPel)) ?></div>
                                                                                                                         <?php endforeach; ?>
-                                                                                                                        <?= $pp !== null ? $kotakPemilik($pp['simpul'][(int) $pelId] ?? [], (int) $pelId) : '' ?>
+                                                                                                                        <?= $pp !== null ? $kotakPemilik($pp['simpul'][(int) $pelId] ?? [], (int) $pelId) : '' ?><?= $chipIkp((int) $pelId) ?>
                                                                                                                     </div>
                                                                                                                 </li>
                                                                                                             <?php endforeach; ?>

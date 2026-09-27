@@ -299,6 +299,8 @@ class PohonPemilikService
             'opd_id'    => $opdId,
             'tahun'     => $tahun,
             'simpul'    => $perSimpul,
+            // Simpul yang memikul/mendukung IKP (chip "★ IKP"; IkpTurunService — IKP turun sampai pelaksana).
+            'ikp'       => (new IkpTurunService($this->db))->perSimpul($opdId, $tahun),
             'es2'       => $es2,
             'roster'    => $roster,
             'jenjang'   => $jenjang,

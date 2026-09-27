@@ -222,3 +222,6 @@ button.pmk-chip-peran:hover { filter: brightness(1.12); }
     .pmk-tile .pmk-baris-lv { grid-template-columns: 84px minmax(0, 1fr) 40px; }
     .pmk-turunan { margin-left: 0; flex-basis: 100%; }
 }
+/* AKSARA+ — IKP turun sampai pelaksana: chip simpul yang memikul/mendukung IKP */
+.pmk .pmk-chip-ikp { font-size: .66rem; font-weight: 800; color: #7a5a00; background: #fdf1c8; border: 1px solid #f1d98a; border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+.pmk .pmk-chip-ikp.pendukung { color: #1864ab; background: #e7f0fb; border-color: #c4daf4; }
