@@ -18,6 +18,7 @@ use CodeIgniter\HTTP\RedirectResponse;
  *   GET ruang-opd/(:num)/cascading-pegawai           cascadingPegawai   pohon RHK pegawai (eKin)
  *   GET ruang-opd/(:num)/pk-pegawai                  pkPegawai          daftar PK pegawai (eKin)
  *   GET ruang-opd/(:num)/pk-pegawai/(:num)           pkPegawaiDokumen   dokumen PK satu pegawai (eKin)
+ *   GET ruang-opd/(:num)/pk-pegawai/(:num)/cetak     pkPegawaiCetak     cetak PK satu pegawai (A4 potret + lanskap)
  *
  * AKSES — dijaga DI SINI, bukan oleh filter:
  *   * jalur ini di luar adminkab/* & adminopd/*, jadi ModulePermissionFilter tidak
@@ -178,19 +179,7 @@ class RuangOpdController extends BaseController
         $tahun     = $this->svc()->tahunDari($this->request->getGet('tahun'));
         $pegawaiId = (int) $pegawaiId;
         $ekin      = new EkinClient();
-
-        // MENGAPA daftar OPD diperiksa dulu: endpoint dokumen menerima id pegawai saja.
-        // Tanpa pemeriksaan ini Admin OPD bisa membaca PK pegawai OPD lain dengan
-        // mengganti angka di alamat. Hanya pegawai yang tercantum di daftar PK OPD ini
-        // (endpoint yang sama dengan halaman daftar, sudah di-cache) yang boleh dibuka.
-        $daftar = $ekin->pkPegawaiOpd($opd['id'], $tahun);
-        if ($daftar !== null) {
-            $milikOpd = array_map(static fn ($p) => (int) ($p['pegawai']['id'] ?? 0), $daftar['pk'] ?? []);
-            if (! in_array($pegawaiId, $milikOpd, true)) {
-                throw PageNotFoundException::forPageNotFound('Pegawai tidak ditemukan di perangkat daerah ini.');
-            }
-        }
-        $dok = $daftar === null ? null : $ekin->pkPegawai($pegawaiId, $tahun);
+        $dok       = $this->dokumenPkPegawai($ekin, $opd, $pegawaiId, $tahun);
 
         // Pihak pertama PK jabatan: eKin sengaja tidak membuat PK pegawai (jawabannya kosong). Tampilkan PK AKSARA-nya
         // sendiri — isi sasaran/indikator/target dan tombol Lihat/Cetak — bukan kertas eKin tanpa isi.
@@ -203,6 +192,56 @@ class RuangOpdController extends BaseController
             'isiPkAksara' => $this->svc()->isiPk(array_column($pkAksara, 'id')),
             'ekinPesan' => $dok === null ? $this->pesanEkin($ekin, $opd['id'], $tahun) : '',
         ]);
+    }
+
+    /**
+     * GET ruang-opd/(:num)/pk-pegawai/(:num)/cetak?tahun= — halaman cetak mandiri, sama dengan cetak PK pegawai eKin:
+     * lembar 1 A4 potret, lembar 2 A4 lanskap, tanpa bingkai aplikasi. PK AKSARA (pihak pertama PK jabatan) dan
+     * pegawai tanpa SKP tidak punya kertas eKin — kembali ke halaman dokumen yang menjelaskannya.
+     */
+    public function pkPegawaiCetak($id = null, $pegawaiId = null)
+    {
+        $opd = $this->opdBoleh((int) $id);
+        if ($opd instanceof RedirectResponse) {
+            return $opd;
+        }
+        $tahun   = $this->svc()->tahunDari($this->request->getGet('tahun'));
+        $dok     = $this->dokumenPkPegawai(new EkinClient(), $opd, (int) $pegawaiId, $tahun);
+        $kembali = base_url('ruang-opd/' . (int) $opd['id'] . '/pk-pegawai/' . (int) $pegawaiId . '?tahun=' . $tahun);
+        if ($dok === null || in_array($dok['status'] ?? '', ['lewat_aksara', 'belum_ada_skp'], true)) {
+            return redirect()->to($kembali);
+        }
+
+        return view('ruang_opd/pk_pegawai_cetak', [
+            'dok'     => $dok,
+            'tahun'   => $tahun,
+            'opd'     => $opd,
+            'kembali' => $kembali,
+        ]);
+    }
+
+    /**
+     * Dokumen PK satu pegawai dari eKin, hanya bila pegawai itu tercantum di daftar PK OPD ini (null = eKin tidak
+     * terjangkau).
+     *
+     * MENGAPA daftar OPD diperiksa dulu: endpoint dokumen menerima id pegawai saja. Tanpa pemeriksaan ini Admin OPD
+     * bisa membaca PK pegawai OPD lain dengan mengganti angka di alamat. Hanya pegawai yang tercantum di daftar PK
+     * OPD ini (endpoint yang sama dengan halaman daftar, sudah di-cache) yang boleh dibuka.
+     *
+     * @throws PageNotFoundException pegawai bukan milik OPD ini
+     */
+    private function dokumenPkPegawai(EkinClient $ekin, array $opd, int $pegawaiId, int $tahun): ?array
+    {
+        $daftar = $ekin->pkPegawaiOpd($opd['id'], $tahun);
+        if ($daftar === null) {
+            return null;
+        }
+        $milikOpd = array_map(static fn ($p) => (int) ($p['pegawai']['id'] ?? 0), $daftar['pk'] ?? []);
+        if (! in_array($pegawaiId, $milikOpd, true)) {
+            throw PageNotFoundException::forPageNotFound('Pegawai tidak ditemukan di perangkat daerah ini.');
+        }
+
+        return $ekin->pkPegawai($pegawaiId, $tahun);
     }
 
     /**

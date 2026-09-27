@@ -1,9 +1,9 @@
 <?php
 /**
  * Ruang OPD — dokumen PK satu pegawai, baca-saja (AKSARA+). Data: eKin endpoint
- * pk-pegawai/{pegawai_id}. Susunannya mengikuti cetakan PK: halaman 1 pernyataan &
- * tanda tangan, halaman 2 lampiran dengan target bulanan. Tombol Cetak memakai
- * pencetakan peramban (gaya @media print di _gaya menyembunyikan bingkai aplikasi).
+ * pk-pegawai/{pegawai_id}. Kertasnya SAMA dengan dokumen eKin (ruang_opd/_pk_pegawai_kertas):
+ * lembar 1 pernyataan & tanda tangan, lembar 2 lampiran target bulanan. Tombol Cetak membuka
+ * halaman cetak mandiri (pk_pegawai_cetak: A4 potret + A4 lanskap, tanpa bingkai aplikasi).
  *
  * @var array|null $dok
  * @var array      $pkAksara    PK AKSARA pegawai ini (pihak pertama), terbaru dulu — hanya bila status lewat_aksara
@@ -24,20 +24,14 @@ $statusLbl = [
     'dikembalikan'   => ['s-merah', 'Dikembalikan'],
     'belum_ada_skp'  => ['s-abu', 'Belum ada SKP'],
 ];
-$angka = static function ($v): string {
-    if ($v === null || $v === '') {
-        return '';
-    }
-    $f = (float) $v;
-
-    return number_format($f, floor($f) == $f ? 0 : 2, ',', '.');
-};
-$bulanPendek = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-$metodeLbl = ['sum' => 'Akumulasi', 'akhir' => 'Posisi akhir', 'rata' => 'Rata-rata', 'trend_naik' => 'Posisi akhir (naik)', 'trend_turun' => 'Posisi akhir (turun)', 'trend_flat' => 'Dipertahankan'];
 $jenisPk = ['bupati' => 'PK Bupati', 'jpt' => 'PK JPT', 'camat' => 'PK Camat', 'administrator' => 'PK Administrator', 'pengawas' => 'PK Pengawas'];
 $lewatAksara = is_array($dok) && ($dok['status'] ?? '') === 'lewat_aksara';
 ?>
 <?= $this->include('ruang_opd/_kepala') ?>
+<?php $cssPkd = FCPATH . 'assets/css/pk_pegawai_dokumen.css'; ?>
+<link rel="stylesheet" href="<?= base_url('assets/css/pk_pegawai_dokumen.css') ?>?v=<?= is_file($cssPkd) ? filemtime($cssPkd) : '1' ?>">
+<?php /* Ctrl+P di halaman ini: cukup kertasnya (tombol Cetak membuka halaman cetak mandiri). */ ?>
+<style>@media print { .ro-hero { display: none !important; } }</style>
 
 <?php if ($dok === null): ?>
   <div class="ro-kosong">
@@ -50,21 +44,17 @@ $lewatAksara = is_array($dok) && ($dok['status'] ?? '') === 'lewat_aksara';
   $p1 = $dok['pegawai'];
   $p2 = $dok['pihak_kedua'] ?? null;
   [$cls, $lbl] = $statusLbl[$dok['status'] ?? ''] ?? ['s-abu', (string) ($dok['status'] ?? '')];
-  $ttd = ! empty($dok['ditandatangani_pada']) ? formatTanggal(substr((string) $dok['ditandatangani_pada'], 0, 10)) : null;
-  $unit = (string) ($p1['opd_nama'] ?? $opd['nama_tampil']);
-  $baris = $dok['baris'] ?? [];
+  $belumSkp = ($dok['status'] ?? '') === 'belum_ada_skp';
   ?>
   <div class="d-flex flex-wrap gap-2 align-items-center mb-3 ro-noprint">
     <a class="btn btn-sm btn-outline-secondary" href="<?= base_url('ruang-opd/' . (int) $opd['id'] . '/pk-pegawai?tahun=' . (int) $tahun) ?>"><i class="fas fa-arrow-left me-1"></i>Daftar PK pegawai</a>
-    <span class="ro-chip <?= $cls ?>"><i class="ro-titik"></i><?= esc($lbl) ?></span>
-    <?php if (! empty($dok['diajukan_pada'])): ?><span class="ro-chip polos">Diajukan <?= esc(date('d/m/Y', strtotime((string) $dok['diajukan_pada']))) ?></span><?php endif; ?>
-    <?php if (! $lewatAksara): ?>
-      <button type="button" class="btn btn-sm btn-success ms-auto" onclick="window.print()"><i class="fas fa-print me-1"></i>Cetak</button>
+    <?php if ($lewatAksara || $belumSkp): /* status PK eKin tampil di alur di bawah */ ?>
+      <span class="ro-chip <?= $cls ?>"><i class="ro-titik"></i><?= esc($lbl) ?></span>
+    <?php endif; ?>
+    <?php if (! $lewatAksara && ! $belumSkp): ?>
+      <a class="btn btn-sm btn-success ms-auto" href="<?= base_url('ruang-opd/' . (int) $opd['id'] . '/pk-pegawai/' . (int) ($p1['id'] ?? 0) . '/cetak?tahun=' . (int) $tahun) ?>" target="_blank" rel="noopener"><i class="fas fa-print me-1"></i>Cetak</a>
     <?php endif; ?>
   </div>
-  <?php if (! empty($dok['catatan'])): ?>
-    <div class="alert alert-warning small ro-noprint"><strong>Catatan:</strong> <?= esc((string) $dok['catatan']) ?></div>
-  <?php endif; ?>
   <?php if ($lewatAksara): ?>
     <?php $pid = (int) ($p1['id'] ?? 0); $daftarPkUrl = base_url('perjanjian-kinerja?' . http_build_query(['tahun' => $tahun, 'pegawai' => $pid])); ?>
     <div class="alert alert-light border small"><i class="fas fa-circle-info me-1"></i>
@@ -130,88 +120,52 @@ $lewatAksara = is_array($dok) && ($dok['status'] ?? '') === 'lewat_aksara';
       </section>
     <?php endforeach; ?>
     <p class="ro-catatan"><i class="fas fa-circle-info me-1"></i>Target bulanan pejabat ini diatur di Rencana Aksi PK AKSARA dan diturunkan ke SKP-nya di eKin (RHK bersumber indikator PK).</p>
-  <?php else: ?>
-
-  <!-- ======================= HALAMAN 1: PERNYATAAN ======================= -->
-  <div class="ro-kertas">
-    <h3>Perjanjian Kinerja Tahun <?= (int) $tahun ?></h3>
-    <h4><?= esc(mb_strtoupper($unit)) ?></h4>
-    <p>Dalam rangka mewujudkan manajemen pemerintahan yang efektif, transparan dan akuntabel serta berorientasi pada hasil, kami yang bertanda tangan di bawah ini:</p>
-    <table class="id">
-      <tr><td style="width:120px;">Nama</td><td>:</td><td><strong><?= esc(mb_strtoupper((string) $p1['nama'])) ?></strong><?php if (! empty($p1['fiktif'])): ?> <span class="ro-fiktif">FIKTIF</span><?php endif; ?></td></tr>
-      <tr><td>NIP</td><td>:</td><td><?= esc((string) ($p1['nip'] ?? '–')) ?></td></tr>
-      <tr><td>Pangkat/Gol.</td><td>:</td><td><?= esc((string) ($p1['pangkat_gol'] ?? '–')) ?></td></tr>
-      <tr><td>Jabatan</td><td>:</td><td><?= esc((string) ($p1['jabatan'] ?? '')) ?></td></tr>
-    </table>
-    <p>Selanjutnya disebut PIHAK PERTAMA.</p>
-    <table class="id">
-      <tr><td style="width:120px;">Nama</td><td>:</td><td><strong><?= esc(mb_strtoupper((string) ($p2['nama'] ?? '…'))) ?></strong></td></tr>
-      <tr><td>NIP</td><td>:</td><td><?= esc((string) ($p2['nip'] ?? '–')) ?></td></tr>
-      <tr><td>Pangkat/Gol.</td><td>:</td><td><?= esc((string) ($p2['pangkat_gol'] ?? '–')) ?></td></tr>
-      <tr><td>Jabatan</td><td>:</td><td><?= esc((string) ($p2['jabatan'] ?? '')) ?></td></tr>
-    </table>
-    <p>Selaku atasan langsung PIHAK PERTAMA, selanjutnya disebut PIHAK KEDUA.</p>
-    <p>PIHAK PERTAMA berjanji akan mewujudkan target kinerja yang seharusnya sesuai lampiran perjanjian ini, dalam rangka mencapai target kinerja jangka menengah seperti yang telah ditetapkan dalam dokumen perencanaan. Keberhasilan dan kegagalan pencapaian target kinerja tersebut menjadi tanggung jawab kami.</p>
-    <p>PIHAK KEDUA akan melakukan supervisi yang diperlukan serta akan melakukan evaluasi terhadap capaian kinerja dari perjanjian ini dan mengambil tindakan yang diperlukan dalam rangka pemberian penghargaan dan sanksi.</p>
-    <p style="text-align:right;margin-top:18px;">Pringsewu, <?= $ttd !== null ? esc($ttd) : '…………………… ' . (int) $tahun ?></p>
-    <div class="ro-ttd">
-      <div>
-        <div>PIHAK KEDUA,</div>
-        <div class="ruang"><?= $ttd !== null ? '<span class="ro-chip s-hijau"><i class="fas fa-signature me-1"></i>ditandatangani ' . esc($ttd) . '</span>' : '<span class="ro-chip s-abu">belum ditandatangani</span>' ?></div>
-        <div class="nama"><?= esc((string) ($p2['nama'] ?? '')) ?></div>
-        <div>NIP. <?= esc((string) ($p2['nip'] ?? '')) ?></div>
-      </div>
-      <div>
-        <div>PIHAK PERTAMA,</div>
-        <div class="ruang"><?php if (($dok['status'] ?? '') === 'lewat_aksara'): ?><span class="ro-chip s-abu">dokumen PK AKSARA</span><?php else: ?><?= in_array($dok['status'] ?? '', ['diajukan', 'ditandatangani'], true) ? '<span class="ro-chip s-hijau"><i class="fas fa-paper-plane me-1"></i>diajukan</span>' : '<span class="ro-chip s-abu">draf</span>' ?><?php endif; ?></div>
-        <div class="nama"><?= esc((string) $p1['nama']) ?></div>
-        <div>NIP. <?= esc((string) ($p1['nip'] ?? '')) ?></div>
-      </div>
+  <?php elseif ($belumSkp): ?>
+    <div class="ro-kosong">
+      <div class="ic"><i class="fas fa-file-circle-question"></i></div>
+      <h5>Belum ada SKP <?= (int) $tahun ?></h5>
+      <p class="small mb-0">PK pegawai disusun eKin dari SKP dan rencana aksi. <?= esc((string) $p1['nama']) ?> belum memiliki SKP <?= (int) $tahun ?> di eKin, jadi dokumennya belum ada.</p>
     </div>
-  </div>
+  <?php else: ?>
+    <?php
+    // Panel status = kartu status halaman PK pegawai eKin (pk_pegawai/lihat): alur, chip, pihak kedua & waktu, catatan.
+    $st     = (string) ($dok['status'] ?? '');
+    $posisi = ['draf' => 0, 'dikembalikan' => 0, 'diajukan' => 1, 'ditandatangani' => 2][$st] ?? -1;
+    $beku   = in_array($st, ['diajukan', 'ditandatangani'], true);
+    $chip   = ['draf' => ['c-abu', 'Draf'], 'diajukan' => ['c-kuning', 'Menunggu tanda tangan PPK'], 'ditandatangani' => ['c-hijau', 'Ditandatangani'],
+        'dikembalikan' => ['c-oranye', 'Dikembalikan']][$st] ?? ['c-abu', $st];
+    $bulanSingkat = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    $waktu  = static function ($v) use ($bulanSingkat): ?string {
+        $ts = $v ? strtotime((string) $v) : false;
 
-  <!-- ======================= HALAMAN 2: LAMPIRAN ======================= -->
-  <div class="ro-kertas lampiran">
-    <h3>Lampiran Perjanjian Kinerja Tahun <?= (int) $tahun ?></h3>
-    <h4 style="margin-bottom:10px;"><?= esc(mb_strtoupper($unit)) ?></h4>
-    <table class="id" style="font-size:10pt;">
-      <tr><td style="width:120px;">Nama</td><td>:</td><td><?= esc((string) $p1['nama']) ?></td></tr>
-      <tr><td>Jabatan</td><td>:</td><td><?= esc((string) ($p1['jabatan'] ?? '')) ?></td></tr>
-      <tr><td>Unit kerja</td><td>:</td><td><?= esc((string) ($p1['unit_kerja'] ?? $unit)) ?></td></tr>
-    </table>
-    <?php if ($baris === []): ?>
-      <p class="ro-catatan">Belum ada baris sasaran pada PK ini.</p>
-    <?php else: ?>
-      <div class="ro-gulir-x">
-        <table class="ro-lampiran">
-          <thead>
-            <tr><th rowspan="2" style="width:30px;">No</th><th rowspan="2">Sasaran / Rencana Hasil Kerja</th><th rowspan="2">Indikator</th><th rowspan="2">Satuan</th>
-              <th colspan="12">Target Bulanan</th><th rowspan="2">Target Tahunan</th><th rowspan="2">Metode</th></tr>
-            <tr><?php for ($m = 1; $m <= 12; $m++): ?><th><?= $bulanPendek[$m] ?></th><?php endfor; ?></tr>
-          </thead>
-          <tbody>
-            <?php $jenisSebelum = null; ?>
-            <?php foreach ($baris as $b): ?>
-              <?php if (($b['jenis'] ?? '') !== $jenisSebelum): $jenisSebelum = $b['jenis'] ?? ''; ?>
-                <tr class="sub"><td colspan="18"><?= $jenisSebelum === 'tambahan' ? 'Kinerja Tambahan' : 'Kinerja Utama' ?></td></tr>
-              <?php endif; ?>
-              <tr>
-                <td class="num"><?= esc((string) ($b['no'] ?? '')) ?></td>
-                <td><?= esc((string) ($b['sasaran'] ?? '')) ?></td>
-                <td><?= esc((string) ($b['indikator'] ?? '')) ?></td>
-                <td><?= esc((string) ($b['satuan'] ?? '')) ?></td>
-                <?php for ($m = 1; $m <= 12; $m++): ?>
-                  <td class="num"><?= esc($angka($b['target_bulan'][(string) $m] ?? $b['target_bulan'][$m] ?? null)) ?></td>
-                <?php endfor; ?>
-                <td class="num"><strong><?= esc($angka($b['jumlah'] ?? null)) ?></strong></td>
-                <td><?= esc($metodeLbl[$b['metode'] ?? ''] ?? (string) ($b['metode'] ?? '')) ?></td>
-              </tr>
-            <?php endforeach; ?>
-          </tbody>
-        </table>
+        return $ts === false ? null : (int) date('j', $ts) . ' ' . $bulanSingkat[(int) date('n', $ts)] . ' ' . date('Y H.i', $ts);
+    };
+    ?>
+    <div class="pkd-status ro-noprint">
+      <ol class="pkd-alur" aria-label="Alur Perjanjian Kinerja">
+        <?php foreach ([['draf', 'Draf'], ['diajukan', 'Diajukan'], ['ditandatangani', 'Ditandatangani']] as $k => [$kode, $label]): ?>
+          <?php $balik = $st === 'dikembalikan' && $k === 0; ?>
+          <li class="<?= $balik ? 'balik' : ($k < $posisi ? 'sudah' : ($k === $posisi ? 'kini' : '')) ?>"<?= $k === $posisi ? ' aria-current="step"' : '' ?>>
+            <i class="fas <?= $k < $posisi ? 'fa-circle-check' : ($k === $posisi ? 'fa-circle-dot' : 'fa-circle') ?>" aria-hidden="true"></i><?= esc($balik ? 'Dikembalikan — perbaiki & ajukan lagi' : $label) ?>
+          </li>
+        <?php endforeach; ?>
+      </ol>
+      <div class="baris">
+        <span class="pkd-chip <?= $chip[0] ?>"><?= esc($chip[1]) ?></span>
+        <span class="ket">
+          Pihak kedua (Pejabat Penilai): <strong><?= esc((string) (($p2['nama'] ?? '') ?: 'belum diatur')) ?></strong>
+          <?php if ($beku && $waktu($dok['diajukan_pada'] ?? null)): ?> · diajukan <?= esc($waktu($dok['diajukan_pada'])) ?><?php endif; ?>
+          <?php if ($st === 'ditandatangani' && $waktu($dok['ditandatangani_pada'] ?? null)): ?> · ditandatangani <?= esc($waktu($dok['ditandatangani_pada'])) ?><?php endif; ?>
+        </span>
       </div>
-    <?php endif; ?>
-  </div>
+      <?php if ($st === 'dikembalikan' && ! empty($dok['catatan'])): ?>
+        <div class="alert alert-warning small" role="status"><i class="fas fa-rotate-left me-1"></i><strong>Catatan Pejabat Penilai:</strong> <?= esc((string) $dok['catatan']) ?></div>
+      <?php endif; ?>
+      <p class="ket mb-0"><i class="fas fa-circle-info me-1"></i><?= $beku
+          ? 'Dokumen dari eKin, sama dengan yang dilihat pegawai dan Pejabat Penilainya. Isinya versi yang ' . ($st === 'ditandatangani' ? 'disepakati' : 'diajukan') . '.'
+          : 'Pratinjau hidup dari eKin: sasaran, indikator, dan target bulanan dibaca langsung dari SKP &amp; rencana aksi. Saat diajukan, isinya dibekukan.' ?></p>
+    </div>
+    <?= view('ruang_opd/_pk_pegawai_kertas', ['dok' => $dok, 'cetak' => false, 'tahun' => $tahun, 'opdNama' => $opd['nama_tampil']]) ?>
   <?php endif; /* lewatAksara */ ?>
 <?php endif; ?>
 

@@ -274,7 +274,8 @@ supaya satu alamat melayani semua peran; `ModulePermissionFilter` tidak berlaku,
 | GET | `/ruang-opd/(:num)` | `RuangOpdController::hub` | Hub satu OPD per tahap siklus SAKIP, tombol "Buka" ke halaman lama yang boleh dibuka peran itu (`App\Services\RuangOpdTautan`) |
 | GET | `/ruang-opd/(:num)/cascading-pegawai` | `RuangOpdController::cascadingPegawai` | Pohon RHK pegawai dari eKin |
 | GET | `/ruang-opd/(:num)/pk-pegawai` | `RuangOpdController::pkPegawai` | Daftar PK pegawai dari eKin (`?status&q`) |
-| GET | `/ruang-opd/(:num)/pk-pegawai/(:num)` | `RuangOpdController::pkPegawaiDokumen` | Dokumen PK satu pegawai (baca-saja, bisa dicetak peramban); pihak pertama PK jabatan ("PK di AKSARA") → PK AKSARA-nya sendiri dengan Lihat/Cetak PDF |
+| GET | `/ruang-opd/(:num)/pk-pegawai/(:num)` | `RuangOpdController::pkPegawaiDokumen` | Dokumen PK satu pegawai (baca-saja): kertas yang sama dengan dokumen eKin (`ruang_opd/_pk_pegawai_kertas` + `assets/css/pk_pegawai_dokumen.css` — kop, cap elektronik, tanda air status, indikator satu RHK digabung, bagian A/B); pihak pertama PK jabatan ("PK di AKSARA") → PK AKSARA-nya sendiri dengan Lihat/Cetak PDF |
+| GET | `/ruang-opd/(:num)/pk-pegawai/(:num)/cetak` | `RuangOpdController::pkPegawaiCetak` | Cetak mandiri PK pegawai, sama dengan cetak eKin: lembar 1 A4 potret, lembar 2 A4 lanskap, tanpa bingkai aplikasi (`?cetak=1` langsung membuka dialog cetak). Pegawai di luar OPD → 404; PK di AKSARA / belum ber-SKP → kembali ke halaman dokumen |
 | GET | `/perjanjian-kinerja` | `PerjanjianKinerjaController::index` | Semua PK (`?tahun&jenis&opd_id&q&pegawai&hal`; `pegawai` = id pihak pertama), aksi ke rute lama `adminopd|adminkab/pk/{jenis}/…` |
 
 ---

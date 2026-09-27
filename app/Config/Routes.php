@@ -876,6 +876,7 @@ $routes->get('ruang-opd/(:num)', 'RuangOpdController::hub/$1', ['filter' => 'aut
 $routes->get('ruang-opd/(:num)/cascading-pegawai', 'RuangOpdController::cascadingPegawai/$1', ['filter' => 'auth']);
 $routes->get('ruang-opd/(:num)/pk-pegawai', 'RuangOpdController::pkPegawai/$1', ['filter' => 'auth']);
 $routes->get('ruang-opd/(:num)/pk-pegawai/(:num)', 'RuangOpdController::pkPegawaiDokumen/$1/$2', ['filter' => 'auth']);
+$routes->get('ruang-opd/(:num)/pk-pegawai/(:num)/cetak', 'RuangOpdController::pkPegawaiCetak/$1/$2', ['filter' => 'auth']);
 $routes->get('rencana-aksi-pegawai', 'RuangOpdController::rencanaAksiPegawaiIndex', ['filter' => 'auth']);
 $routes->get('ruang-opd/(:num)/rencana-aksi-pegawai', 'RuangOpdController::rencanaAksiPegawai/$1', ['filter' => 'auth']);
 $routes->get('ruang-opd/(:num)/rencana-aksi-pegawai/(:num)', 'RuangOpdController::rencanaAksiPegawaiDetail/$1/$2', ['filter' => 'auth']);

@@ -273,37 +273,22 @@ table.ro-pka-isi { width: 100%; border-collapse: collapse; font-size: .8rem; }
     .ro-pka-isi td.num::before { content: 'Target: '; color: #5d7064; }
 }
 
-/* ---------- Dokumen PK pegawai ---------- */
-.ro-kertas { background: #fff; border: 1px solid #dfe5e1; border-radius: 6px; box-shadow: 0 10px 28px rgba(16,40,24,.08); padding: 36px 42px;
-    font-family: 'Times New Roman', Times, serif; color: #000; font-size: 12pt; line-height: 1.5; max-width: 860px; margin: 0 auto 22px; }
-.ro-kertas h3 { text-align: center; font-weight: bold; font-size: 13pt; margin: 0; text-transform: uppercase; }
-.ro-kertas h4 { text-align: center; font-weight: bold; font-size: 12pt; margin: 0 0 18px; text-transform: uppercase; }
-.ro-kertas p { text-align: justify; margin: 0 0 12px; }
-.ro-kertas table.id { border: 0; margin: 0 0 10px; min-width: 0 !important; }
-.ro-kertas table.id td { padding: 1px 8px 1px 0; vertical-align: top; border: 0; }
-.ro-ttd { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 28px; text-align: center; }
-.ro-ttd .ruang { height: 70px; display: grid; place-items: center; font-family: Inter, sans-serif; font-size: .72rem; }
-.ro-ttd .nama { font-weight: bold; text-decoration: underline; text-transform: uppercase; }
-.ro-kertas.lampiran { max-width: none; padding: 28px 26px; font-size: 10.5pt; }
+/* ---------- Dokumen PK pegawai ----------
+ * Kertasnya (ruang_opd/_pk_pegawai_kertas) bergaya public/assets/css/pk_pegawai_dokumen.css — sama dengan eKin. */
 .ro-gulir-x { overflow-x: auto; }
-table.ro-lampiran { width: 100%; min-width: 980px !important; border-collapse: collapse; font-size: 9.5pt; }
-.ro-lampiran th, .ro-lampiran td { border: 1px solid #000; padding: 4px 5px; vertical-align: top; }
-.ro-lampiran th { text-align: center; background: #f1f1f1; font-weight: bold; }
-.ro-lampiran td.num { text-align: right; white-space: nowrap; }
-.ro-lampiran tr.sub td { background: #fafafa; font-weight: bold; }
-@media (max-width: 575.98px) { .ro-kertas { padding: 22px 16px; font-size: 11pt; } .ro-ttd { grid-template-columns: 1fr; } }
 @media print {
     #main-header, #sidebar, #sidebar-overlay, .ro-noprint, .pita-tiru, .pita-simulasi, footer, #backToTop { display: none !important; }
     #main-content { margin: 0 !important; }
     main { padding: 0 !important; }
     main > div { box-shadow: none !important; padding: 0 !important; }
-    .ro-kertas { border: 0; box-shadow: none; max-width: none; margin: 0; page-break-after: always; }
     .ro-gulir-x { overflow: visible; }
 }
 
 /* ---------- Ponsel: rapatkan bingkai & kepala ---------- */
 @media (max-width: 575.98px) {
     main > .bg-white.p-4 { padding: 12px !important; }
+    /* Bingkai admin kabupaten tidak merapat di ponsel (admin OPD sudah 12px): samakan, agar kertas/tabel tidak menyempit. */
+    main.flex-fill.p-4 { padding: 12px !important; }
     .ro-hero { padding: 16px; gap: 12px; border-radius: 14px; }
     .ro-hero .ic { display: none; }
     .ro-hero .kanan { width: 100%; justify-content: space-between; }

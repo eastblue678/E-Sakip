@@ -14,7 +14,7 @@ use Throwable;
  *   opd/{id}/ringkas?tahun=            RINGKAS
  *   opd/{id}/cascading?tahun=          {"opd_id","tahun","pegawai":[...],"rhk":[...]}
  *   opd/{id}/pk-pegawai?tahun=         {"opd_id","tahun","pk":[PKRINGKAS]}
- *   pk-pegawai/{pegawai_id}?tahun=     PKRINGKAS + pegawai/pihak_kedua lengkap + baris + catatan
+ *   pk-pegawai/{pegawai_id}?tahun=     PKRINGKAS + pegawai/pihak_kedua lengkap + baris (rhk_id, sumber_tipe) + catatan + teks
  *
  * MENGAPA setiap kegagalan menjadi null (bukan pengecualian): Ruang OPD adalah halaman
  * baca yang merangkum BANYAK sumber. eKin yang sedang dipasang ulang, token yang belum
