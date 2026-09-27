@@ -1362,6 +1362,12 @@ class IkpTurunService
         }
 
         $rantai = $this->rantaiInduk(array_map(static fn ($r) => (int) $r['id'], $rows), $tahun, $label);
+        // Pemilik simpul baris ini (penanggung jawab lebih dulu): eKin membagi porsi HITUNGAN simpul yang dimiliki
+        // beberapa orang menjadi porsi per orang — tanpa ini setiap pemilik menarik porsi simpul utuh (terhitung ganda).
+        $pemilikSimpul = [];
+        foreach ((new PohonPemilikService($this->db))->pemilikUntukSimpul(array_map(static fn ($r) => (int) $r['node_id'], $rows), $tahun) as $p) {
+            $pemilikSimpul[(int) $p['node_id']][] = (int) $p['pegawai_id'];
+        }
         $out    = [];
         foreach ($rows as $r) {
             $ikpId  = (int) $r['ikp_id'];
@@ -1394,6 +1400,7 @@ class IkpTurunService
                 'target_bulanan'  => $profil,
                 'induk_delegasi_id' => $r['ikp_induk_id'] !== null ? (int) $r['ikp_induk_id'] : null,
                 'rantai_induk'    => $rantai[(int) $r['id']] ?? [],
+                'pemilik_pegawai_ids' => array_values(array_unique($pemilikSimpul[(int) $r['node_id']] ?? [])),
             ];
         }
 

@@ -1909,6 +1909,7 @@
         "properties": {
           "delegasi_id": { "type": "integer" },
           "node_id": { "type": "integer" },
+          "pemilik_pegawai_ids": { "type": "array", "items": { "type": "integer" }, "description": "Pemilik simpul baris ini (penanggung jawab lebih dulu); eKin membagi porsi hitungan per orang." },
           "level": { "type": "string", "enum": ["es3", "es4", "pelaksana"] },
           "level_label": { "type": "string" },
           "sasaran": { "type": "string" },

@@ -712,6 +712,7 @@ Rincian `ikp[]`:
 | `target_bulanan` | profil untuk rencana aksi: angka + hitungan = cicilan IKP × porsi/target (pembulatan kumulatif, Σ = porsi); angka + posisi/rilis = target IKP **hanya di bulan ukur** (bulan lain `null`, tidak pernah dicicil); pendukung = target proses dicicil 12 bulan. |
 | `pola_indikator`, `bulan_ukur_indikator` | pola indikator baris ini: angka mengikuti IKP; pendukung = `hitungan` bulanan. |
 | `rantai_induk` | jenjang di atasnya yang memikul IKP yang sama sampai Kepala OPD (`peran: "pemilik_ikp"`) — dasar "RHK pimpinan yang diintervensi" (RHK IKP milik pemilik simpul induk). Jenjang yang tidak ikut dilompati. |
+| `pemilik_pegawai_ids` | pemilik simpul baris ini tahun itu (penanggung jawab lebih dulu). eKin membagi porsi **hitungan** simpul yang dimiliki beberapa orang menjadi porsi per orang (Σ = porsi simpul); posisi/rilis tidak dibagi. |
 
 Pada `cascading[].indikator[]`, indikator yang memikul IKP kini juga membawa `ikp_peran` (`angka|pendukung`), `ikp_sumber` (`delegasi|lama`), `ikp_delegasi_id`, dan `ikp_didukung_id`. **Indikator proses pendukung dikirim dengan `ikp_id = null`** (IKP-nya di `ikp_didukung_id`) supaya konsumen lama tidak mengiranya indikator IKP; `target_bulanan` baris `delegasi` = profil di atas, baris `lama` = target bulanan IKP seperti sebelumnya.
 
