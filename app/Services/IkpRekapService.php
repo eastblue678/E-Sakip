@@ -170,6 +170,9 @@ class IkpRekapService
             foreach (['baseline', 'target_5_tahun'] as $k) {
                 $r[$k] = $r[$k] === null ? null : (float) $r[$k];
             }
+            // Pola ukur (hitungan|posisi|rilis) + metode EFEKTIF untuk rumus.
+            // Semua pemakai rekap membaca $r['pola'], bukan $r['metode'].
+            $r['pola'] = ikp_pola($r);
         }
         unset($r);
 
@@ -257,6 +260,32 @@ class IkpRekapService
     }
 
     /**
+     * Pola ukur sekumpulan IKP: [ikp_id => ikp_pola()]. Untuk pemakai yang
+     * membaca bulanan() mentah (mis. target bulanan di API simpul eKin) agar
+     * tetap menyaring bulan non-ukur dengan aturan yang sama.
+     *
+     * @param int[] $ikpIds
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function polaPerIkp(array $ikpIds): array
+    {
+        $ikpIds = array_values(array_unique(array_filter(array_map('intval', $ikpIds))));
+        if ($ikpIds === [] || ! $this->siap()) {
+            return [];
+        }
+        $out = [];
+        foreach ($this->db->table('ikp i')->select('i.*, s.satuan AS satuan_nama')
+            ->join('satuan s', 's.id = i.satuan_id', 'left')
+            ->whereIn('i.id', $ikpIds)->get()->getResultArray() as $r) {
+            $r['satuan_label'] = trim((string) ($r['satuan_nama'] ?? '')) !== '' ? (string) $r['satuan_nama'] : (string) ($r['satuan_teks'] ?? '');
+            $out[(int) $r['id']] = ikp_pola($r);
+        }
+
+        return $out;
+    }
+
+    /**
      * Rekap lengkap semua IKP aktif sebuah OPD untuk satu tahun.
      *
      * Tiap elemen:
@@ -264,16 +293,22 @@ class IkpRekapService
      *  target_tahunan       ?float target tahun itu
      *  target_tahunan_teks  ?string
      *  target_periode       [tahun => ?float] seluruh tahun periode
-     *  bulan                [1..12 => target, realisasi, keterangan, bukti_url]
+     *  pola                 ikp_pola(): pola, metode EFEKTIF, periode_ukur, bulan_ukur, penerbit, ...
+     *  bulan                [1..12 => target, realisasi (NULL di bulan non-ukur), keterangan, bukti_url,
+     *                                diukur (bool), keadaan (tidak_diukur|belum_waktunya|diukur),
+     *                                keadaan_ket (kalimat), terbuka (realisasi boleh diisi)]
      *  triwulan             [1..4 => target, realisasi, capaian (?float %),
      *                                status (kode), status_label, warna, bs, keterangan,
-     *                                berjalan (bool), sampai_bulan (?int bulan terisi terakhir)]
+     *                                berjalan (bool), sampai_bulan (?int bulan terisi terakhir),
+     *                                diukur (false = triwulan tanpa bulan ukur)]
      *  tahun_berjalan       persen, status, status_label, warna, bs, sampai_bulan, keterangan
-     *  kelengkapan          tahunan (n dari jumlah tahun periode), bulanan (n dari 12),
-     *                       tahunan_dari, realisasi (bulan terisi)
+     *  kelengkapan          tahunan (n dari jumlah tahun periode), bulanan (n dari bulanan_dari =
+     *                       jumlah bulan ukur), tahunan_dari, realisasi (bulan terisi), abaikan
+     *                       (isian lama di bulan non-ukur yang diabaikan rumus)
      *
      * "status" = kode ambang dashboard (critical|attention|near_target|achieved|
-     * exceeded) atau kode non-angka (belum_ada_data|belum_dinilai|belum_valid).
+     * exceeded) atau kode non-angka (belum_ada_data|belum_dinilai|belum_valid|
+     * tidak_diukur|menunggu_rilis).
      * "warna" = slug warna ambang (merah|oranye|kuning|hijau|biru|abu).
      *
      * @return array<int, array<string, mixed>>
@@ -319,20 +354,40 @@ class IkpRekapService
      */
     private function rakit(array $ikp, int $tahun, array $tahunan, array $bulan, array $periode): array
     {
-        $metode = (string) ($ikp['metode'] ?? '');
+        // =============================================================
+        // POLA UKUR: hanya bulan ukur yang punya target & realisasi.
+        // Isian lama di bulan non-ukur (mis. indeks yang dulu "dicicil")
+        // tetap di DB tetapi DIABAIKAN di sini — satu titik saring untuk
+        // semua halaman, cetak, rekap Kabupaten/Bupati, dan API eKin.
+        // =============================================================
+        $pola   = $ikp['pola'] ?? ikp_pola($ikp);
+        $metode = (string) $pola['metode'];
+        $kini   = new \DateTimeImmutable('now', new \DateTimeZone('Asia/Jakarta'));
+        $thKini = (int) $kini->format('Y');
+        $blKini = (int) $kini->format('n');
 
-        $target = [];
-        $real   = [];
+        $target   = [];
+        $real     = [];
         $isiBulan = [];
+        $abaikan  = 0;
         for ($m = 1; $m <= 12; $m++) {
-            $b            = $bulan[$m] ?? [];
-            $target[$m]   = $b['target'] ?? null;
-            $real[$m]     = $b['realisasi'] ?? null;
+            $b      = $bulan[$m] ?? [];
+            $diukur = ikp_bulan_diukur($pola, $m);
+            if (! $diukur && (($b['target'] ?? null) !== null || ($b['realisasi'] ?? null) !== null)) {
+                $abaikan++;
+            }
+            $target[$m]   = $diukur ? ($b['target'] ?? null) : null;
+            $real[$m]     = $diukur ? ($b['realisasi'] ?? null) : null;
+            $keadaan      = ikp_keadaan_bulan($pola, $tahun, $m, $thKini, $blKini);
             $isiBulan[$m] = [
                 'target'     => $target[$m],
                 'realisasi'  => $real[$m],
                 'keterangan' => $b['keterangan'] ?? null,
                 'bukti_url'  => $b['bukti_url'] ?? null,
+                'diukur'     => $diukur,
+                'keadaan'    => $keadaan['kode'],
+                'keadaan_ket'=> $keadaan['ket'],
+                'terbuka'    => $keadaan['terbuka'],
             ];
         }
 
@@ -342,7 +397,7 @@ class IkpRekapService
         $twReal   = array_map($bulat4, ikp_nilai_triwulan($real, $metode));
         $triwulan = [];
         for ($q = 1; $q <= 4; $q++) {
-            $hasil = ikp_capaian($metode, $target, $real, 3 * $q - 2, 3 * $q);
+            $hasil = ikp_capaian_pola($pola, $target, $real, 3 * $q - 2, 3 * $q, [], $tahun);
             $st    = ikp_status($hasil);
             $triwulan[$q] = [
                 'target'       => $twTarget[$q],
@@ -357,10 +412,12 @@ class IkpRekapService
                 // Bulan terisi terakhir yang dipakai capaian — pada triwulan berjalan
                 // capaian TIDAK sama dengan realisasi ÷ target triwulan penuh.
                 'sampai_bulan' => $hasil['bulan_terakhir'],
+                // false = triwulan tanpa bulan ukur (posisi semesteran TW I, rilis Des TW I–III).
+                'diukur'       => empty($hasil['tidak_diukur']),
             ];
         }
 
-        $ytd = ikp_capaian($metode, $target, $real, 1, 12);
+        $ytd = ikp_capaian_pola($pola, $target, $real, 1, 12, [], $tahun);
         $st  = ikp_status($ytd);
 
         $nTahunan = 0;
@@ -377,6 +434,7 @@ class IkpRekapService
 
         return [
             'ikp'                 => $ikp,
+            'pola'                => $pola,
             'target_tahunan'      => $tahunan[$tahun]['target'] ?? null,
             'target_tahunan_teks' => $tahunan[$tahun]['target_teks'] ?? null,
             'target_periode'      => $targetPeriode,
@@ -397,7 +455,11 @@ class IkpRekapService
                 'tahunan'      => $nTahunan,
                 'tahunan_dari' => count($periode),
                 'bulanan'      => $nBulanan,
+                // Target bulanan yang WAJIB ada = jumlah bulan ukur (bukan selalu 12).
+                'bulanan_dari' => count($pola['bulan_ukur']),
                 'realisasi'    => $nReal,
+                // Isian lama di bulan non-ukur yang diabaikan rumus (tanda untuk operator).
+                'abaikan'      => $abaikan,
             ],
         ];
     }
@@ -407,7 +469,7 @@ class IkpRekapService
      *
      *  jumlah_ikp          IKP aktif
      *  per_kategori        [kategori => n]
-     *  lengkap_breakdown   IKP dengan target tahunan penuh (semua tahun periode) DAN 12 target bulanan
+     *  lengkap_breakdown   IKP dengan target tahunan penuh (semua tahun periode) DAN target di SEMUA bulan ukur
      *  terisi_realisasi    IKP yang sudah punya ≥ 1 realisasi di tahun itu
      *  rata_capaian        rata-rata capaian tahun berjalan (hanya status calculated), ?float
      *  hijau|kuning|merah|abu  jumlah IKP per kelompok warna status tahun berjalan
@@ -430,6 +492,11 @@ class IkpRekapService
             'merah'             => 0,
             'abu'               => 0,
             'bulan_terakhir'    => null,
+            // Pola ukur: jumlah per pola, rilis yang nilainya belum keluar
+            // (abu-abu, bukan "belum lapor"), dan IKP yang polanya masih tebakan.
+            'per_pola'          => ['hitungan' => 0, 'posisi' => 0, 'rilis' => 0],
+            'menunggu_rilis'    => 0,
+            'pola_ditebak'      => 0,
         ];
         $persen = [];
         foreach ($rekap as $r) {
@@ -437,7 +504,8 @@ class IkpRekapService
             if (isset($hasil['per_kategori'][$k])) {
                 $hasil['per_kategori'][$k]++;
             }
-            if ($r['kelengkapan']['tahunan'] >= $r['kelengkapan']['tahunan_dari'] && $r['kelengkapan']['bulanan'] >= 12) {
+            if ($r['kelengkapan']['tahunan'] >= $r['kelengkapan']['tahunan_dari']
+                && $r['kelengkapan']['bulanan'] >= ($r['kelengkapan']['bulanan_dari'] ?? 12)) {
                 $hasil['lengkap_breakdown']++;
             }
             if ($r['kelengkapan']['realisasi'] > 0) {
@@ -447,6 +515,14 @@ class IkpRekapService
                 $persen[] = (float) $r['tahun_berjalan']['persen'];
             }
             $hasil[$r['tahun_berjalan']['kelompok']]++;
+            $pl = $r['pola']['pola'] ?? 'hitungan';
+            $hasil['per_pola'][$pl] = ($hasil['per_pola'][$pl] ?? 0) + 1;
+            if ($r['tahun_berjalan']['status'] === 'menunggu_rilis') {
+                $hasil['menunggu_rilis']++;
+            }
+            if (! empty($r['pola']['ditebak'])) {
+                $hasil['pola_ditebak']++;
+            }
             $sb = $r['tahun_berjalan']['sampai_bulan'];
             if ($sb !== null && ($hasil['bulan_terakhir'] === null || $sb > $hasil['bulan_terakhir'])) {
                 $hasil['bulan_terakhir'] = (int) $sb;

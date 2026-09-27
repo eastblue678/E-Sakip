@@ -366,6 +366,21 @@ if (! function_exists('ikp_status')) {
     {
         helper('dashboard_status');
 
+        // Pola ukur (ikp_capaian_pola): rentang tanpa bulan ukur / rilis yang
+        // belum keluar = abu-abu "Tidak diukur" / "Menunggu rilis" — bukan
+        // kinerja buruk, bukan kelalaian, dan tidak ikut rata-rata.
+        if ((! empty($hasil['tidak_diukur']) || ! empty($hasil['menunggu_rilis'])) && ($hasil['error'] ?? null) === null
+            && ($hasil['status'] ?? null) !== 'calculated') {
+            $rilis = ! empty($hasil['menunggu_rilis']);
+            $s     = dash_status_nonnumeric('belum_ada_data');
+            $s['code']     = $rilis ? 'menunggu_rilis' : 'tidak_diukur';
+            $s['name']     = $rilis ? 'Menunggu Rilis' : 'Tidak Diukur';
+            $s['icon']     = $rilis ? 'fa-hourglass-half' : 'fa-calendar-minus';
+            $s['kelompok'] = 'abu';
+
+            return $s;
+        }
+
         if (($hasil['status'] ?? null) === 'calculated' && $hasil['percentage'] !== null) {
             $s = getAchievementStatus((float) $hasil['percentage']);
         } elseif (($hasil['status'] ?? null) === 'not_evaluable') {
@@ -601,5 +616,558 @@ if (! function_exists('ikp_lencana_status')) {
 
         return '<span class="ikp-status" style="background:' . esc($w['soft'], 'attr') . ';color:' . esc($w['hex'], 'attr') . '"' . $title . '>'
             . '<i class="fas ' . $ikon . '"></i>' . esc($label) . '</span>';
+    }
+}
+
+/*
+ * =====================================================================
+ * POLA UKUR (28-09-2026) — hitungan | posisi | rilis
+ * =====================================================================
+ *
+ * Keluhan pengguna: "indeks dibuat dicicil itu ngaco banget. Masa indeks
+ * keterbukaan informasi dicicil. Itu kan memang keluar setahun sekali dan
+ * setiap indeks itu beda-beda juga keluar jadwalnya."
+ *
+ * `metode` (sum|trend_*) hanya menjawab BAGAIMANA angka diringkas; ia tidak
+ * menjawab KAPAN angka itu ada. Pola ukur menjawab keduanya:
+ *
+ *   hitungan  hasil dijumlahkan (metode efektif = sum). Target bulan ukur =
+ *             cicilan, Σ = target tahunan. Bawaan: diukur tiap bulan.
+ *   posisi    nilai keadaan yang diukur sendiri pada tanggal ukur (metode
+ *             efektif = trend_naik|trend_turun|trend_flat = ARAH). Target
+ *             bulan ukur = posisi yang diharapkan, bukan cicilan.
+ *   rilis     nilai resmi pihak lain (indeks, opini, predikat). Target &
+ *             realisasi HANYA di bulan rilis; nilai tidak pernah dicicil
+ *             atau dijumlah; realisasi wajib bukti publikasi.
+ *
+ * Bulan di luar `bulan_ukur` TIDAK DIUKUR: tidak ada target, tidak ada
+ * realisasi, capaiannya tidak dihitung (bukan 0, bukan 100) dan tidak ikut
+ * rata-rata mana pun. Semua fungsi di bawah murni (tanpa DB/sesi), dikunci
+ * tests/unit/IkpPolaUkurTest.php. Tabel penerbit & bulan rilis bawaan ada
+ * di SATU tempat: app/Config/IkpPolaUkur.php.
+ */
+
+if (! function_exists('ikp_pola_valid')) {
+    /** Pola ukur yang dikenal (hitungan|posisi|rilis). */
+    function ikp_pola_valid(?string $pola): bool
+    {
+        return in_array($pola, ['hitungan', 'posisi', 'rilis'], true);
+    }
+}
+
+if (! function_exists('ikp_pola_meta')) {
+    /**
+     * Teks layar per pola (kartu form, lencana, legenda cetak). Satu sumber
+     * agar form, daftar, rekap, dan lampiran PK berbicara dengan kalimat sama.
+     *
+     * @return array<string, array{judul:string, singkat:string, ikon:string, isi:string, target:string, realisasi:string, contoh:string}>
+     */
+    function ikp_pola_meta(): array
+    {
+        return [
+            'hitungan' => [
+                'judul'     => 'Hitungan (dijumlah)',
+                'singkat'   => 'Hitungan',
+                'ikon'      => 'fa-calculator',
+                'isi'       => 'Hasil yang dikerjakan sendiri dan dijumlahkan sepanjang tahun.',
+                'target'    => 'Target bulan ukur = cicilan; jumlahnya = target tahunan.',
+                'realisasi' => 'Realisasi = hasil yang tercatat pada bulan itu (tambahan).',
+                'contoh'    => 'jumlah konten, surat, pelatihan, nasabah baru',
+            ],
+            'posisi' => [
+                'judul'     => 'Posisi (diukur sendiri)',
+                'singkat'   => 'Posisi',
+                'ikon'      => 'fa-location-crosshairs',
+                'isi'       => 'Nilai keadaan yang diukur sendiri dari data internal pada tanggal ukur.',
+                'target'    => 'Target bulan ukur = posisi yang diharapkan saat itu, bukan cicilan.',
+                'realisasi' => 'Realisasi = posisi terbaru dari rekap resmi, bukan tambahan.',
+                'contoh'    => '% layanan tepat waktu, % aduan ditindaklanjuti, jumlah nasabah AKTIF, cakupan',
+            ],
+            'rilis' => [
+                'judul'     => 'Rilis resmi (pihak lain)',
+                'singkat'   => 'Rilis',
+                'ikon'      => 'fa-certificate',
+                'isi'       => 'Nilai yang dikeluarkan pihak lain secara berkala, misalnya indeks atau opini.',
+                'target'    => 'Target hanya pada bulan rilis. Nilainya tidak pernah dicicil atau dijumlah.',
+                'realisasi' => 'Realisasi = nilai resmi saat dirilis, wajib disertai bukti publikasi.',
+                'contoh'    => 'Indeks Keterbukaan Informasi Publik (Komisi Informasi), Indeks SPBE, opini BPK, IPM (BPS)',
+            ],
+        ];
+    }
+}
+
+if (! function_exists('ikp_periode_ukur_bulan')) {
+    /**
+     * Periode ukur -> bulan ukur bawaannya.
+     *
+     * @return array<string, int[]>
+     */
+    function ikp_periode_ukur_bulan(): array
+    {
+        return [
+            'bulanan'    => range(1, 12),
+            'triwulanan' => [3, 6, 9, 12],
+            'semesteran' => [6, 12],
+            'tahunan'    => [12],
+        ];
+    }
+}
+
+if (! function_exists('ikp_periode_ukur_label')) {
+    /** Label periode ukur (termasuk "khusus" = bulan pilihan yang tidak berjarak tetap). */
+    function ikp_periode_ukur_label(?string $periode): string
+    {
+        return [
+            'bulanan'    => 'Bulanan',
+            'triwulanan' => 'Triwulanan',
+            'semesteran' => 'Semesteran',
+            'tahunan'    => 'Tahunan',
+            'khusus'     => 'Bulan tertentu',
+        ][(string) $periode] ?? 'Bulanan';
+    }
+}
+
+if (! function_exists('ikp_bulan_ukur_baca')) {
+    /**
+     * "6,12" | [6, "12"] | null -> [6, 12] (bulan sah 1..12, unik, terurut).
+     *
+     * @param array<int|string>|string|null $nilai
+     *
+     * @return int[]
+     */
+    function ikp_bulan_ukur_baca($nilai): array
+    {
+        if ($nilai === null || $nilai === '') {
+            return [];
+        }
+        $bagian = is_array($nilai) ? $nilai : preg_split('/[\s,;]+/', (string) $nilai);
+        $out    = [];
+        foreach ((array) $bagian as $b) {
+            $b = trim((string) $b);
+            if ($b !== '' && ctype_digit($b) && (int) $b >= 1 && (int) $b <= 12) {
+                $out[(int) $b] = (int) $b;
+            }
+        }
+        ksort($out);
+
+        return array_values($out);
+    }
+}
+
+if (! function_exists('ikp_bulan_ukur_teks')) {
+    /** [12, 6] -> "6,12" (bentuk simpan kolom ikp.bulan_ukur). */
+    function ikp_bulan_ukur_teks(array $bulan): string
+    {
+        return implode(',', ikp_bulan_ukur_baca($bulan));
+    }
+}
+
+if (! function_exists('ikp_periode_dari_bulan')) {
+    /**
+     * Periode ukur dari daftar bulan: 1 bulan = tahunan; 2/4/12 bulan yang
+     * berjarak sama (6/3/1 bulan) = semesteran/triwulanan/bulanan; selain
+     * itu "khusus". MENGAPA diturunkan, bukan dipercaya dari isian: bulan
+     * ukur-lah yang dipakai menghitung, jadi periodenya harus cocok.
+     */
+    function ikp_periode_dari_bulan(array $bulan): string
+    {
+        $b = ikp_bulan_ukur_baca($bulan);
+        $n = count($b);
+        if ($n === 1) {
+            return 'tahunan';
+        }
+        $nama = [2 => 'semesteran', 4 => 'triwulanan', 12 => 'bulanan'][$n] ?? null;
+        if ($nama === null) {
+            return 'khusus';
+        }
+        $jarak = intdiv(12, $n);
+        for ($i = 1; $i < $n; $i++) {
+            if ($b[$i] - $b[$i - 1] !== $jarak) {
+                return 'khusus';
+            }
+        }
+
+        return $nama;
+    }
+}
+
+if (! function_exists('ikp_bulan_ukur_label')) {
+    /** [6, 12] -> "Jun, Des"; 12 bulan -> "setiap bulan". */
+    function ikp_bulan_ukur_label(array $bulan): string
+    {
+        $b = ikp_bulan_ukur_baca($bulan);
+        if (count($b) === 12) {
+            return 'setiap bulan';
+        }
+
+        return implode(', ', array_map(static fn ($m) => ikp_nama_bulan($m, true), $b));
+    }
+}
+
+if (! function_exists('ikp_pola_tebak')) {
+    /**
+     * Klasifikasi otomatis pola ukur untuk data lama (migrasi 2026-09-28,
+     * IKP yang belum pernah disimpan ulang, pembangun simulasi).
+     *
+     *  1. Nama cocok pola rilis, ATAU satuan cocok pola rilis sedangkan nama
+     *     tidak diawali kata hitungan internal (jumlah, persentase, ...)
+     *     -> rilis; penerbit & bulan dari tabel rilis bawaan; periode tahunan.
+     *  2. metode sum -> hitungan, bulanan.
+     *  3. metode trend_* -> posisi, bulanan (arah = metode).
+     *  4. metode kosong -> posisi bila satuannya persen/indeks/nilai/skor/
+     *     rasio, selain itu hitungan.
+     * Hasil selalu bertanda ditebak = true (chip "Periksa pola ukur").
+     *
+     * @param object|null $cfg Config\IkpPolaUkur (bawaan: config('IkpPolaUkur'))
+     *
+     * @return array{pola_ukur:string, metode:string, periode_ukur:string, bulan_ukur:int[], penerbit:?string,
+     *               rilis_tahun_berikut:bool, pola_ditebak:bool, catatan:?string}
+     */
+    function ikp_pola_tebak(?string $metode, ?string $nama, ?string $satuan, ?object $cfg = null): array
+    {
+        $cfg ??= config('IkpPolaUkur');
+        $nama   = ikp_rapikan_teks($nama);
+        $satuan = ikp_rapikan_teks($satuan);
+        $metode = (string) $metode;
+
+        $rilis = preg_match($cfg->polaRilis, $nama) === 1
+            || ($satuan !== '' && preg_match($cfg->polaRilis, $satuan) === 1 && preg_match($cfg->awalInternal, $nama) !== 1);
+
+        if ($rilis) {
+            $baris = $cfg->rilisLainnya;
+            foreach ($cfg->rilisBawaan as $r) {
+                if (preg_match($r['cocok'], $nama . ' ' . $satuan) === 1) {
+                    $baris = $r;
+
+                    break;
+                }
+            }
+
+            return [
+                'pola_ukur'           => 'rilis',
+                'metode'              => in_array($metode, ['trend_naik', 'trend_turun', 'trend_flat'], true) ? $metode : 'trend_naik',
+                'periode_ukur'        => 'tahunan',
+                'bulan_ukur'          => [(int) $baris['bulan']],
+                'penerbit'            => $baris['penerbit'] ?? null,
+                'rilis_tahun_berikut' => (bool) ($baris['tahun_berikut'] ?? false),
+                'pola_ditebak'        => true,
+                'catatan'             => $baris['catatan'] ?? null,
+            ];
+        }
+
+        if ($metode === 'sum') {
+            $pola = 'hitungan';
+        } elseif (in_array($metode, ['trend_naik', 'trend_turun', 'trend_flat'], true)) {
+            $pola = 'posisi';
+        } else {
+            $pola   = (str_contains($satuan, '%') || preg_match('/\b(persen|persentase|indeks|nilai|skor|rasio)\b/iu', $satuan) === 1)
+                ? 'posisi' : 'hitungan';
+            $metode = $pola === 'hitungan' ? 'sum' : 'trend_naik';
+        }
+
+        return [
+            'pola_ukur'           => $pola,
+            'metode'              => $metode,
+            'periode_ukur'        => 'bulanan',
+            'bulan_ukur'          => range(1, 12),
+            'penerbit'            => null,
+            'rilis_tahun_berikut' => false,
+            'pola_ditebak'        => true,
+            'catatan'             => null,
+        ];
+    }
+}
+
+if (! function_exists('ikp_pola')) {
+    /**
+     * Konteks pola ukur siap pakai dari satu baris `ikp` (bisa baris
+     * IkpRekapService::daftar() yang punya satuan_label).
+     *
+     *  pola, metode (EFEKTIF untuk rumus: hitungan -> sum; posisi/rilis ->
+     *  trend_* arah), periode_ukur, bulan_ukur int[], penerbit,
+     *  rilis_tahun_berikut bool, ditebak bool (belum dikonfirmasi admin).
+     *
+     * MENGAPA metode efektif tidak selalu = kolom metode: nilai rilis/posisi
+     * tidak boleh dijumlah walau data lama bermetode sum, dan hitungan tidak
+     * boleh diambil posisinya. Kolom `metode` baru diselaraskan saat admin
+     * menyimpan form (migrasi tidak menimpa kolom lama). Satu pengecualian:
+     * metode KOSONG pada pola yang masih tebakan tetap kosong -> capaian
+     * "metode belum dipilih" (tidak mengarang cara meringkas).
+     *
+     * @return array{pola:string, metode:string, periode_ukur:string, bulan_ukur:int[], penerbit:?string,
+     *               rilis_tahun_berikut:bool, ditebak:bool}
+     */
+    function ikp_pola(array $ikp, ?object $cfg = null): array
+    {
+        $metode = (string) ($ikp['metode'] ?? '');
+        $pola   = (string) ($ikp['pola_ukur'] ?? '');
+        $arah   = in_array($metode, ['trend_naik', 'trend_turun', 'trend_flat'], true);
+
+        if (! ikp_pola_valid($pola)) {
+            $t = ikp_pola_tebak($metode, (string) ($ikp['output_prioritas'] ?? ''),
+                (string) ($ikp['satuan_label'] ?? ($ikp['satuan_teks'] ?? '')), $cfg);
+
+            return [
+                'pola'                => $t['pola_ukur'],
+                'metode'              => ikp_metode_valid($metode) ? $t['metode'] : '',
+                'periode_ukur'        => $t['periode_ukur'],
+                'bulan_ukur'          => $t['bulan_ukur'],
+                'penerbit'            => $t['penerbit'],
+                'rilis_tahun_berikut' => $t['rilis_tahun_berikut'],
+                'ditebak'             => true,
+            ];
+        }
+
+        $ditebak = ! empty($ikp['pola_ditebak']);
+        $bulan   = ikp_bulan_ukur_baca($ikp['bulan_ukur'] ?? null);
+        if ($bulan === []) {
+            $bulan = ikp_periode_ukur_bulan()[(string) ($ikp['periode_ukur'] ?? '')]
+                ?? ($pola === 'rilis' ? [12] : range(1, 12));
+        }
+        if ($pola === 'hitungan') {
+            $efektif = 'sum';
+        } else {
+            $efektif = $arah ? $metode : 'trend_naik';
+        }
+        if (! ikp_metode_valid($metode) && $ditebak) {
+            $efektif = '';
+        }
+        $penerbit = trim((string) ($ikp['penerbit'] ?? ''));
+
+        return [
+            'pola'                => $pola,
+            'metode'              => $efektif,
+            'periode_ukur'        => ikp_periode_dari_bulan($bulan),
+            'bulan_ukur'          => $bulan,
+            'penerbit'            => $penerbit === '' ? null : $penerbit,
+            'rilis_tahun_berikut' => $pola === 'rilis' && ! empty($ikp['rilis_tahun_berikut']),
+            'ditebak'             => $ditebak,
+        ];
+    }
+}
+
+if (! function_exists('ikp_bulan_diukur')) {
+    /** Apakah bulan $m termasuk bulan ukur pola ini? */
+    function ikp_bulan_diukur(array $pola, int $m): bool
+    {
+        return in_array($m, $pola['bulan_ukur'] ?? [], true);
+    }
+}
+
+if (! function_exists('ikp_saring_ukur')) {
+    /**
+     * Nilai bulanan -> hanya bulan ukur; bulan lain null. Dipakai sebelum
+     * setiap rumus agar isian lama di bulan non-ukur (mis. indeks yang dulu
+     * "dicicil" 99 tiap bulan) tidak ikut dihitung.
+     *
+     * @param array<int, mixed> $nilai [1..12 => nilai]
+     *
+     * @return array<int, mixed> [1..12 => nilai|null]
+     */
+    function ikp_saring_ukur(array $pola, array $nilai): array
+    {
+        $out = [];
+        for ($m = 1; $m <= 12; $m++) {
+            $out[$m] = ikp_bulan_diukur($pola, $m) ? ($nilai[$m] ?? null) : null;
+        }
+
+        return $out;
+    }
+}
+
+if (! function_exists('ikp_bulan_rilis_label')) {
+    /**
+     * Bulan ukur -> label waktu terbitnya angka: "Des 2026"; untuk
+     * rilis_tahun_berikut, nilai tahun 2026 bulan 5 -> "Mei 2027".
+     */
+    function ikp_bulan_rilis_label(array $pola, int $tahun, int $m, bool $pendek = true): string
+    {
+        return ikp_nama_bulan($m, $pendek) . ' ' . ($tahun + (! empty($pola['rilis_tahun_berikut']) ? 1 : 0));
+    }
+}
+
+if (! function_exists('ikp_keadaan_bulan')) {
+    /**
+     * Keadaan satu sel bulan untuk kisi target/realisasi & monitoring.
+     *
+     *  kode  tidak_diukur    bukan bulan ukur -> "—", tidak bisa diisi
+     *        belum_waktunya  bulan ukur yang belum tiba (rilis: menunggu rilis)
+     *        diukur          bulan ukur yang sudah tiba -> boleh diisi & jatuh tempo
+     *  label teks sel singkat, ket = kalimat penjelas (title/keterangan)
+     *  terbuka  realisasi boleh diisi
+     *
+     * "Tiba" dihitung dari (tahun + rilis_tahun_berikut, bulan) terhadap
+     * ($thKini, $blKini) WIB — pemanggil yang menentukan waktu kini, fungsi
+     * ini tetap murni.
+     *
+     * @return array{kode:string, label:string, ket:string, terbuka:bool}
+     */
+    function ikp_keadaan_bulan(array $pola, int $tahun, int $m, int $thKini, int $blKini): array
+    {
+        $rilis = ($pola['pola'] ?? '') === 'rilis';
+        if (! ikp_bulan_diukur($pola, $m)) {
+            if ($rilis) {
+                $ukur = $pola['bulan_ukur'] ?? [];
+                $lbl  = $ukur === [] ? 'bulan rilis belum diatur'
+                    : implode(', ', array_map(static fn ($b) => ikp_bulan_rilis_label($pola, $tahun, (int) $b), $ukur));
+
+                return ['kode' => 'tidak_diukur', 'label' => '—',
+                    'ket' => 'Bukan bulan rilis. Nilai resmi' . (! empty($pola['penerbit']) ? ' ' . $pola['penerbit'] : '') . ' dirilis ' . $lbl . '.',
+                    'terbuka' => false];
+            }
+
+            return ['kode' => 'tidak_diukur', 'label' => '—',
+                'ket' => 'Tidak diukur bulan ini (bulan ukur: ' . ikp_bulan_ukur_label($pola['bulan_ukur'] ?? []) . ').',
+                'terbuka' => false];
+        }
+        $thBuka = $tahun + (! empty($pola['rilis_tahun_berikut']) ? 1 : 0);
+        if ($thBuka * 12 + $m > $thKini * 12 + $blKini) {
+            return $rilis
+                ? ['kode' => 'belum_waktunya', 'label' => 'menunggu rilis',
+                    'ket' => 'Menunggu rilis ' . ikp_bulan_rilis_label($pola, $tahun, $m, false) . (! empty($pola['penerbit']) ? ' (' . $pola['penerbit'] . ')' : '') . '.',
+                    'terbuka' => false]
+                : ['kode' => 'belum_waktunya', 'label' => '', 'ket' => 'Bulan ini belum berjalan.', 'terbuka' => false];
+        }
+
+        return ['kode' => 'diukur', 'label' => '',
+            'ket' => $rilis
+                ? 'Bulan rilis ' . ikp_bulan_rilis_label($pola, $tahun, $m, false) . ': isi nilai resmi beserta tautan bukti publikasi.'
+                : 'Bulan ukur.',
+            'terbuka' => true];
+    }
+}
+
+if (! function_exists('ikp_capaian_pola')) {
+    /**
+     * ikp_capaian() yang taat pola ukur — SATU-SATUNYA pintu capaian IKP
+     * untuk halaman OPD, rekap Kabupaten/Bupati/Program Unggulan, Ruang OPD,
+     * lampiran PK, dan API eKin.
+     *
+     *  - target & realisasi disaring ke bulan ukur (ikp_saring_ukur);
+     *  - rentang tanpa bulan ukur -> tidak_diukur = true: capaian TIDAK
+     *    dihitung (percentage null, status incomplete tanpa galat), bukan 0
+     *    dan bukan 100, dan keterangan menyebut bulan ukurnya;
+     *  - pola rilis tanpa nilai resmi di rentang -> menunggu_rilis = true;
+     *  - selebihnya rumus lama: hitungan = Σr/Σt bulan terisi; posisi/rilis =
+     *    nilai ukur TERAKHIR yang terisi vs target bulan itu.
+     *
+     * Kunci tambahan pada hasil: tidak_diukur, menunggu_rilis, bulan_ukur_rentang.
+     */
+    function ikp_capaian_pola(array $pola, array $target, array $real, int $dari = 1, int $sampai = 12, array $skala = [], ?int $tahun = null): array
+    {
+        $dari   = max(1, $dari);
+        $sampai = min(12, $sampai);
+        $metode = (string) ($pola['metode'] ?? '');
+        $rilis  = ($pola['pola'] ?? '') === 'rilis';
+        $t      = ikp_saring_ukur($pola, $target);
+        $r      = ikp_saring_ukur($pola, $real);
+        $ukur   = array_values(array_filter($pola['bulan_ukur'] ?? [], static fn ($m) => $m >= $dari && $m <= $sampai));
+        $label  = static fn (int $m): string => $tahun !== null ? ikp_bulan_rilis_label($pola, $tahun, $m, false) : ikp_nama_bulan($m);
+
+        if ($ukur === []) {
+            $hasil = ikp_capaian($metode !== '' ? $metode : 'sum', [], [], $dari, $sampai, $skala);
+            $rentang = $dari === $sampai ? ikp_nama_bulan($dari) : ikp_nama_bulan($dari) . '–' . ikp_nama_bulan($sampai);
+            $semua   = $pola['bulan_ukur'] ?? [];
+            $hasil['calculation_description'] = $rilis
+                ? 'Bukan bulan rilis; nilai resmi' . (! empty($pola['penerbit']) ? ' ' . $pola['penerbit'] : '') . ' dirilis '
+                    . ($semua === [] ? '(bulan rilis belum diatur)' : implode(', ', array_map($label, $semua))) . '.'
+                : 'Tidak diukur pada ' . $rentang . ' (bulan ukur: ' . ikp_bulan_ukur_label($semua) . ').';
+            $hasil['tidak_diukur']       = true;
+            $hasil['menunggu_rilis']     = $rilis;
+            $hasil['bulan_ukur_rentang'] = 0;
+
+            return $hasil;
+        }
+
+        $hasil = ikp_capaian($metode, $t, $r, $dari, $sampai, $skala);
+        $hasil['tidak_diukur']       = false;
+        $hasil['menunggu_rilis']     = false;
+        $hasil['bulan_ukur_rentang'] = count($ukur);
+
+        if ($rilis && $hasil['bulan_terakhir'] === null && $hasil['error'] === null) {
+            $hasil['menunggu_rilis']          = true;
+            $hasil['calculation_description'] = 'Menunggu rilis ' . $label($ukur[0])
+                . (! empty($pola['penerbit']) ? ' (' . $pola['penerbit'] . ')' : '') . '.';
+        } elseif ($rilis && $hasil['status'] === 'calculated') {
+            $hasil['calculation_description'] = 'Nilai resmi rilis ' . $label((int) $hasil['bulan_terakhir'])
+                . ' dibanding target bulan itu (tidak dijumlah).';
+        } elseif (($pola['pola'] ?? '') === 'posisi' && $hasil['status'] === 'calculated') {
+            $hasil['calculation_description'] = 'Posisi ' . ikp_nama_bulan((int) $hasil['bulan_terakhir'])
+                . ' (bulan ukur terakhir yang terisi) dibanding target posisi bulan itu.';
+        }
+
+        return $hasil;
+    }
+}
+
+if (! function_exists('ikp_bagi_pola')) {
+    /**
+     * Isi target bulan ukur dari target tahunan menurut pola.
+     *
+     *   hitungan       Bagi Rata cicilan ke bulan ukur (Σ = total).
+     *   posisi/rilis   BUKAN cicilan: bulan ukur terakhir = total; bulan ukur
+     *                  sebelumnya lintasan dari $awal (target tahun lalu /
+     *                  baseline) bila ada, selain itu = total.
+     * Bulan non-ukur tidak pernah diberi nilai. Hasil [bulan => nilai].
+     *
+     * @return array<int, float>
+     */
+    function ikp_bagi_pola(float $total, array $pola, ?float $awal = null, bool $bulat = false): array
+    {
+        $ukur   = $pola['bulan_ukur'] ?? [];
+        $metode = (string) ($pola['metode'] ?? '');
+        if ($ukur === [] || ! ikp_metode_valid($metode)) {
+            return [];
+        }
+        $bagi = ($pola['pola'] ?? '') === 'hitungan'
+            ? ikp_bagi_rata($total, count($ukur), 'sum', null, $bulat)
+            : ikp_bagi_rata($total, count($ukur), $metode, $awal, $bulat);
+        $out = [];
+        foreach (array_values($ukur) as $i => $m) {
+            $out[(int) $m] = $bagi[$i + 1];
+        }
+
+        return $out;
+    }
+}
+
+if (! function_exists('ikp_cek_bulanan_pola')) {
+    /**
+     * ikp_cek() atas target BULAN UKUR saja (bulan non-ukur tidak diperiksa,
+     * dan "periode terakhir" = bulan ukur terakhir, bukan Desember).
+     *
+     * @param array<int, float|int|null> $bulan [1..12 => target]
+     */
+    function ikp_cek_bulanan_pola(array $pola, ?float $induk, array $bulan): array
+    {
+        $anak = [];
+        foreach ($pola['bulan_ukur'] ?? [] as $m) {
+            $anak[(int) $m] = $bulan[$m] ?? null;
+        }
+
+        return ikp_cek((string) ($pola['metode'] ?? ''), $induk, $anak);
+    }
+}
+
+if (! function_exists('ikp_pola_ringkas')) {
+    /** "Rilis · Des · Komisi Informasi" / "Posisi ↑ · bulanan" / "Hitungan · triwulanan" — lencana singkat. */
+    function ikp_pola_ringkas(array $pola, ?int $tahun = null): string
+    {
+        $meta = ikp_pola_meta()[$pola['pola']] ?? ['singkat' => '-'];
+        $teks = $meta['singkat'];
+        if ($pola['pola'] !== 'hitungan') {
+            $teks .= ['trend_naik' => ' ↑', 'trend_turun' => ' ↓', 'trend_flat' => ' ='][$pola['metode'] ?? ''] ?? '';
+        }
+        if ($pola['pola'] === 'rilis') {
+            $b = $pola['bulan_ukur'] ?? [];
+            $teks .= ' · ' . ($b === [] ? 'bulan?' : implode(', ', array_map(
+                static fn ($m) => $tahun !== null ? ikp_bulan_rilis_label($pola, $tahun, (int) $m) : ikp_nama_bulan((int) $m, true) . (! empty($pola['rilis_tahun_berikut']) ? ' (th. berikut)' : ''),
+                $b
+            )));
+        } else {
+            $teks .= ' · ' . mb_strtolower(ikp_periode_ukur_label($pola['periode_ukur'] ?? 'bulanan'));
+        }
+
+        return $teks;
     }
 }
