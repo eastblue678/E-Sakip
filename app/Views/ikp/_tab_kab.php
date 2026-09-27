@@ -14,6 +14,8 @@ $tabs = [
      'aktif' => $jalur === 'adminkab/ikp' || str_starts_with($jalur, 'adminkab/ikp/opd')],
     ['url' => 'adminkab/ikp/program-unggulan' . $qs, 'label' => 'Per Program Unggulan', 'ikon' => 'fa-shapes',
      'aktif' => str_starts_with($jalur, 'adminkab/ikp/program-unggulan')],
+    ['url' => 'adminkab/ikp/turun' . (isset($q['tahun']) ? '?tahun=' . (int) $q['tahun'] : ''), 'label' => 'Turun ke Pelaksana', 'ikon' => 'fa-sitemap',
+     'aktif' => str_starts_with($jalur, 'adminkab/ikp/turun')],
 ];
 if (user_can('pemilik_kinerja.view')) {
     $tabs[] = ['url' => 'adminkab/pemilik-kinerja' . (isset($q['tahun']) ? '?tahun=' . (int) $q['tahun'] : ''), 'label' => 'Pemilik Kinerja', 'ikon' => 'fa-sitemap',

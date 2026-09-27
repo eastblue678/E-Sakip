@@ -4,7 +4,7 @@
  * "Kinerja Prioritas (IKP)"; halaman-halamannya dipilih lewat tab ini, yang tampil di
  * SETIAP halaman IKP OPD (lewat ikp/_kepala, dan langsung di ikp/inovasi).
  *
- * Data view: $aktif (index|breakdown|realisasi|rekap|inovasi), $tahun, opsional $u
+ * Data view: $aktif (index|turun|breakdown|realisasi|rekap|inovasi), $tahun, opsional $u
  * (pembuat URL dari IkpController yang membawa opd_id untuk super admin).
  */
 $bangun = (isset($u) && is_callable($u)) ? $u : static function (string $path, array $q = []): string {
@@ -20,6 +20,7 @@ $qt = ['tahun' => $tahun ?? null];
 $tabs = [];
 foreach ([
     'index'     => ['adminopd/ikp', 'fa-list-check', 'Indikator & Target'],
+    'turun'     => ['adminopd/ikp/turun', 'fa-sitemap', 'Turunkan IKP'],
     'breakdown' => ['adminopd/ikp/breakdown', 'fa-table-cells', 'Breakdown Target'],
     'realisasi' => ['adminopd/ikp/realisasi', 'fa-pen-to-square', 'Realisasi Bulanan'],
     'rekap'     => ['adminopd/ikp/rekap', 'fa-chart-column', 'Rekap Triwulan'],

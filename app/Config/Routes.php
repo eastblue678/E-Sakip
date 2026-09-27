@@ -821,6 +821,10 @@ $routes->group('adminopd', ['filter' => 'auth:admin_opd,admin,admin_kecamatan'],
     $routes->get('ikp/rekap', 'AdminOpd\IkpController::rekap');
     $routes->get('ikp/cetak', 'AdminOpd\IkpController::cetak');
     $routes->get('ikp/lampiran-pk', 'AdminOpd\IkpInovasiController::lampiranPk');
+    // ---------- Turunkan IKP sampai pelaksana (pendelegasian lewat pohon kinerja) ----------
+    $routes->get('ikp/turun', 'AdminOpd\IkpTurunController::index');
+    $routes->get('ikp/turun/(:num)', 'AdminOpd\IkpTurunController::detail/$1');
+    $routes->post('ikp/turun/(:num)/save', 'AdminOpd\IkpTurunController::save/$1');
     // ---------- Rencana Inovasi (Lampiran III PK) ----------
     $routes->get('ikp/inovasi', 'AdminOpd\IkpInovasiController::index');
     $routes->post('ikp/inovasi/save', 'AdminOpd\IkpInovasiController::save');
@@ -840,6 +844,9 @@ $routes->group('adminkab', ['filter' => 'auth:admin_kab,admin,admin_inspektorat'
     $routes->get('ikp/opd/(:num)', 'AdminKab\IkpController::opd/$1');
     $routes->get('ikp/program-unggulan', 'AdminKab\IkpController::programUnggulan');
     $routes->get('ikp/cetak', 'AdminKab\IkpController::cetak');
+    // Turunkan IKP — baca saja (controller area-aware; tanpa rute tulis di adminkab).
+    $routes->get('ikp/turun', 'AdminOpd\IkpTurunController::index');
+    $routes->get('ikp/turun/(:num)', 'AdminOpd\IkpTurunController::detail/$1');
     // Pemilik Kinerja lintas OPD (baca; pilih OPD). Controller yang sama dengan
     // area OPD — tanpa izin .update halamannya otomatis baca-saja.
     $routes->get('pemilik-kinerja', 'AdminOpd\PemilikKinerjaController::index');
