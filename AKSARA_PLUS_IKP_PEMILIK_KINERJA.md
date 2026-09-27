@@ -209,9 +209,19 @@ menyalin data (semua dibaca lewat `EkinClient`, tembolok 5 menit):
 - Lingkup: sama dengan dokumen PK Pegawai — pegawai harus tercantum di daftar OPD itu (admin OPD tidak bisa
   membuka pegawai OPD lain dengan mengganti angka di alamat → 404).
 - API eKin baru: `api/aksara/opd/{id}/rencana-aksi` dan `api/aksara/pegawai/{id}/rencana-aksi` (README eKin §17).
+- **Pola ukur & persiapan (README eKin §22–§23).** Rencana aksi **persiapan** (bulan non-ukur
+  indikator posisi/rilis — indeks/nilai resmi yang belum dirilis; target NULL) tidak ikut penyebut: ringkasan
+  lintas OPD, per OPD, dan kepala rincian menghitung RA yang *diukur* bulan itu (eKin: `jumlah` = selesai +
+  berjalan + belum_ada_kegiatan + belum_dilaporkan + persiapan; `EkinClient::angkaRa`) dan menulis RA persiapan
+  terpisah "+n persiapan indeks/nilai rilis"; saringan "belum semua / semua tercapai" memakai penyebut yang sama.
+  Kisi setahun: sel persiapan bertulisan *persiapan* (ungu muda, tanpa T/R — bukan merah "bulan lalu belum
+  tercapai"). Label TR/NT per RA dihapus (`jenis_bkn` usang: Trajectory/Non-Trajectory kini dipilih per kegiatan
+  harian di eKin); gantinya chip **pola ukur per IKI** di baris kisi (Hitungan · bulanan / Posisi · semesteran /
+  Rilis · Des, penerbit di title; `EkinClient::polaIki`) dan chip **peran IKP** pada RHK (IKP / Mendukung IKP /
+  IKP · porsi pimpinan; per IKI bila berbeda). Jawaban eKin lama tanpa kunci-kunci ini tampil seperti dulu.
 
-Uji: `tests/unit/RencanaAksiPegawaiTest.php`; peramban `uji/pohon/cek_ra_pegawai.mjs` (angka = API eKin,
-lingkup, 390 px).
+Uji: `tests/unit/RencanaAksiPegawaiTest.php` (termasuk kontrak lama & baru); peramban `uji/pohon/cek_ra_pegawai.mjs`
+(angka = API eKin termasuk persiapan, sel persiapan, chip pola & peran, lingkup, 390 px).
 
 ## Pola ukur indikator IKP: hitungan · posisi · rilis (28-09-2026)
 
