@@ -403,7 +403,9 @@ jenjang **terdekat** ke IKP (Eselon III dulu; belum melapor → turun satu jenja
 menampilkan "eKin *n* **Gunakan**" (\* = belum semua pemikul melapor); *Gunakan* hanya mengisi kotak (rilis: membuka
 dialog "Catat nilai resmi" berisi nilainya — bukti publikasi tetap wajib). **Realisasi resmi IKP tetap diisi/disahkan
 Admin OPD**, tidak pernah ditimpa otomatis. eKin yang belum menyediakan endpoint ini (404 → `belum_tersedia`), mati,
-atau belum dikonfigurasi = tidak ada saran, halaman tetap berjalan.
+atau belum dikonfigurasi = tidak ada saran, halaman tetap berjalan. eKin menyediakannya sejak 29-09-2026 (README eKin §23.7;
+`baris[]` juga membawa `peran`, `pola_ukur`, `iki_id`), dan `delegasi[]` API ini kini membawa `pemilik_pegawai_ids` agar eKin
+membagi porsi **hitungan** simpul bersama per orang (satu hasil tidak terhitung ganda).
 
 **Data simulasi** (`/root/demo-kinerja/simulasi/03b_ikp_turun.php`, di luar repo; `AKSARA_DB`, bawaan `aksara_demo`;
 idempoten, `--kering` = ROLLBACK; menulis peta id `03b_ikp_turun[.<db>].json` tanpa nama/NIP). Meniru
@@ -435,8 +437,10 @@ saran bila eKin belum menyediakan. Tanpa gulir samping, tanpa elemen melayang.
 1. **Siapa yang menurunkan.** Kini Admin OPD atas nama Kepala OPD untuk seluruh pohon. Apakah Kabid boleh menurunkan
    sendiri IKP di cabangnya (akun per pejabat belum ada di AKSARA)?
 2. **Realisasi IKP otomatis dari eKin** untuk pola hitungan? Kini hanya saran + *Gunakan*; Admin OPD tetap pengesah.
-3. **Kontrak `api/aksara/opd/{id}/ikp-turunan` belum disediakan eKin** — AKSARA siap membacanya (diuji dengan tiruan).
-   eKin perlu menyimpan `delegasi_id` pada RHK/IKI hasil tarikan baris `delegasi` agar realisasinya bisa dikirim balik.
+3. **Kontrak `api/aksara/opd/{id}/ikp-turunan` kini disediakan eKin** (cabang eKin `fitur/pekerjaan-bertahap`, README eKin
+   §23.7; `delegasi_id` disimpan pada RHK/IKI hasil tarikan). Diuji terpadu: AKSARA worktree (`EKIN_INTERNAL_URL` →
+   eKin worktree :8195) menampilkan saran "Dari eKin (pemikul angka)" dari data simulasi `ekin_uji`. Terbuka: saran hanya
+   memakai kegiatan yang sudah DISETUJUI — angka yang masih diajukan tidak ikut; perlu ditandai "sementara"?
 4. **IKI proses bawaan untuk pendukung** kini teks bawaan per pola ("Jumlah bukti dukung penilaian … yang dilengkapi",
    "Jumlah rekap data …", "Jumlah kegiatan pendukung …") yang diketik ulang per simpul. Perlu katalog per jenis indeks
    (SAQ KIP, kuesioner SPBE, bukti Indeks KAMI, LKE SAKIP, …)?

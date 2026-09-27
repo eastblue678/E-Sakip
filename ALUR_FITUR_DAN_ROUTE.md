@@ -735,7 +735,7 @@ angka|pendukung, `ikp_induk_id`, `dibuat_oleh`, `sumber` delegasi|lama, `sebelum
 hitungan membawa **porsi** (Σ porsi anak = target induk), posisi/rilis membawa **target utuh** (satu
 pemikul angka per jenjang); pendukung memakai indikator **proses** sendiri. Pemeriksa per jenjang
 hanya memperingatkan. Realisasi IKP menampilkan saran **Dari eKin (pemikul angka)** + tombol *Gunakan*
-bila eKin menyediakan `api/aksara/opd/{id}/ikp-turunan`. Rincian: `AKSARA_PLUS_IKP_PEMILIK_KINERJA.md`.
+dari `api/aksara/opd/{id}/ikp-turunan` eKin (tersedia sejak 29-09-2026, README eKin §23.7). Rincian: `AKSARA_PLUS_IKP_PEMILIK_KINERJA.md`.
 
 ### 9.11 Pemilik Kinerja (pohon kinerja sampai pelaksana) — AKSARA+
 
