@@ -2120,8 +2120,8 @@
           },
           "alasan": {
             "type": "string",
-            "enum": ["delegasi", "pj", "simpul", "kepala_opd"],
-            "description": "Sebab paling spesifik: delegasi → pj → simpul → kepala_opd."
+            "enum": ["pj", "delegasi", "simpul", "kepala_opd"],
+            "description": "Sebab paling spesifik: pj → delegasi → simpul → kepala_opd. PJ yang juga memikul baris pendelegasian tetap pj; barisnya ikut sebagai lampiran delegasi[]."
           },
           "node_ids": {
             "type": "array",
@@ -2129,8 +2129,8 @@
               "type": "integer"
             }
           },
-          "peran": { "type": "string", "enum": ["angka", "pendukung"], "description": "Hanya alasan delegasi: angka bila minimal satu baris memikul angka." },
-          "delegasi": { "type": "array", "items": { "$ref": "#/components/schemas/EkinDelegasiIkp" }, "description": "Hanya alasan delegasi." }
+          "peran": { "type": "string", "enum": ["angka", "pendukung"], "description": "Ada bila pegawai memikul baris pendelegasian IKP ini (alasan delegasi, atau lampiran pada alasan pj): angka bila minimal satu baris memikul angka." },
+          "delegasi": { "type": "array", "items": { "$ref": "#/components/schemas/EkinDelegasiIkp" }, "description": "Baris pendelegasian yang dipikul pegawai ini — alasan delegasi, atau lampiran pada alasan pj (eKin menautkannya ke RHK IKP PJ yang sudah ada, bukan membuat RHK kedua)." }
         }
       },
       "EkinPkIndikator": {

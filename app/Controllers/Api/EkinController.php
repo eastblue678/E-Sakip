@@ -46,10 +46,13 @@ class EkinController extends BaseController
 
     /**
      * Urutan alasan IKP bila satu IKP muncul karena beberapa sebab (paling spesifik dulu).
-     * `delegasi` (IKP turun sampai pelaksana lewat pohon kinerja, IkpTurunService) paling spesifik:
-     * membawa peran, porsi, dan profil bulanan orang itu sendiri.
+     * `pj` (penanggung jawab SELURUH IKP) di atas `delegasi` (IKP turun sampai pelaksana lewat pohon kinerja,
+     * IkpTurunService): PJ yang juga memikul baris pendelegasian tetap ber-alasan `pj` dan baris itu dikirim sebagai
+     * LAMPIRAN `delegasi[]` (butir mana pun yang punya baris pendelegasian membawa `delegasi[]`). MENGAPA: dengan
+     * `delegasi` di atas `pj`, eKin tidak lagi melihat RHK PJ lama sebagai rumah IKP itu dan membuat RHK kedua untuk
+     * hasil yang sama (temuan tinjauan 29-09-2026).
      */
-    private const PRIORITAS_ALASAN = ['delegasi' => 0, 'pj' => 1, 'simpul' => 2, 'kepala_opd' => 3];
+    private const PRIORITAS_ALASAN = ['pj' => 0, 'delegasi' => 1, 'simpul' => 2, 'kepala_opd' => 3];
 
     /** @var \CodeIgniter\Database\BaseConnection */
     protected $db;
@@ -653,9 +656,12 @@ class EkinController extends BaseController
         $kandidat = [];
         $catat = function (int $ikpId, int $opd, string $alasan, ?int $node = null) use (&$kandidat): void {
             if (! isset($kandidat[$ikpId])) {
-                $kandidat[$ikpId] = ['opd' => $opd, 'alasan' => $alasan, 'node_ids' => []];
+                $kandidat[$ikpId] = ['opd' => $opd, 'alasan' => $alasan, 'node_ids' => [], 'delegasi' => false];
             } elseif (self::PRIORITAS_ALASAN[$alasan] < self::PRIORITAS_ALASAN[$kandidat[$ikpId]['alasan']]) {
                 $kandidat[$ikpId]['alasan'] = $alasan;
+            }
+            if ($alasan === 'delegasi') {
+                $kandidat[$ikpId]['delegasi'] = true;   // lampiran delegasi[] walau alasannya pj
             }
             if ($node !== null && ! in_array($node, $kandidat[$ikpId]['node_ids'], true)) {
                 $kandidat[$ikpId]['node_ids'][] = $node;
@@ -737,7 +743,7 @@ class EkinController extends BaseController
             $rekaps[$opd] = $svc->rekapOpd((int) $opd, $tahun, ['ids' => $ids]);
             foreach ($rekaps[$opd] as $r) {
                 $id = (int) $r['ikp']['id'];
-                if (($kandidat[$id]['alasan'] ?? '') !== 'delegasi') {
+                if (empty($kandidat[$id]['delegasi'])) {
                     continue;
                 }
                 $polaD[$id] = $r['pola'];
@@ -780,8 +786,9 @@ class EkinController extends BaseController
                     'cascading_indikator_id' => $i['cascading_indikator_id'] !== null ? (int) $i['cascading_indikator_id'] : null,
                     'alasan'                 => $kandidat[$id]['alasan'],
                     'node_ids'               => $kandidat[$id]['node_ids'],
-                ] + ($kandidat[$id]['alasan'] === 'delegasi' ? [
-                    // IKP turun sampai pelaksana. peran = 'angka' bila minimal satu baris memikul angka.
+                ] + (! empty($kandidat[$id]['delegasi']) ? [
+                    // IKP turun sampai pelaksana (alasan delegasi, atau LAMPIRAN pada alasan pj). peran = 'angka' bila
+                    // minimal satu baris memikul angka.
                     'peran'    => in_array('angka', array_column($delegasi[$id] ?? [], 'peran'), true) ? 'angka' : 'pendukung',
                     'delegasi' => $delegasi[$id] ?? [],
                 ] : []);
