@@ -330,6 +330,34 @@ final class IkpTurunTest extends CIUnitTestCase
         $this->assertArrayNotHasKey(4, $s);
     }
 
+    public function testSaranHitunganMenjumlahBagianSetiapBarisTermasukPorsiCascading(): void
+    {
+        // eKin ≥ 29-09-2026: jenjang tengah = hasil sendiri + Σ bawahan; `baris` = hasil sendiri + porsi Cascading.
+        // Kabid (1) hanya membina (baris 0, total 60); Katim (2) membagi lewat Cascading ke staf 10 (baris 10) dan
+        // anak pendelegasian (3) 50; pelaksana (3) 50. Σ baris = 0 + 10 + 50 = 60 — porsi Cascading staf ikut, tanpa ganda.
+        $pola  = $this->pola('hitungan', range(1, 12));
+        $baris = [
+            ['id' => 1, 'induk' => null, 'peran' => 'angka', 'level' => 'es3'],
+            ['id' => 2, 'induk' => 1, 'peran' => 'angka', 'level' => 'es4'],
+            ['id' => 3, 'induk' => 2, 'peran' => 'angka', 'level' => 'pelaksana'],
+        ];
+        $lapor = [
+            1 => [3 => [['pegawai_id' => 10, 'realisasi' => 60.0, 'baris' => 0.0]]],
+            2 => [3 => [['pegawai_id' => 20, 'realisasi' => 60.0, 'baris' => 10.0]]],
+            3 => [3 => [['pegawai_id' => 30, 'realisasi' => 50.0, 'baris' => 50.0]]],
+        ];
+        $s = T::saranRealisasi($pola, $baris, $lapor);
+        $this->assertSame(60.0, $s[3]['nilai']);
+        $this->assertTrue($s[3]['lengkap']);
+
+        // Laporan lama (tanpa baris): daun saja → 50 (porsi Cascading staf tidak terbaca — alasan kontrak baru).
+        foreach ($lapor as &$l) {
+            unset($l[3][0]['baris']);
+        }
+        unset($l);
+        $this->assertSame(50.0, T::saranRealisasi($pola, $baris, $lapor)[3]['nilai']);
+    }
+
     public function testSaranRilisDariPemikulTerdekatHanyaBulanRilis(): void
     {
         $pola  = $this->pola('rilis', [12], 'trend_naik');

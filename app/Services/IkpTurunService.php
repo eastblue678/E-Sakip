@@ -459,9 +459,13 @@ class IkpTurunService
     /**
      * Saran realisasi IKP dari laporan eKin para pemikul (halaman realisasi,
      * tombol "Gunakan" — realisasi resmi tetap diisi/disahkan Admin OPD):
-     *   hitungan      Σ realisasi pemikul angka TERBAWAH di setiap cabang (baris
-     *                 angka tanpa anak angka) — satu hasil dihitung satu kali
-     *                 oleh pemiliknya; atasan tidak ikut dijumlah.
+     *   hitungan      Σ `realisasi_baris` SEMUA pemikul angka (eKin ≥ 29-09-2026:
+     *                 bagian baris itu sendiri = hasil sendiri + porsi Cascading
+     *                 di bawahnya; bagian anak dilaporkan anak) — satu hasil
+     *                 dihitung satu kali oleh pemiliknya, termasuk porsi yang
+     *                 pemikul terbawah bagi lewat Cascading "Bagi ke bawahan".
+     *                 eKin lama (tanpa realisasi_baris): Σ realisasi pemikul angka
+     *                 TERBAWAH (baris angka tanpa anak angka); atasan tidak dijumlah.
      *   posisi/rilis  nilai yang dilaporkan pemikul angka jenjang TERDEKAT ke
      *                 IKP (Eselon III dulu; bila belum melapor, turun satu jenjang).
      * Hanya bulan ukur.
@@ -496,17 +500,28 @@ class IkpTurunService
                 $ada    = false;
                 $lengkap = true;
                 $ids = $peg = [];
+                // Kontrak baru: setiap laporan membawa `baris` → jumlahkan SEMUA baris angka (bukan hanya daun).
+                $perBaris = false;
+                foreach ($angka as $b) {
+                    foreach ($lapor[(int) $b['id']][$m] ?? [] as $l) {
+                        $perBaris = $perBaris || array_key_exists('baris', $l) && $l['baris'] !== null;
+                    }
+                }
                 foreach ($daun as $b) {
                     $isi = array_values(array_filter($lapor[(int) $b['id']][$m] ?? [], static fn ($l) => ($l['realisasi'] ?? null) !== null));
                     if ($isi === []) {
-                        $lengkap = false;
-
+                        $lengkap = false;   // lengkap = setiap pemikul terbawah sudah melapor
+                    }
+                }
+                foreach ($perBaris ? $angka : $daun as $b) {
+                    $isi = array_values(array_filter($lapor[(int) $b['id']][$m] ?? [], static fn ($l) => ($l['realisasi'] ?? null) !== null));
+                    if ($isi === []) {
                         continue;
                     }
                     $ada   = true;
                     $ids[] = (int) $b['id'];
                     foreach ($isi as $l) {
-                        $jumlah += (float) $l['realisasi'];
+                        $jumlah += (float) ($perBaris ? ($l['baris'] ?? 0) : $l['realisasi']);
                         $peg[]   = (int) $l['pegawai_id'];
                     }
                 }
@@ -1377,6 +1392,9 @@ class IkpTurunService
                 }
                 $lapor[(int) $b['delegasi_id']][(int) $m][] = [
                     'pegawai_id' => (int) ($b['pegawai_id'] ?? 0), 'realisasi' => (float) $v['realisasi'], 'pada' => (string) ($v['pada'] ?? ''),
+                    // eKin ≥ 29-09-2026: bagian baris ini sendiri (hasil sendiri + porsi Cascading di bawahnya), tanpa
+                    // bagian yang dilaporkan baris pendelegasian anak (jenjang tengah = sendiri + Σ bawahan).
+                    'baris'      => isset($v['realisasi_baris']) && is_numeric($v['realisasi_baris']) ? (float) $v['realisasi_baris'] : null,
                 ];
             }
         }

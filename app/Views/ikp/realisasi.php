@@ -141,7 +141,7 @@ $sel  = static function (array $t) {
                                         <?php
                                         $srSama  = $b['realisasi'] !== null && abs((float) $b['realisasi'] - (float) $sr['nilai']) < 0.00005;
                                         $srJudul = 'Dari eKin (pemikul angka): ' . ($sr['cara'] === 'jumlah_porsi'
-                                            ? 'jumlah realisasi porsi ' . count($sr['pegawai']) . ' pemikul' . ($sr['lengkap'] ? '' : ' (belum semua pemikul melapor)')
+                                            ? 'jumlah hasil ' . count($sr['pegawai']) . ' pemikul (setiap hasil dihitung sekali oleh pemiliknya, termasuk porsi yang dibagi lewat Cascading)' . ($sr['lengkap'] ? '' : ' — belum semua pemikul terbawah melapor')
                                             : 'nilai yang dilaporkan pemikul angka jenjang terdekat') . '. Realisasi resmi tetap Anda yang mengisi.';
                                         ?>
                                         <span class="saran-ekin<?= $srSama ? ' sama' : '' ?>" data-saran="<?= esc((string) $sr['nilai'], 'attr') ?>" title="<?= esc($srJudul, 'attr') ?>">
