@@ -338,7 +338,9 @@ class EkinController extends BaseController
                     'cascading_sasaran_id'   => $i['cascading_sasaran_id'] !== null ? (int) $i['cascading_sasaran_id'] : null,
                     'cascading_indikator_id' => $i['cascading_indikator_id'] !== null ? (int) $i['cascading_indikator_id'] : null,
                     'turun'                  => [
+                        // Hanya baris pendelegasian (sumber delegasi); tautan lama dihitung terpisah.
                         'baris'            => $turun[(int) $i['id']]['baris'] ?? 0,
+                        'tautan_lama'      => $turun[(int) $i['id']]['lama'] ?? 0,
                         'es3'              => $turun[(int) $i['id']]['cakupan']['es3'] ?? false,
                         'es4'              => $turun[(int) $i['id']]['cakupan']['es4'] ?? false,
                         'pelaksana'        => $turun[(int) $i['id']]['cakupan']['pelaksana'] ?? false,

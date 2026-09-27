@@ -2329,9 +2329,10 @@
           },
           "turun": {
             "type": "object",
-            "description": "Ringkasan IKP turun sampai pelaksana tahun itu.",
+            "description": "Ringkasan IKP turun sampai pelaksana tahun itu. Cakupan & pemeriksa hanya dari baris pendelegasian (sumber delegasi); tautan lama ke simpul (sumber lama) dihitung terpisah di tautan_lama.",
             "properties": {
-              "baris": { "type": "integer" },
+              "baris": { "type": "integer", "description": "Jumlah baris pendelegasian (sumber delegasi)." },
+              "tautan_lama": { "type": "integer", "description": "Tautan lama IKP ke indikator simpul (sumber lama) — belum diturunkan, tidak dikirim ke eKin sebagai IKP turunan." },
               "es3": { "type": "boolean" },
               "es4": { "type": "boolean" },
               "pelaksana": { "type": "boolean" },

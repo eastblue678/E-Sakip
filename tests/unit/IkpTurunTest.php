@@ -349,4 +349,39 @@ final class IkpTurunTest extends CIUnitTestCase
         unset($lapor[1]);   // Kabid belum melapor → turun satu jenjang
         $this->assertSame(97.1, T::saranRealisasi($pola, $baris, $lapor)[12]['nilai']);
     }
+
+    /* ============================ simpan: simpul tersembunyi & tautan lama ============================ */
+
+    public function testSimpanTidakMencabutBarisDiSimpulTersembunyi(): void
+    {
+        // Simpul 267 tersembunyi (IKU induknya dihentikan) → tidak tampil di formulir → tidak mungkin dicentang lagi.
+        $lama = [
+            ['id' => 1, 'node_id' => 267, 'cascading_indikator_id' => 900],
+            ['id' => 2, 'node_id' => 270, 'cascading_indikator_id' => 901],
+            ['id' => 3, 'node_id' => 271, 'cascading_indikator_id' => 902],
+        ];
+        $siap = [270 => ['indId' => 901], 271 => ['indId' => 999]];   // 271 ganti indikator
+        $cabut = T::barisDicabut($lama, $siap, [270, 271, 300]);
+        $this->assertSame([3], array_column($cabut, 'id'));
+
+        // Simpul aktif yang tidak dicentang tetap dicabut.
+        $this->assertSame([2, 3], array_column(T::barisDicabut($lama, [], [270, 271]), 'id'));
+    }
+
+    public function testMengambilAlihTautanLamaMenyimpanJejak(): void
+    {
+        $lama = ['ikp_id' => 314, 'sumber' => 'lama', 'target' => '120.0000', 'target_teks' => '120', 'metode' => 'sum', 'sebelum_delegasi' => null];
+        $j = T::jejakSebelum($lama, 314);
+        $this->assertSame('lama', $j['sumber']);
+        $this->assertSame(314, $j['ikp_id']);
+        $this->assertSame('120.0000', $j['target']);
+
+        // Baris IKP lain / tanpa IKP: jejak target asli tanpa penanda lama.
+        $lain = T::jejakSebelum(['ikp_id' => null, 'sumber' => null, 'target' => '5', 'target_teks' => '5', 'metode' => 'sum'], 314);
+        $this->assertArrayNotHasKey('sumber', $lain);
+        $this->assertTrue($lain['ada_baris']);
+
+        // Sudah baris pendelegasian IKP ini: tidak ada jejak baru (jejak lama tidak ditimpa).
+        $this->assertNull(T::jejakSebelum(['ikp_id' => 314, 'sumber' => 'delegasi', 'target' => '40'], 314));
+    }
 }

@@ -91,6 +91,9 @@ $this->setVar('subJudul', $area === 'adminopd'
                         <span class="tr-cak <?= $c[$lv] ? 'ya' : 'tidak' ?>"><?= esc($label[$lv] ?? $lv) ?> <?= $c[$lv] ? '✓' : '✗' ?></span>
                     <?php endforeach; ?>
                 </div>
+                <?php if (($rk['lama'] ?? 0) > 0): ?>
+                    <div class="small text-secondary mt-1"><i class="fas fa-link me-1"></i><?= (int) $rk['lama'] ?> tautan lama ke indikator simpul (dibuat sebelum ada Turunkan IKP) — belum dihitung sebagai pendelegasian dan tidak dikirim ke eKin sebagai IKP turunan.</div>
+                <?php endif; ?>
                 <?php if ($pk !== null && ($rk['baris'] ?? 0) > 0): ?>
                     <div class="tr-periksa-ringkas <?= esc($pk['warna'], 'attr') ?>">
                         <i class="fas <?= $pk['warna'] === 'peringatan' ? 'fa-triangle-exclamation' : 'fa-circle-check' ?>"></i>

@@ -49,7 +49,7 @@ class IkpTurunService
     ];
 
     public const PERAN_JELAS = [
-        'angka'     => 'Targetnya dihitung ke IKP: porsi (hitungan) atau target utuh (posisi/rilis).',
+        'angka'     => 'Targetnya dihitung ke IKP: porsi bila pola ukurnya Hitungan, target utuh bila Posisi atau Rilis resmi.',
         'pendukung' => 'Bekerja untuk IKP lewat indikator proses miliknya sendiri; tidak menambah angka IKP.',
     ];
 
@@ -905,18 +905,26 @@ class IkpTurunService
         $ids = array_map('intval', array_keys($ikpInfo));
         $out = [];
         foreach ($ids as $id) {
-            $out[$id] = ['baris' => 0, 'cakupan' => self::cakupan([], $kecamatan), 'periksa' => null, 'teks' => ''];
+            $out[$id] = ['baris' => 0, 'lama' => 0, 'cakupan' => self::cakupan([], $kecamatan), 'periksa' => null, 'teks' => ''];
         }
         if ($ids === [] || ! $this->siap()) {
             return $out;
         }
         $semua = $this->db->table('cascading_indikator_target cit')
-            ->select('cit.id, cit.ikp_id, cit.ikp_peran, cit.ikp_induk_id, cit.target, cs.level')
+            ->select('cit.id, cit.ikp_id, cit.ikp_peran, cit.ikp_induk_id, cit.target, cit.sumber, cs.level')
             ->join('cascading_indikator_opd ci', 'ci.id = cit.cascading_indikator_id', 'inner')
             ->join('cascading_sasaran_opd cs', 'cs.id = ci.cascading_sasaran_id', 'inner')
             ->whereIn('cit.ikp_id', $ids)->where('cit.tahun', $tahun)->get()->getResultArray();
-        $per = [];
+        $per  = [];
+        $lama = [];
         foreach ($semua as $r) {
+            // Cakupan & pemeriksa hanya dari baris PENDELEGASIAN (sumber delegasi) — sama dengan yang dikirim ke eKin.
+            // Tautan lama (sumber lama, sebelum fitur ini) dihitung terpisah: "tautan lama, belum diturunkan".
+            if (($r['sumber'] ?? null) !== 'delegasi') {
+                $lama[(int) $r['ikp_id']] = ($lama[(int) $r['ikp_id']] ?? 0) + 1;
+
+                continue;
+            }
             $per[(int) $r['ikp_id']][] = [
                 'id' => (int) $r['id'], 'induk' => $r['ikp_induk_id'] !== null ? (int) $r['ikp_induk_id'] : null,
                 'peran' => $r['ikp_peran'] === 'pendukung' ? 'pendukung' : 'angka',
@@ -928,6 +936,7 @@ class IkpTurunService
             $c = self::cakupan(array_column($b, 'level'), $kecamatan);
             $out[$id] = [
                 'baris'   => count($b),
+                'lama'    => $lama[$id] ?? 0,
                 'cakupan' => $c,
                 'periksa' => self::periksaSemua((string) ($ikpInfo[$id]['pola'] ?? 'hitungan'), $ikpInfo[$id]['target'] ?? null, $b),
                 'teks'    => self::cakupanTeks($c, $label),
@@ -1040,7 +1049,8 @@ class IkpTurunService
             ->join('ikp i', 'i.id = cit.ikp_id AND i.dihapus_pada IS NULL', 'inner', false)
             ->join('cascading_indikator_opd ci', 'ci.id = cit.cascading_indikator_id', 'inner')
             ->join('cascading_sasaran_opd cs', 'cs.id = ci.cascading_sasaran_id', 'inner')
-            ->whereIn('i.opd_id', $opdIds)->where('cit.tahun', $tahun)->get()->getResultArray() as $r) {
+            ->whereIn('i.opd_id', $opdIds)->where('cit.tahun', $tahun)->where('cit.sumber', 'delegasi')->get()->getResultArray() as $r) {
+            // Hanya pendelegasian (bukan tautan lama) — sama dengan cakupan Turunkan IKP & API eKin.
             $level[(int) $r['opd_id']][(int) $r['ikp_id']][] = (string) $r['level'];
         }
         foreach ($level as $opd => $perIkp) {
@@ -1128,7 +1138,7 @@ class IkpTurunService
             // Target baris.
             if ($peran === 'angka' && $pola['pola'] !== 'hitungan') {
                 if ($ikp['target'] === null) {
-                    $galat[] = 'Isi target tahunan IKP tahun ' . $tahun . ' lebih dulu: pemikul angka ' . $pola['pola'] . ' memakai target utuh.';
+                    $galat[] = 'Isi target tahunan IKP tahun ' . $tahun . ' lebih dulu: pemikul angka pola ' . (ikp_pola_meta()[$pola['pola']]['singkat'] ?? $pola['pola']) . ' memakai target utuh.';
 
                     continue;
                 }
@@ -1164,15 +1174,13 @@ class IkpTurunService
         $tbl    = $this->db->table('cascading_indikator_target');
         $kini   = date('Y-m-d H:i:s');
 
-        $this->dalamTransaksi(function () use ($lama, $siap, $tbl, $kini, $ikpId, $tahun, $userId, &$hitung): void {
-            // 1) Cabut baris yang simpulnya tidak dicentang / indikatornya diganti.
-            foreach ($lama as $b) {
-                $rencana = $siap[$b['node_id']] ?? null;
-                $tetap   = $rencana !== null && $rencana['indId'] === $b['cascading_indikator_id'];
-                if (! $tetap) {
-                    $this->cabut($b);
-                    $hitung['cabut']++;
-                }
+        $dicabut = self::barisDicabut($lama, $siap, array_map('intval', array_keys($pohon['simpul'] ?? [])));
+
+        $this->dalamTransaksi(function () use ($dicabut, $siap, $tbl, $kini, $ikpId, $tahun, $userId, &$hitung): void {
+            // 1) Cabut baris yang simpulnya tidak dicentang / indikatornya diganti (hanya simpul yang TAMPIL di formulir).
+            foreach ($dicabut as $b) {
+                $this->cabut($b);
+                $hitung['cabut']++;
             }
 
             // 2) Terapkan setiap simpul yang dicentang.
@@ -1200,12 +1208,10 @@ class IkpTurunService
                 ];
                 $ada = $tbl->where('cascading_indikator_id', $indId)->where('tahun', $tahun)->get()->getRowArray();
                 if ($ada) {
-                    if ((int) ($ada['ikp_id'] ?? 0) !== $ikpId) {
-                        $isi['sebelum_delegasi'] = json_encode([
-                            'ada_baris' => true, 'target' => $ada['target'], 'target_teks' => $ada['target_teks'],
-                            'metode' => $ada['metode'], 'indikator_dibuat' => false,
-                        ]);
-                        $isi['dibuat_oleh'] = $userId;
+                    $jejak = self::jejakSebelum($ada, $ikpId);
+                    if ($jejak !== null) {
+                        $isi['sebelum_delegasi'] = json_encode($jejak);
+                        $isi['dibuat_oleh']      = $userId;
                     } elseif ($ada['dibuat_oleh'] === null) {
                         $isi['dibuat_oleh'] = $userId;
                     }
@@ -1241,6 +1247,69 @@ class IkpTurunService
     }
 
     /**
+     * Baris lama yang dicabut oleh satu kali simpan (murni, diuji): baris yang simpulnya ADA di pohon aktif (tampil di
+     * formulir) tetapi tidak dicentang lagi, atau indikatornya diganti.
+     *
+     * MENGAPA simpul tersembunyi dilewati: formulir hanya merender simpul pohon AKTIF; simpul di bawah IKU yang
+     * dihentikan tidak tampil sehingga tidak mungkin "dicentang lagi", dan kiriman untuknya ditolak. Tanpa aturan ini
+     * setiap simpan mencabut diam-diam pendelegasian di simpul itu (beserta indikator yang dibuatnya, FK CASCADE) —
+     * padahal layar menulis "Pendelegasian itu tetap tersimpan". Pencabutannya hanya lewat aksi yang eksplisit.
+     *
+     * @param list<array>       $lama        baris() — setiap baris membawa node_id & cascading_indikator_id
+     * @param array<int, array> $siap        [node_id => rencana ['indId' => ?int, …]] simpul yang dicentang
+     * @param int[]             $simpulAktif node_id pohon aktif (yang tampil di formulir)
+     *
+     * @return list<array> baris yang dicabut
+     */
+    public static function barisDicabut(array $lama, array $siap, array $simpulAktif): array
+    {
+        $aktif = array_flip(array_map('intval', $simpulAktif));
+        $out   = [];
+        foreach ($lama as $b) {
+            $node = (int) $b['node_id'];
+            if (! isset($aktif[$node])) {
+                continue;   // simpul tersembunyi: tetap tersimpan
+            }
+            $rencana = $siap[$node] ?? null;
+            if ($rencana === null || $rencana['indId'] !== (int) $b['cascading_indikator_id']) {
+                $out[] = $b;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Jejak keadaan sebuah baris target SEBELUM pendelegasian IKP ini menimpanya (murni, diuji) — null bila baris
+     * itu sudah baris pendelegasian IKP ini (tidak ada yang perlu diingat).
+     *   - baris milik IKP lain / tanpa IKP → target, target_teks, metode aslinya;
+     *   - TAUTAN LAMA IKP yang sama (sumber `lama`, 8 baris sebelum fitur ini) → juga `sumber = lama` + `ikp_id`,
+     *     sehingga cabut() mengembalikannya menjadi tautan lama, bukan membuangnya.
+     * MENGAPA: dulu jejak hanya ditulis bila ikp_id berbeda — tautan lama ber-ikp_id sama ditimpa porsi tanpa jejak,
+     * dan pencabutan mengosongkan tautannya sambil membiarkan target porsi: tautan & target aslinya hilang permanen.
+     *
+     * @return array<string, mixed>|null
+     */
+    public static function jejakSebelum(array $ada, int $ikpId): ?array
+    {
+        $milik = (int) ($ada['ikp_id'] ?? 0);
+        if ($milik === $ikpId && ($ada['sumber'] ?? null) === 'delegasi') {
+            return null;
+        }
+        if ($milik === $ikpId && ! empty($ada['sebelum_delegasi'])) {
+            return null;   // jejak sudah ada (tidak ditimpa)
+        }
+        $jejak = ['ada_baris' => true, 'target' => $ada['target'] ?? null, 'target_teks' => $ada['target_teks'] ?? null,
+            'metode' => $ada['metode'] ?? null, 'indikator_dibuat' => false];
+        if ($milik === $ikpId) {
+            $jejak['sumber'] = 'lama';
+            $jejak['ikp_id'] = $ikpId;
+        }
+
+        return $jejak;
+    }
+
+    /**
      * Cabut satu baris pendelegasian: pulihkan keadaan indikator sebelum IKP
      * diturunkan kepadanya (sebelum_delegasi). Indikator yang DIBUAT oleh
      * pendelegasian dihapus bila tidak dipakai lagi (tidak ada simpul anak
@@ -1273,6 +1342,11 @@ class IkpTurunService
         }
         $pulih = ['ikp_id' => null, 'ikp_peran' => 'angka', 'ikp_induk_id' => null, 'sumber' => null,
             'sebelum_delegasi' => null, 'dibuat_oleh' => null, 'updated_at' => date('Y-m-d H:i:s')];
+        // Tautan LAMA yang diambil alih pendelegasian: kembali menjadi tautan lama (IKP & target aslinya).
+        if (is_array($sb) && ($sb['sumber'] ?? null) === 'lama' && ! empty($sb['ikp_id'])) {
+            $pulih['ikp_id'] = (int) $sb['ikp_id'];
+            $pulih['sumber'] = 'lama';
+        }
         if (is_array($sb)) {
             $pulih += ['target' => $sb['target'] ?? null, 'target_teks' => $sb['target_teks'] ?? null, 'metode' => $sb['metode'] ?? 'sum'];
         }
