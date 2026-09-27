@@ -14,7 +14,8 @@ class CascadingIndikatorTargetModel extends Model
     protected $primaryKey    = 'id';
     protected $returnType    = 'array';
     protected $protectFields = true;
-    protected $allowedFields = ['cascading_indikator_id', 'tahun', 'target', 'target_teks', 'metode', 'ikp_id'];
+    protected $allowedFields = ['cascading_indikator_id', 'tahun', 'target', 'target_teks', 'metode', 'ikp_id',
+        'ikp_peran', 'ikp_induk_id', 'dibuat_oleh', 'sumber', 'sebelum_delegasi'];
     protected $useTimestamps = true;
     protected $dateFormat    = 'datetime';
 
