@@ -670,7 +670,7 @@ Rincian `ikp[]`:
 }
 ```
 
-`alasan` (satu nilai per IKP; bila beberapa sebab berlaku, yang paling spesifik dipakai: `delegasi` → `pj` → `simpul` → `kepala_opd`):
+`alasan` (satu nilai per IKP; bila beberapa sebab berlaku, yang paling spesifik dipakai: `pj` → `delegasi` → `simpul` → `kepala_opd`; sejak 29-09-2026 PJ yang juga memikul baris pendelegasian tetap `pj` — butir mana pun yang punya baris pendelegasian membawa `peran` + `delegasi[]` sebagai lampiran, dan eKin menautkannya ke RHK IKP PJ yang sudah ada):
 
 | `alasan` | Arti |
 | --- | --- |

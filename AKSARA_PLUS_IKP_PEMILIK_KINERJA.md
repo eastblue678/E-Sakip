@@ -298,18 +298,23 @@ rekap Kabupaten/Bupati; tanpa gulir samping; tanpa elemen melayang).
    agar chip bulan bebas; periode diturunkan dari chip, bukan dipercaya dari isian.
 4. **Kolom `metode` data lama tidak diubah migrasi**; metode efektif diturunkan saat dibaca (rilis/posisi tidak pernah
    dijumlah). Kolom baru selaras saat admin menyimpan form. Perlu skrip penyelarasan massal untuk produksi?
-5. **Isian lama di bulan non-ukur** (data nyata) tidak dihapus, hanya diabaikan dan ditandai. Hapus fisik lewat tombol
-   "Bersihkan" per IKP?
+5. **Isian lama di bulan non-ukur** (data nyata) tidak dihapus, hanya diabaikan dan ditandai. Sejak 29-09-2026 ini
+   juga berlaku saat MENYIMPAN kisi target: bulan non-ukur tidak dikirim peramban dan isian kosong diabaikan server
+   (dulu dikosongkan — IKP yang polanya masih tebakan kehilangan 11 bulan target sah). Hapus fisik lewat tombol
+   "Bersihkan" per IKP, hanya bila pola sudah dikonfirmasi?
 6. **Penerbit wajib** untuk pola rilis (keputusan malam ini) — form menolak rilis tanpa penerbit.
 7. **Revisi nilai resmi** (mis. BPS merevisi IPM): nilai lama ditimpa; belum ada riwayat nilai rilis selain log aktivitas.
 8. **Bukti publikasi berupa tautan** (bukan unggah berkas), sama dengan bukti realisasi IKP lain.
 9. **Rilis tahun berikutnya** (opini BPK, IPM): capaian tahun N baru muncul di tahun N+1, jadi monitoring bulanan tahun
    N selalu "Menunggu Rilis" untuk IKP itu. Apakah Bupati ingin melihat nilai tahun N-1 sebagai pengganti sementara?
 10. **Nilai rilis tahun lalu sebagai baseline**: di simulasi disimpan sebagai baris realisasi tahun 2025 (rekap 2025 kini
-    hanya berisi indeks). Alternatif: isi `ikp.baseline`.
+    hanya berisi indeks) dan sejak 29-09-2026 **selalu memenuhi target** (100–106 %; `nilaiRilisBaseline` di 02_ikp.php)
+    — dulu Skor SPIP Inspektorat (OPD nyata) jatuh 66,7 % "Perlu Perhatian" di rekap 2025 karena angka karangan.
+    Alternatif yang lebih bersih: isi `ikp.baseline` dan jangan tampilkan 2025 sebagai tahun penilaian.
 11. **Hitungan tidak-bulanan** (triwulanan/semesteran) diizinkan: target dicicil hanya ke bulan ukur.
-12. **eKin** membaca salinan `ikp_realisasi`; setelah data `aksara_uji` dibetulkan, salinan eKin harus disinkron ulang
-    (`spark ekin:sinkron-ikp`) dan rencana aksi IKI rilis mengikuti `bulan_ukur` (tugas sisi eKin).
+12. ~~eKin harus disinkron ulang~~ — **selesai**: salinan `ekin_uji.ikp_realisasi` mengikuti pola (IKP 380/385/386
+    bulan 1–11 kosong, bulan rilis bertarget) dan rencana aksi IKI rilis hanya bertarget di bulan rilis (README eKin
+    §23.3). Yang tersisa: sinkron `aksara_demo`/`ekin_demo` saat digabung.
 13. Klasifikasi otomatis memakai nama + satuan; "Jumlah … (satuan Indeks/Persen)" tetap posisi bertanda periksa.
     Perlu daftar putih/hitam per OPD?
 
@@ -365,16 +370,26 @@ membaca lewat tab **Turun ke Pelaksana**, `adminkab/ikp/turun`):
   (`IkpTurunService::teksProses`). Pendelegasian yang sudah tersimpan tidak diubah usulan.
 - *Mencabut* (hilangkan centang lalu Simpan) memulihkan indikator: indikator yang dibuat pendelegasian dihapus bila
   tidak dipakai (tanpa simpul anak berjangkar padanya dan tanpa target tahun lain), indikator lama mendapat kembali
-  target/metode sebelum diambil alih (`sebelum_delegasi`), tautan lama kehilangan IKP-nya tetapi targetnya tetap.
+  target/metode sebelum diambil alih (`sebelum_delegasi`), dan **tautan lama yang diambil alih kembali menjadi tautan
+  lama** dengan target aslinya (29-09-2026: dulu tautan & targetnya hilang permanen — `IkpTurunService::jejakSebelum`).
+- *Simpul tersembunyi* (IKU induknya dihentikan) tidak tampil di formulir, sehingga **simpan tidak pernah mencabut**
+  pendelegasian di sana (`IkpTurunService::barisDicabut`, 29-09-2026: dulu setiap simpan mencabutnya diam-diam padahal
+  layar menulis "tetap tersimpan").
 - Chip **★ IKP** (pemikul angka; ×n bila beberapa IKP) / **☆ Mendukung IKP** pada simpul di bagan **Pohon Kinerja**
   dan kartu **Pemilik Kinerja**; tag indikator menyebut perannya. Modal indikator Pemilik Kinerja **mengunci** target,
   metode, dan tautan IKP untuk baris `delegasi` (hanya satuan yang boleh diubah — porsi diatur di Turunkan IKP);
   tautan langsung yang dibuat dari modal itu tercatat `sumber = lama`.
 - *Rekap Kabupaten* (`adminkab/ikp`): kolom **Turun sampai pelaksana** (n/m IKP per OPD, bertaut ke halaman baca) dan
   jumlah total di kartu IKP Terdaftar (`IkpTurunService::rekapKabupaten`).
+- **Cakupan & pemeriksa hanya dari baris pendelegasian** (`sumber = delegasi`) — sama dengan yang dikirim ke eKin.
+  Tautan lama (`sumber = lama`, dibuat sebelum fitur ini) dihitung terpisah: catatan "n tautan lama … belum dihitung
+  sebagai pendelegasian" di kartu IKP dan `turun.tautan_lama` di API (29-09-2026: dulu 6 IKP tampil "Pelaksana ✓"
+  padahal belum pernah diturunkan).
 
-**Masuk ke RHK (API ke eKin).** `api/ekin/pegawai/{id}/kinerja`: alasan baru **`delegasi`** (paling spesifik:
-`delegasi → pj → simpul → kepala_opd`) dengan `peran` dan `delegasi[]`: `delegasi_id`, simpul & indikator, `peran`,
+**Masuk ke RHK (API ke eKin).** `api/ekin/pegawai/{id}/kinerja`: alasan baru **`delegasi`** (urutan sejak
+29-09-2026: `pj → delegasi → simpul → kepala_opd`; PJ yang juga memikul baris pendelegasian tetap `pj` dan barisnya
+ikut sebagai **lampiran** — setiap butir yang punya baris pendelegasian membawa `peran` + `delegasi[]`; eKin
+menautkannya ke RHK IKP PJ yang sudah ada, bukan membuat RHK kedua untuk hasil yang sama) dengan `peran` dan `delegasi[]`: `delegasi_id`, simpul & indikator, `peran`,
 `porsi_target_tahunan` (+ `porsi_persen`), **profil bulanan** menurut pola (hitungan = cicilan IKP × porsi/target
 dengan pembulatan kumulatif, Σ = porsi; posisi/rilis = target IKP **hanya di bulan ukur**; pendukung = proses dicicil
 12 bulan), `pola_indikator`, `rantai_induk` sampai Kepala OPD (dasar "RHK pimpinan yang diintervensi" = RHK IKP milik
@@ -396,9 +411,14 @@ draf → RHK langsung masuk; SKP sudah diajukan/disetujui → penugasan "IKP tur
 ```
 
 `delegasi_id` = `cascading_indikator_target.id` AKSARA (dikirim eKin dari RHK/IKI hasil tarikan baris itu),
-`realisasi` = realisasi bulan itu yang sudah disetujui di eKin, per pegawai. AKSARA sendiri yang merangkum
-(`IkpTurunService::saranRealisasi`): hitungan = Σ realisasi pemikul angka **terbawah** di setiap cabang (atasan dan
-pendukung tidak ikut dijumlah — satu hasil dihitung satu kali oleh pemiliknya); posisi/rilis = nilai pemikul angka
+`realisasi` = realisasi bulan itu yang sudah disetujui di eKin, per pegawai; sejak 29-09-2026 juga **`realisasi_baris`**
+(bagian baris itu sendiri: hasil sendiri + porsi yang ia bagi lewat Cascading, TANPA bagian anak pendelegasian) dan
+`induk_delegasi_id`. Aturan eKin (README eKin §23.6a): **jenjang tengah** hitungan (punya pemikul di bawahnya) =
+hasil sendiri + Σ pemikul di bawah; kegiatan atasan pada rencana aksi itu (membina, memverifikasi) tanpa angka.
+AKSARA sendiri yang merangkum (`IkpTurunService::saranRealisasi`): hitungan = **Σ `realisasi_baris` semua pemikul
+angka** (setiap hasil tepat sekali, termasuk porsi yang pemikul terbawah bagi ke stafnya lewat Cascading — dulu
+porsi itu hilang); eKin lama tanpa kolom itu: Σ realisasi pemikul angka **terbawah** (atasan dan pendukung tidak ikut
+dijumlah); "lengkap" = semua pemikul terbawah sudah melapor; posisi/rilis = nilai pemikul angka
 jenjang **terdekat** ke IKP (Eselon III dulu; belum melapor → turun satu jenjang). Sel bulan ukur yang terbuka
 menampilkan "eKin *n* **Gunakan**" (\* = belum semua pemikul melapor); *Gunakan* hanya mengisi kotak (rilis: membuka
 dialog "Catat nilai resmi" berisi nilainya — bukti publikasi tetap wajib). **Realisasi resmi IKP tetap diisi/disahkan
@@ -421,7 +441,8 @@ pendukung lintas bidang penilaian bank sampah; berat sampah, adiwiyata, B3, peng
 381, 383, 239, DLH 459–470, IKP Dinkes/Disdikbud lain (rekap memperlihatkan "belum"). Dijalankan HANYA pada
 `aksara_uji`; lari kedua 0 perubahan. Tahap ini tidak menyentuh realisasi, penilaian, maupun pemilik simpul.
 
-**Uji.** Unit `tests/unit/IkpTurunTest.php` (26 kasus: pemeriksa porsi & satu pemikul angka, rantai terputus,
+**Uji.** Unit `tests/unit/IkpTurunTest.php` (29 kasus; 29-09-2026 + simpul tersembunyi tidak dicabut, jejak tautan lama,
+saran Σ `realisasi_baris` termasuk porsi Cascading: pemeriksa porsi & satu pemikul angka, rantai terputus,
 cakupan termasuk kecamatan, pembulatan kumulatif, profil bulanan per pola/peran, porsi sisa terbesar, kemiripan,
 susun induk, usulan rilis/hitungan/tautan lama, saran realisasi hitungan & rilis). Peramban
 `uji/malam/cek_ikp_turun.mjs` (repo demo; 111 pemeriksaan pada 1366 & 390 px): daftar & lencana, IKIP rilis
@@ -429,8 +450,10 @@ susun induk, usulan rilis/hitungan/tautan lama, saran realisasi hitungan & rilis
 IKP 381 dengan sidik jari tabel kembali identik, penolakan porsi bukan angka, lingkup OPD, chip ★ IKP di Pohon &
 Pemilik Kinerja, porsi CKG & "Kurang 200" seketika, "Kurang 970" Dikdas, rekap & halaman baca kabupaten, API
 `delegasi` (IKIP hanya Desember 99; PPID pendukung 12 bulan & `ikp_id` null; CKG Puskesmas 7.200 = 12 %, 600/bulan;
-Kepala tetap `kepala_opd`), saran eKin + *Gunakan* lewat tiruan eKin (`uji/malam/mock_ekin_turunan.php`) dan tanpa
-saran bila eKin belum menyediakan. Tanpa gulir samping, tanpa elemen melayang.
+Kepala tetap `kepala_opd`), saran eKin + *Gunakan* lewat tiruan eKin (`uji/malam/mock_ekin_turunan.php`); pada server
+utama saran diharapkan tampil bila eKin yang dibaca (`EKIN_URL`) menyediakan kontrak ikp-turunan dan tidak tampil bila
+belum (29-09-2026: dulu selalu "tanpa saran" — gagal palsu saat diarahkan ke eKin worktree). Tanpa gulir samping, tanpa
+elemen melayang.
 
 ### Terbuka untuk dibahas
 
@@ -446,15 +469,15 @@ saran bila eKin belum menyediakan. Tanpa gulir samping, tanpa elemen melayang.
    (SAQ KIP, kuesioner SPBE, bukti Indeks KAMI, LKE SAKIP, …)?
 5. **Profil bulanan pendukung** = target proses dicicil rata 12 bulan (pembulatan kumulatif). Kerja nyata sering
    menumpuk menjelang penilaian (mis. SAQ Mei–Agustus) — perlu bulan kerja pilihan?
-6. **Definisi "sampai pelaksana"** = ada baris (angka ATAU pendukung) di jenjang pelaksana, walau jenjang tengah
-   dilompati; di kecamatan jenjang es4 ("Pelaksana / JF") sudah dihitung. Apakah untuk hitungan harus ada PEMIKUL
-   ANGKA sampai pelaksana?
+6. **Definisi "sampai pelaksana"** = ada baris PENDELEGASIAN (angka ATAU pendukung; tautan lama tidak dihitung) di
+   jenjang pelaksana, walau jenjang tengah dilompati; di kecamatan jenjang es4 ("Pelaksana / JF") sudah dihitung.
+   Apakah untuk hitungan harus ada PEMIKUL ANGKA sampai pelaksana?
 7. **Satu IKP per indikator per tahun** (kunci unik lama `cascading_indikator_id + tahun`). Karena itu satu simpul yang
    memikul beberapa IKP mendapat beberapa indikator ("buat dari rumusan IKP"), dan indikator yang sudah memikul IKP lain
    tidak bisa dipilih. Alternatif: tabel penghubung IKP ↔ indikator (lebih luwes, migrasi lebih besar).
 8. **Mengambil alih indikator yang sudah ada** mengganti targetnya dengan porsi/target utuh IKP (mis. indikator Kabid
-   IKIP 97,5 → 99). Keadaan lama disimpan di `sebelum_delegasi` dan dipulihkan saat dicabut. Bila target Renstra simpul
-   dan porsi IKP berbeda, mana yang berlaku? Kini porsi IKP.
+   IKIP 97,5 → 99). Keadaan lama — termasuk tautan LAMA ke IKP yang sama (29-09-2026) — disimpan di `sebelum_delegasi`
+   dan dipulihkan saat dicabut. Bila target Renstra simpul dan porsi IKP berbeda, mana yang berlaku? Kini porsi IKP.
 9. **Pemeriksa tidak memblokir** (kurang/lebih/ganda boleh disimpan dengan peringatan). Perlu mode ketat sebelum PK
    ditandatangani?
 10. **Porsi bawaan usulan** proporsional target indikator simpul menghasilkan angka ganjil (CKG 53.571 / 6.429);
@@ -469,10 +492,20 @@ saran bila eKin belum menyediakan. Tanpa gulir samping, tanpa elemen melayang.
     di kunci lama — konsumen harus memakai `delegasi[]` untuk angka orang itu.
 15. **Saran rilis** baru muncul saat bulan rilis terbuka (sama dengan kisi realisasi); nilai yang dilaporkan pemikul
     angka Es III didahulukan walau jenjang bawah melapor lebih baru.
-16. **Simpul tersembunyi**: pendelegasian di simpul yang IKU induknya kemudian dihentikan tetap tersimpan, dicatat
-    di halaman, dan tidak dikirim ke eKin (aturan sama dengan pemilik simpul).
+16. **Simpul tersembunyi**: pendelegasian di simpul yang IKU induknya kemudian dihentikan tetap tersimpan (simpan
+    formulir tidak lagi mencabutnya), dicatat di halaman, dan tidak dikirim ke eKin (aturan sama dengan pemilik simpul).
+    Mencabutnya perlu aksi eksplisit — belum ada tombolnya (kini: hidupkan lagi IKU-nya atau lewat basis data).
 17. **aksara_demo belum dibangun ulang**: `03b_ikp_turun.php` hanya dijalankan pada `aksara_uji` (aturan malam ini) dan
     belum masuk `jalankan.sh` (butuh migrasi cabang ini di `/root/e-sakip` lebih dulu).
+18. **Jenjang tengah = Σ bawahan** (keputusan 29-09-2026, README eKin §23.6a): Kabid/Katim yang porsinya diturunkan
+    lagi tidak menghitung hasil staf sebagai hasilnya sendiri. Pengecualian yang perlu diputuskan: kepala yang juga
+    menghasilkan sendiri (Kepala Puskesmas yang melayani pasien) — usul: beri ia simpul pelaksana tersendiri dengan
+    porsi sendiri; untuk sementara angka yang ia catat tetap dihitung sebagai hasil sendiri (+ Σ bawahan).
+19. **Porsi yang tidak terbagi habis di jenjang tengah** (Σ porsi anak < porsi induk): sisa itu "dipikul jenjang ini"
+    — pemeriksa memperingatkan "kurang". Apakah sisa itu harus selalu diberi simpul pelaksana sendiri?
+20. **PJ yang juga memikul baris pendelegasian** kini tetap beralasan `pj` dengan lampiran `delegasi[]` (satu RHK di
+    eKin). Bila porsi barisnya lebih kecil dari target IKP (PJ hanya memikul sebagian), target RHK PJ tetap target IKP
+    utuh — perlu diselaraskan ke porsi?
 
 ## Keputusan desain penting
 
