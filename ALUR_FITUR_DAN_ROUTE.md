@@ -480,6 +480,11 @@ Rekap per OPD · Per Program Unggulan · Pemilik Kinerja · Cetak Rekap = tab (`
 | GET | `adminkab/ikp/cetak` | `AdminKab\IkpController::cetak` *(PDF)* |
 | GET | `bupati/ikp` · `bupati/ikp/opd/(:num)` | `Bupati\IkpMonitoringController::index` / `opd` *(read-only)* |
 
+Pola ukur (lihat §9.10): "Realisasi bulan X" dihitung terhadap IKP yang **wajib** melapor bulan itu
+(bulan ukurnya & sudah tiba) — `agregat.wajib_bulan`, bukan jumlah IKP; indeks resmi yang menunggu
+rilis dan posisi di luar bulan ukur dihitung terpisah (`tidak_diukur_bulan`, `menunggu_rilis`) dan tidak
+ikut rata-rata capaian bulan itu maupun daftar "belum lapor" Bupati.
+
 ---
 
 ## 9. Area Perangkat Daerah — `/adminopd`
@@ -676,6 +681,27 @@ Target 5 tahun → tahunan → **bulanan**, rekap triwulan dihitung (tidak diisi
 Metode perhitungan memakai kosakata monev (`sum|trend_naik|trend_turun|trend_flat`). Hapus IKP =
 *soft delete* (`dihapus_pada`) karena eKin merujuk `ikp.id`. Kategori selalu lewat `?kategori=`
 (kata `tambah` di path dibaca modperm sebagai aksi tulis).
+
+**Pola ukur (28-09-2026).** Setiap IKP punya `pola_ukur` = `hitungan` (dijumlah; target bulan ukur =
+cicilan) · `posisi` (diukur sendiri; target = posisi yang diharapkan di bulan ukur) · `rilis` (nilai
+resmi pihak lain, mis. Indeks Keterbukaan Informasi Publik; hanya di bulan rilis, wajib bukti
+publikasi), plus `periode_ukur`, `bulan_ukur`, `penerbit`, `rilis_tahun_berikut`, `pola_ditebak`
+(migrasi `2026-09-28-000001_AddPolaUkurToIkp` / `db/update_2026-09-28_ikp_pola_ukur.sql`). `metode`
+kini diturunkan dari pola (hitungan → `sum`; posisi/rilis → `trend_*` = arah). Alur di layar:
+
+- `ikp/tambah|edit` — bagian "Pola ukur": tiga kartu, arah, periode + chip bulan ukur, penerbit (saran
+  dari tabel rilis bawaan `app/Config/IkpPolaUkur.php`), "dirilis tahun berikutnya". `save|update`
+  menolak rilis tanpa penerbit/bulan rilis dan menyetel `pola_ditebak = 0`.
+- `ikp/target/(:num)` & `ikp/breakdown?tab=bulanan` — bulan non-ukur tampil "—" dan terkunci; "Bagi
+  rata" hanya untuk hitungan, posisi/rilis punya "Isi target posisi/bulan rilis". `targetSave` /
+  `breakdownSave` menolak angka di bulan non-ukur (kosong = membersihkan sisa isian lama).
+- `ikp/realisasi` — sel non-ukur "—" berketerangan, tidak bisa diisi; nilai rilis lewat dialog
+  "Catat nilai resmi" (nilai + tautan bukti publikasi wajib); bulan rilis baru terbuka saat bulannya tiba
+  (rilis tahun berikut: tahun N+1). `realisasiSave` menegakkan ketiga aturan itu di server.
+- Semua rekap (`rekap`, `cetak`, Lampiran PK, `adminkab/ikp*`, `bupati/ikp*`, Ruang OPD, API eKin)
+  menghitung capaian lewat `ikp_capaian_pola()`: bulan non-ukur tidak dihitung, posisi/rilis = nilai
+  ukur terakhir vs target bulan itu, rilis yang belum keluar = "Menunggu Rilis" (abu-abu, tidak ikut
+  rata-rata, bukan "belum lapor").
 
 | Method | Route | Handler |
 |---|---|---|

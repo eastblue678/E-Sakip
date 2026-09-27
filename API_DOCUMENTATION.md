@@ -680,6 +680,19 @@ Rincian `ikp[]`:
 
 `target_bulanan`/`realisasi_bulanan` selalu berkunci `"1"`..`"12"`; `null` = belum diisi (realisasi `0` tetap `0`). Hanya IKP yang belum dihapus.
 
+**Pola ukur (28-09-2026).** Setiap butir `ikp[]` (dan `data[]` endpoint 11) juga membawa:
+
+| Kunci | Arti |
+| --- | --- |
+| `pola_ukur` | `hitungan` (dijumlah; target bulanan = cicilan) · `posisi` (diukur sendiri; target = posisi di bulan ukur) · `rilis` (nilai resmi pihak lain, mis. indeks; hanya di bulan rilis, tidak pernah dicicil/dijumlah) |
+| `periode_ukur` | `bulanan` · `triwulanan` · `semesteran` · `tahunan` · `khusus` |
+| `bulan_ukur` | daftar bulan yang diukur, mis. `[12]` untuk indeks yang dirilis Desember |
+| `penerbit` | pihak yang merilis nilai (pola `rilis`), selain itu `null` |
+| `rilis_tahun_berikut` | `true` = nilai tahun N baru dirilis tahun N+1 (bulan_ukur = bulan rilis di N+1) |
+| `pola_ditebak` | `true` = pola hasil klasifikasi otomatis yang belum dikonfirmasi Admin OPD |
+
+`target_bulanan`/`realisasi_bulanan` hanya bernilai di **bulan ukur**; bulan lain selalu `null` (isian lama di bulan non-ukur tidak dikirim). `metode` = metode efektif pola (`sum` untuk hitungan; `trend_*` untuk posisi/rilis). eKin menurunkan rencana aksi IKI mengikuti pola ini (rilis: rencana aksi bertarget hanya di bulan rilis).
+
 Rincian `pk_indikator[]`:
 
 ```json
@@ -714,7 +727,9 @@ OPD tak dikenal → `404`. Angka dihitung oleh `IkpRekapService::rekapOpd` — s
       "ikp_id": 314, "kategori": "program_unggulan", "program_unggulan": "Pringsewu Bersih",
       "indikator": "Jumlah nasabah aktif bank sampah", "satuan": "Orang", "metode": "trend_naik",
       "target_5_tahun": 1000, "target_tahunan": 400, "target_tahunan_teks": null,
-      "bulan": { "1": { "target": 215, "realisasi": 212 }, "…": "…", "12": { "target": 400, "realisasi": null } },
+      "pola_ukur": "posisi", "periode_ukur": "bulanan", "bulan_ukur": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      "penerbit": null, "rilis_tahun_berikut": false, "pola_ditebak": false,
+      "bulan": { "1": { "target": 215, "realisasi": 212, "diukur": true }, "…": "…", "12": { "target": 400, "realisasi": null, "diukur": true } },
       "triwulan": {
         "1": { "target": 245, "realisasi": 241, "capaian": 98.37, "status": "achieved", "status_label": "Tercapai", "warna": "hijau", "berjalan": false },
         "…": "…",
@@ -729,7 +744,8 @@ OPD tak dikenal → `404`. Angka dihitung oleh `IkpRekapService::rekapOpd` — s
 
 - `metode`: `sum` (bulanan = tambahan; triwulan = jumlah) atau `trend_naik|trend_turun|trend_flat` (bulanan = posisi; triwulan = bulan terisi terakhir). `null` bila OPD belum memilih metode — rekap triwulannya kosong.
 - `berjalan: true` = triwulan belum lengkap terisi (mis. TW III per Agustus): `target` tetap target triwulan penuh, sedangkan `capaian` dihitung dari bulan yang sudah terisi saja.
-- `capaian` hanya menghitung bulan yang **sudah ada realisasinya**; `status` memakai ambang warna Pengaturan Dashboard (`critical|attention|near_target|achieved|exceeded`, atau `belum_ada_data|belum_dinilai|belum_valid`).
+- `capaian` hanya menghitung bulan yang **sudah ada realisasinya**; `status` memakai ambang warna Pengaturan Dashboard (`critical|attention|near_target|achieved|exceeded`, atau `belum_ada_data|belum_dinilai|belum_valid|tidak_diukur|menunggu_rilis`).
+- Pola ukur: `bulan[m].diukur = false` → bulan non-ukur (`target`/`realisasi` selalu `null`); `triwulan[q].diukur = false` → triwulan tanpa bulan ukur (capaian tidak dihitung). Contoh indeks resmi: `"pola_ukur": "rilis", "bulan_ukur": [12], "penerbit": "Komisi Informasi Provinsi Lampung"`, `bulan["1".."11"]` = `null`, `capaian_tahun_berjalan.status = "menunggu_rilis"` sampai nilai resmi Desember diisi.
 
 ### Kode status eKin
 

@@ -1999,6 +1999,33 @@
             "type": "string",
             "nullable": true
           },
+          "pola_ukur": {
+            "type": "string",
+            "enum": ["hitungan", "posisi", "rilis"],
+            "description": "Pola ukur: hitungan (dijumlah), posisi (diukur sendiri di bulan ukur), rilis (nilai resmi pihak lain, hanya di bulan rilis; tidak pernah dicicil)."
+          },
+          "periode_ukur": {
+            "type": "string",
+            "enum": ["bulanan", "triwulanan", "semesteran", "tahunan", "khusus"]
+          },
+          "bulan_ukur": {
+            "type": "array",
+            "items": { "type": "integer", "minimum": 1, "maximum": 12 },
+            "description": "Bulan yang diukur; target/realisasi bulan lain selalu null."
+          },
+          "penerbit": {
+            "type": "string",
+            "nullable": true,
+            "description": "Pihak yang merilis nilai (pola rilis)."
+          },
+          "rilis_tahun_berikut": {
+            "type": "boolean",
+            "description": "true = nilai tahun N dirilis tahun N+1."
+          },
+          "pola_ditebak": {
+            "type": "boolean",
+            "description": "true = pola hasil klasifikasi otomatis, belum dikonfirmasi Admin OPD."
+          },
           "target_5_tahun": {
             "type": "number",
             "nullable": true
@@ -2122,6 +2149,33 @@
           "metode": {
             "type": "string",
             "nullable": true
+          },
+          "pola_ukur": {
+            "type": "string",
+            "enum": ["hitungan", "posisi", "rilis"],
+            "description": "Pola ukur: hitungan (dijumlah), posisi (diukur sendiri di bulan ukur), rilis (nilai resmi pihak lain, hanya di bulan rilis; tidak pernah dicicil)."
+          },
+          "periode_ukur": {
+            "type": "string",
+            "enum": ["bulanan", "triwulanan", "semesteran", "tahunan", "khusus"]
+          },
+          "bulan_ukur": {
+            "type": "array",
+            "items": { "type": "integer", "minimum": 1, "maximum": 12 },
+            "description": "Bulan yang diukur; target/realisasi bulan lain selalu null."
+          },
+          "penerbit": {
+            "type": "string",
+            "nullable": true,
+            "description": "Pihak yang merilis nilai (pola rilis)."
+          },
+          "rilis_tahun_berikut": {
+            "type": "boolean",
+            "description": "true = nilai tahun N dirilis tahun N+1."
+          },
+          "pola_ditebak": {
+            "type": "boolean",
+            "description": "true = pola hasil klasifikasi otomatis, belum dikonfirmasi Admin OPD."
           },
           "target_5_tahun": {
             "type": "number",

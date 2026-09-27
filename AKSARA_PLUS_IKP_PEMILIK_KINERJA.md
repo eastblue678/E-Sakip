@@ -213,6 +213,106 @@ menyalin data (semua dibaca lewat `EkinClient`, tembolok 5 menit):
 Uji: `tests/unit/RencanaAksiPegawaiTest.php`; peramban `uji/pohon/cek_ra_pegawai.mjs` (angka = API eKin,
 lingkup, 390 px).
 
+## Pola ukur indikator IKP: hitungan · posisi · rilis (28-09-2026)
+
+**Keluhan pengguna.** "Indeks dibuat dicicil itu ngaco banget. Masa indeks keterbukaan informasi dicicil. Itu kan
+memang keluar setahun sekali dan setiap indeks itu beda-beda juga keluar jadwalnya. Intinya ini harus solid."
+Bukti di data: IKP Diskominfo "Keterbukaan Informasi Publik" (satuan Indeks Keterbukaan Informasi Publik) bertarget 99
+dan berrealisasi 100 SETIAP bulan Jan–Agu 2026, sehingga capaiannya 101 % sejak Januari.
+
+**Keputusan.** `metode` (sum/trend) hanya menjawab *bagaimana* angka diringkas, tidak *kapan* angka itu ada. Setiap IKP
+kini punya **pola ukur**:
+
+| Pola | Arti | Target bulan ukur | Realisasi | Capaian |
+|---|---|---|---|---|
+| `hitungan` | hasil dijumlah sepanjang periode | cicilan (Σ = target tahunan) | hasil bulan itu (tambahan) | Σ realisasi ÷ Σ target bulan terisi |
+| `posisi` | keadaan yang diukur SENDIRI dari data internal pada tanggal ukur (% tepat waktu, nasabah AKTIF, cakupan) | posisi yang diharapkan (bukan cicilan) | posisi terbaru dari rekap resmi | nilai ukur terakhir ÷ target bulan itu |
+| `rilis` | nilai yang DIKELUARKAN pihak lain (indeks KI, SPBE, KAMI, SAKIP/RB, opini BPK, MCP/SPI, Ombudsman, IPM, IDM, SPIP, akreditasi) | HANYA bulan rilis | nilai resmi saat dirilis, **bukti publikasi wajib** | nilai resmi ÷ target bulan rilis; tidak pernah dicicil/dijumlah |
+
+Bulan di luar `bulan_ukur` **tidak diukur**: tanpa target, tanpa realisasi, capaian tidak dihitung (bukan 0, bukan
+100), tidak ikut rata-rata apa pun, dan tidak dianggap "belum lapor". `metode` kini diturunkan dari pola:
+hitungan → `sum`; posisi/rilis → `trend_naik|trend_turun|trend_flat` (= *arah*: makin tinggi/rendah baik, dipertahankan).
+
+**Skema** (migrasi `2026-09-28-000001_AddPolaUkurToIkp`, kembaran `db/update_2026-09-28_ikp_pola_ukur.sql`, idempoten):
+kolom `ikp.pola_ukur`, `periode_ukur` (bulanan|triwulanan|semesteran|tahunan|khusus), `bulan_ukur` ("6,12"),
+`penerbit`, `rilis_tahun_berikut` (nilai tahun N dirilis N+1, mis. opini BPK/IPM — realisasi tahun N diisi saat rilis
+di N+1), `pola_ditebak` (1 = hasil klasifikasi otomatis → chip **Periksa pola ukur** sampai Admin OPD menyimpan form).
+Migrasi menebak pola data lama (sum → hitungan; trend → posisi; nama/satuan berpola indeks/nilai resmi → rilis) dan
+**tidak mengubah angka apa pun**: isian lama di bulan non-ukur cukup diabaikan rumus (layar menandai "n isian lama di
+bulan non-ukur diabaikan"). Tanpa CLI, berkas SQL hanya menambah kolom; baris ber-`pola_ukur` NULL ditebak dengan aturan
+yang sama saat dibaca (`ikp_pola()`).
+
+**Satu tempat konfigurasi**: `app/Config/IkpPolaUkur.php` — pola nama/satuan rilis (`$polaRilis`), kata awal yang
+menandai angka internal walau satuannya "Indeks" (`$awalInternal`), dan **tabel rilis bawaan** (penerbit, bulan rilis
+perkiraan, tahun berikut, catatan) untuk 15 jenis nilai resmi. Tabel ini hanya BAWAAN (saran di form & klasifikasi);
+bulan rilis sesungguhnya disimpan per IKP dan diubah Admin OPD di form tanpa menyentuh berkas ini.
+
+**Rumus (murni, `app/Helpers/ikp_helper.php`, diuji `tests/unit/IkpPolaUkurTest.php`, 22 kasus):** `ikp_pola_tebak`,
+`ikp_pola` (konteks + metode efektif), `ikp_saring_ukur`, `ikp_keadaan_bulan` (tidak_diukur | belum_waktunya | diukur,
+memperhitungkan rilis tahun berikut), `ikp_capaian_pola` (SATU pintu capaian semua layar), `ikp_bagi_pola`,
+`ikp_cek_bulanan_pola`, `ikp_pola_ringkas`. `ikp_status()` mengenal status abu-abu `tidak_diukur` & `menunggu_rilis`.
+`IkpRekapService::rakit()` menyaring bulan non-ukur SEKALI sehingga daftar, rekap, PDF, Lampiran PK, rekap Kabupaten,
+monitoring Bupati, Program Unggulan, Ruang OPD, dan API eKin membaca angka yang sama.
+
+**Layar.**
+- *Form IKP* — bagian baru "Pola ukur: kapan angkanya ada?": tiga kartu berpenjelasan + contoh, arah nilai, periode ukur
+  + chip bulan (rilis: "Bulan rilis"), penerbit (wajib untuk rilis, dengan saran dari tabel bawaan), "nilai tahun N
+  dirilis tahun N+1". Menu "Metode perhitungan" diganti pola + arah.
+- *Target & Breakdown* — bulan non-ukur "—" terkunci ("tidak diukur"/"bukan bulan rilis"); **Bagi rata hanya untuk
+  hitungan** (cicilan ke bulan ukur); posisi/rilis punya "Isi target posisi/bulan rilis" (bulan ukur terakhir = target
+  tahunan, bulan ukur sebelumnya lintasan dari target tahun lalu/baseline). Server menolak angka di bulan non-ukur.
+- *Realisasi* — sel non-ukur "—" berketerangan, tidak bisa diisi; indeks diisi lewat "Catat nilai resmi" (nilai + tautan
+  bukti publikasi wajib, ditegakkan server juga saat bukti dihapus); bulan rilis terbuka baru saat bulannya tiba.
+- *Rekap Kabupaten/Bupati* — "Realisasi bulan X: n / m" memakai m = IKP yang **wajib** melapor bulan itu; kartu Bupati
+  memisahkan "tidak diukur bulan ini (indeks resmi menunggu rilis / posisi di luar bulan ukur)" dari "belum dapat
+  dinilai"; daftar "5 IKP perlu perhatian" tidak memuat IKP yang tidak diukur. Kisi bulanan OPD menulis "—".
+- *Lampiran PK (cetak)* — kolom METODE → POLA UKUR; bulan non-ukur "—" dengan legenda.
+- *API eKin* (`api/ekin/opd/{id}/ikp`, `pegawai/{id}/kinerja`) — `pola_ukur`, `periode_ukur`, `bulan_ukur`, `penerbit`,
+  `rilis_tahun_berikut`, `pola_ditebak`; target bulanan hanya bulan ukur (juga `target_bulanan` indikator simpul yang
+  bertaut IKP). Didokumentasikan di `API_DOCUMENTATION.md` & `public/openapi.json`.
+
+**Data simulasi.** Pembangun di luar repo (`/root/demo-kinerja/simulasi/02_ikp.php`, `02b_selaras.php`,
+`02c_lengkapi_ikp.php`) kini menerima `AKSARA_DB`, `EKIN_DB`, `AKSARA_ROOT` (bawaan demo) dan taat pola: langkah 3p
+menetapkan pola (tebakan dikonfirmasi, kecuali tiga yang namanya "Jumlah …" tetapi bersatuan persen/indeks — IKP 330,
+341, 344 — dibiarkan "Periksa pola ukur" sebagai contoh), 3d mengosongkan target bulan non-ukur dan menetapkan bulan ukur
+terakhir = target tahunan, langkah 4 mengosongkan realisasi simulasi di bulan non-ukur / rilis yang belum keluar, dan
+nilai rilis 2025 disimulasikan sebagai baseline (baris tahun 2025, berbukti). 02b memeriksa konsistensi menurut pola;
+02c menghitung kelengkapan terhadap jumlah bulan ukur. Dijalankan pada `aksara_uji`: yang berubah HANYA 6 IKP rilis
+(Inspektorat 23 kapabilitas APIP, 24 skor SPIP, 27 Indeks Integritas; Diskominfo 380 IKIP, 385 Indeks Pembangunan
+Statistik, 386 Indeks KAMI) — 66 sel target/realisasi bulan non-ukur dikosongkan (48 realisasi), 6 baris nilai rilis 2025
+ditambah; 348 IKP lain identik sel demi sel. Pembangunan ulang kedua tidak mengubah apa pun (idempoten). Peta
+`02_ikp_peta.json` hanya ditulis lari `aksara_demo`.
+
+**Uji.** Unit `tests/unit/IkpPolaUkurTest.php` (22 kasus). Peramban `uji/malam/cek_pola_ukur.mjs` (repo demo; 83
+pemeriksaan pada 1366 & 390 px: form/target/realisasi IKP rilis 380, posisi 323, hitungan 384 Diskominfo; penolakan
+server untuk realisasi indeks di bulan non-rilis, sebelum bulan rilis, tanpa bukti, dan target indeks yang dicicil;
+rekap Kabupaten/Bupati; tanpa gulir samping; tanpa elemen melayang).
+
+### Terbuka untuk dibahas
+
+1. **Tabel bulan rilis bawaan** (`Config/IkpPolaUkur.php`) adalah perkiraan, bukan jadwal resmi; tiap tahun bisa
+   bergeser (mis. hasil SPBE kadang keluar Januari tahun berikutnya). Perlu dicocokkan Bapperida/Diskominfo per indeks.
+2. **Rilis yang terlambat**: bila bulan rilis sudah lewat tetapi nilai belum diisi, statusnya tetap "Menunggu Rilis"
+   (abu-abu), bukan "belum lapor". Perlu status "rilis terlambat" (mis. > 2 bulan lewat)?
+3. **Periode "khusus"** (bulan ukur tidak berjarak tetap, mis. Mei & November) ditambahkan di luar lima nilai spesifikasi
+   agar chip bulan bebas; periode diturunkan dari chip, bukan dipercaya dari isian.
+4. **Kolom `metode` data lama tidak diubah migrasi**; metode efektif diturunkan saat dibaca (rilis/posisi tidak pernah
+   dijumlah). Kolom baru selaras saat admin menyimpan form. Perlu skrip penyelarasan massal untuk produksi?
+5. **Isian lama di bulan non-ukur** (data nyata) tidak dihapus, hanya diabaikan dan ditandai. Hapus fisik lewat tombol
+   "Bersihkan" per IKP?
+6. **Penerbit wajib** untuk pola rilis (keputusan malam ini) — form menolak rilis tanpa penerbit.
+7. **Revisi nilai resmi** (mis. BPS merevisi IPM): nilai lama ditimpa; belum ada riwayat nilai rilis selain log aktivitas.
+8. **Bukti publikasi berupa tautan** (bukan unggah berkas), sama dengan bukti realisasi IKP lain.
+9. **Rilis tahun berikutnya** (opini BPK, IPM): capaian tahun N baru muncul di tahun N+1, jadi monitoring bulanan tahun
+   N selalu "Menunggu Rilis" untuk IKP itu. Apakah Bupati ingin melihat nilai tahun N-1 sebagai pengganti sementara?
+10. **Nilai rilis tahun lalu sebagai baseline**: di simulasi disimpan sebagai baris realisasi tahun 2025 (rekap 2025 kini
+    hanya berisi indeks). Alternatif: isi `ikp.baseline`.
+11. **Hitungan tidak-bulanan** (triwulanan/semesteran) diizinkan: target dicicil hanya ke bulan ukur.
+12. **eKin** membaca salinan `ikp_realisasi`; setelah data `aksara_uji` dibetulkan, salinan eKin harus disinkron ulang
+    (`spark ekin:sinkron-ikp`) dan rencana aksi IKI rilis mengikuti `bulan_ukur` (tugas sisi eKin).
+13. Klasifikasi otomatis memakai nama + satuan; "Jumlah … (satuan Indeks/Persen)" tetap posisi bertanda periksa.
+    Perlu daftar putih/hitam per OPD?
+
 ## Keputusan desain penting
 
 - IKP melekat ke **OPD × periode RPJMD** (bukan per dokumen PK). Hapus IKP = *soft delete* (`dihapus_pada`) karena aplikasi
