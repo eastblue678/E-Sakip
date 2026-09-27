@@ -43,12 +43,17 @@
             segarBulanan();
         }
 
-        function segarBulanan() {
+        // Bulan non-ukur (data-ukur="0") selalu kosong: tidak ikut TW maupun cek.
+        function nilaiBulan() {
             var bulan = {};
-            inBln.forEach(function (el) { bulan[el.dataset.bulan] = nilai(el); });
+            inBln.forEach(function (el) { bulan[el.dataset.bulan] = el.dataset.ukur === '0' ? null : nilai(el); });
+            return bulan;
+        }
+        function segarBulanan() {
+            var bulan = nilaiBulan();
             var tw = A.triwulan(bulan, k.metode);
             for (var q = 1; q <= 4; q++) document.getElementById('tw-' + q).textContent = A.fmt(tw[q], 4);
-            tulisCek('cek-bulanan', 'cek-bulanan-pesan', A.cek(k.metode, induKBulanan(), inBln.map(nilai)));
+            tulisCek('cek-bulanan', 'cek-bulanan-pesan', A.cekPola(k.pola, induKBulanan(), bulan));
         }
 
         function tandaiKotor(jenis, el) {
@@ -88,11 +93,23 @@
         if (bB) bB.addEventListener('click', function () {
             var induk = induKBulanan();
             if (induk === null) { A.toast('Isi target tahunan ' + k.tahun + ' dulu.', 'galat'); return; }
-            var hasil = A.bagiRata(induk, 12, k.metode, awalBulanan(), k.bulat);
-            if (!hasil.length) { A.toast('Pilih metode perhitungan dulu.', 'galat'); return; }
-            var ada = inBln.some(function (el) { return !A.kosong(el.value); });
-            (ada ? tanya('Isian target bulanan yang sudah ada akan diganti hasil Bagi Rata. Lanjutkan?') : Promise.resolve(true))
-                .then(function (ya) { if (!ya) return; isiDari(inBln, hasil, 'bulanan'); segarBulanan(); });
+            // Pola ukur: hitungan = cicilan ke bulan ukur; posisi/rilis = bulan ukur
+            // terakhir = target tahunan (bukan dicicil). Bulan non-ukur tidak disentuh.
+            var hasil = A.bagiPola(induk, k.pola, awalBulanan(), k.bulat);
+            if (!Object.keys(hasil).length) { A.toast('Pilih pola ukur (dan bulan ukurnya) dulu.', 'galat'); return; }
+            var ukurIn = inBln.filter(function (el) { return el.dataset.ukur !== '0'; });
+            var ada = ukurIn.some(function (el) { return !A.kosong(el.value); });
+            (ada ? tanya('Isian target bulan ukur yang sudah ada akan diganti. Lanjutkan?') : Promise.resolve(true))
+                .then(function (ya) {
+                    if (!ya) return;
+                    ukurIn.forEach(function (el) {
+                        var v = hasil[el.dataset.bulan];
+                        el.value = v === undefined ? '' : A.fmt(v, 4);
+                        el.classList.remove('salah');
+                        tandaiKotor('bulanan', el);
+                    });
+                    segarBulanan();
+                });
         });
 
         function simpan(jenis) {
@@ -111,7 +128,8 @@
             } else {
                 payload.tahun = k.tahun;
                 payload.bulanan = {};
-                inBln.forEach(function (el) { payload.bulanan[el.dataset.bulan] = el.value; });
+                // Bulan non-ukur dikirim kosong: server membersihkan sisa target lama di bulan itu.
+                inBln.forEach(function (el) { payload.bulanan[el.dataset.bulan] = el.dataset.ukur === '0' ? '' : el.value; });
             }
             var tombol = document.getElementById('simpan-' + jenis);
             if (tombol) { tombol.disabled = true; }

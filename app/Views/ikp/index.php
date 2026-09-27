@@ -27,8 +27,18 @@ $metodeSingkat = ['sum' => 'Akumulasi', 'trend_naik' => 'Posisi ↑', 'trend_tur
         <p class="small text-secondary">Alur kerja: <strong>1.</strong> daftarkan indikator
             → <strong>2.</strong> pecah target 5 tahun menjadi tahunan dan bulanan
             → <strong>3.</strong> isi realisasi setiap bulan → <strong>4.</strong> rekap triwulan dihitung otomatis.</p>
+        <p class="small text-secondary">Setiap IKP punya <strong>pola ukur</strong>: <span class="ikp-pola hitungan">Hitungan</span> dijumlah (target dicicil),
+            <span class="ikp-pola posisi">Posisi</span> diukur sendiri pada bulan ukur, <span class="ikp-pola rilis">Rilis</span> nilai resmi pihak lain (indeks, opini) hanya pada bulan rilisnya — tidak pernah dicicil.</p>
     </div>
 </div>
+<?php if ((int) ($ringkas['pola_ditebak'] ?? 0) > 0): ?>
+    <div class="ikp-info kuning">
+        <i class="fas fa-magnifying-glass"></i>
+        <div><p><strong><?= (int) $ringkas['pola_ditebak'] ?> IKP perlu diperiksa pola ukurnya.</strong> Polanya ditebak otomatis dari nama &amp; satuan indikator
+            (<?= (int) ($ringkas['per_pola']['hitungan'] ?? 0) ?> hitungan, <?= (int) ($ringkas['per_pola']['posisi'] ?? 0) ?> posisi, <?= (int) ($ringkas['per_pola']['rilis'] ?? 0) ?> rilis).
+            Buka IKP bertanda <span class="ikp-pola tebak">Periksa pola ukur</span>, pastikan pola &amp; bulan ukurnya, lalu simpan.</p></div>
+    </div>
+<?php endif; ?>
 
 <!-- ===== Kartu ringkasan ===== -->
 <div class="row g-3 mb-4">
@@ -67,7 +77,7 @@ $metodeSingkat = ['sum' => 'Akumulasi', 'trend_naik' => 'Posisi ↑', 'trend_tur
                 <span class="me-2"><span class="d-inline-block rounded-circle me-1" style="width:8px;height:8px;background:<?= dash_color('hijau')['hex'] ?>"></span><?= (int) $ringkas['hijau'] ?> tercapai</span>
                 <span class="me-2"><span class="d-inline-block rounded-circle me-1" style="width:8px;height:8px;background:<?= dash_color('kuning')['hex'] ?>"></span><?= (int) $ringkas['kuning'] ?> mendekati</span>
                 <span class="me-2"><span class="d-inline-block rounded-circle me-1" style="width:8px;height:8px;background:<?= dash_color('merah')['hex'] ?>"></span><?= (int) $ringkas['merah'] ?> kritis</span>
-                <span><span class="d-inline-block rounded-circle me-1" style="width:8px;height:8px;background:<?= dash_color('abu')['hex'] ?>"></span><?= (int) $ringkas['abu'] ?> belum dinilai</span>
+                <span><span class="d-inline-block rounded-circle me-1" style="width:8px;height:8px;background:<?= dash_color('abu')['hex'] ?>"></span><?= (int) $ringkas['abu'] ?> belum dinilai<?= (int) ($ringkas['menunggu_rilis'] ?? 0) > 0 ? ' (' . (int) $ringkas['menunggu_rilis'] . ' menunggu rilis)' : '' ?></span>
             </div>
         </div>
     </div>
@@ -75,7 +85,7 @@ $metodeSingkat = ['sum' => 'Akumulasi', 'trend_naik' => 'Posisi ↑', 'trend_tur
         <div class="ikp-kartu">
             <div class="kh"><span class="ki" style="background:#3f6296"><i class="fas fa-table-cells"></i></span><span class="kt">Breakdown lengkap</span></div>
             <div class="kn"><?= (int) $ringkas['lengkap_breakdown'] ?> <small>/ <?= (int) $ringkas['jumlah_ikp'] ?></small></div>
-            <div class="ks">IKP yang target tahunan 5 tahun &amp; 12 target bulanan <?= (int) $tahun ?>-nya sudah terisi.
+            <div class="ks">IKP yang target tahunan 5 tahun &amp; target setiap bulan ukur <?= (int) $tahun ?>-nya sudah terisi.
                 <a href="<?= esc($u('adminopd/ikp/breakdown', ['tahun' => $tahun]), 'attr') ?>">Lengkapi&nbsp;›</a></div>
         </div>
     </div>
@@ -146,7 +156,7 @@ $metodeSingkat = ['sum' => 'Akumulasi', 'trend_naik' => 'Posisi ↑', 'trend_tur
                     <th style="width:40px" class="text-center d-none d-md-table-cell">No</th>
                     <th style="min-width:280px; width:38%">Indikator Kinerja Prioritas</th>
                     <th class="d-none d-md-table-cell sempit">Satuan</th>
-                    <th class="d-none d-md-table-cell sempit">Metode</th>
+                    <th class="d-none d-md-table-cell sempit">Pola ukur</th>
                     <th class="text-end d-none d-lg-table-cell sempit">Target 5 Th</th>
                     <th class="text-end sempit d-none d-md-table-cell">Target <?= (int) $tahun ?></th>
                     <th class="d-none d-md-table-cell sempit">Kelengkapan</th>
@@ -164,6 +174,12 @@ $metodeSingkat = ['sum' => 'Akumulasi', 'trend_naik' => 'Posisi ↑', 'trend_tur
                     $kel  = $r['kelengkapan'];
                     $tb   = $r['tahun_berjalan'];
                     $t5   = $ikp['target_5_tahun'] !== null ? ikp_fmt((float) $ikp['target_5_tahun'], 4) : (string) ($ikp['target_5_tahun_teks'] ?? '');
+                    $pola = $r['pola'];
+                    $polaLencana = '<span class="ikp-pola ' . esc($pola['pola'], 'attr') . '" title="' . esc(ikp_pola_meta()[$pola['pola']]['isi'] . (! empty($pola['penerbit']) ? ' Penerbit: ' . $pola['penerbit'] . '.' : ''), 'attr') . '">'
+                        . '<i class="fas ' . ikp_pola_meta()[$pola['pola']]['ikon'] . '"></i>' . esc(ikp_pola_ringkas($pola, (int) $tahun)) . '</span>';
+                    $polaTebak = ! empty($pola['ditebak'])
+                        ? '<a class="ikp-pola tebak" href="' . esc($u('adminopd/ikp/edit/' . $id) . '#bagian-pola', 'attr') . '" title="Pola ukur ditebak otomatis. Periksa lalu simpan form IKP.">Periksa pola ukur</a>'
+                        : '';
                     ?>
                     <tr>
                         <td class="text-center text-secondary d-none d-md-table-cell"><?= $i + 1 ?></td>
@@ -178,7 +194,7 @@ $metodeSingkat = ['sum' => 'Akumulasi', 'trend_naik' => 'Posisi ↑', 'trend_tur
                             <div class="sub">
                                 <?php if (! empty($ikp['program_opd'])): ?><i class="fas fa-folder-open me-1"></i><?= esc(mb_strimwidth((string) $ikp['program_opd'], 0, 110, '…')) ?><?php endif; ?>
                                 <?php if (! empty($ikp['pj_nama'])): ?><span class="ms-2"><i class="fas fa-user-check me-1"></i>PJ: <?= esc($ikp['pj_nama']) ?></span><?php endif; ?>
-                                <span class="d-md-none ms-1">· <?= esc($ikp['satuan_label']) ?> · <?= esc($metodeSingkat[$ikp['metode'] ?? ''] ?? 'metode belum dipilih') ?></span>
+                                <span class="d-md-none ms-1">· <?= esc($ikp['satuan_label']) ?> · <?= $polaLencana ?> <?= $polaTebak ?></span>
                             </div>
                             <?php /* Ponsel: kolom angka & aksi dilipat ke dalam sel ini agar tidak perlu menggulir mendatar. */ ?>
                             <div class="d-md-none ikp-hp-ringkas">
@@ -212,11 +228,12 @@ $metodeSingkat = ['sum' => 'Akumulasi', 'trend_naik' => 'Posisi ↑', 'trend_tur
                         </td>
                         <td class="d-none d-md-table-cell"><?= esc($ikp['satuan_label'] !== '' ? $ikp['satuan_label'] : '-') ?></td>
                         <td class="d-none d-md-table-cell">
-                            <?php if (! empty($ikp['metode'])): ?>
-                                <span class="small" title="<?= esc($metodeJelas[$ikp['metode']]['isi'] ?? '', 'attr') ?>"><?= esc($metodeSingkat[$ikp['metode']] ?? $ikp['metode']) ?></span>
+                            <?php if ($pola['metode'] !== ''): ?>
+                                <?= $polaLencana ?>
                             <?php else: ?>
-                                <span class="badge bg-warning text-dark" title="Tanpa metode, rekap triwulan tidak dapat dihitung">Belum dipilih</span>
+                                <span class="badge bg-warning text-dark" title="Tanpa metode, rekap triwulan tidak dapat dihitung">Metode belum dipilih</span>
                             <?php endif; ?>
+                            <?php if ($polaTebak !== ''): ?><div class="mt-1"><?= $polaTebak ?></div><?php endif; ?>
                         </td>
                         <td class="angka d-none d-lg-table-cell">
                             <?php if ($ikp['target_5_tahun'] !== null): ?>
@@ -231,9 +248,10 @@ $metodeSingkat = ['sum' => 'Akumulasi', 'trend_naik' => 'Posisi ↑', 'trend_tur
                                 <span class="bar"><span style="width: <?= (int) round(100 * $kel['tahunan'] / max(1, $kel['tahunan_dari'])) ?>%"></span></span>
                                 <?= (int) $kel['tahunan'] ?>/<?= (int) $kel['tahunan_dari'] ?> th
                             </div>
-                            <div class="ikp-meter mt-1" title="Target bulanan <?= (int) $tahun ?> terisi <?= (int) $kel['bulanan'] ?> dari 12 bulan">
-                                <span class="bar"><span style="width: <?= (int) round(100 * $kel['bulanan'] / 12) ?>%"></span></span>
-                                <?= (int) $kel['bulanan'] ?>/12 bln
+                            <?php $dari = max(1, (int) ($kel['bulanan_dari'] ?? 12)); ?>
+                            <div class="ikp-meter mt-1" title="Target bulan ukur <?= (int) $tahun ?> terisi <?= (int) $kel['bulanan'] ?> dari <?= $dari ?> bulan ukur">
+                                <span class="bar"><span style="width: <?= (int) round(100 * min($kel['bulanan'], $dari) / $dari) ?>%"></span></span>
+                                <?= (int) $kel['bulanan'] ?>/<?= $dari ?> bln ukur
                             </div>
                         </td>
                         <td class="d-none d-md-table-cell">

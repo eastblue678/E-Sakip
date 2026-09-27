@@ -14,6 +14,11 @@ $metodeSingkat = ['sum' => 'Akumulasi', 'trend_naik' => 'Posisi ↑', 'trend_tur
 $palet = \App\Models\DashboardThresholdModel::COLORS;
 $fmt4 = static fn ($v) => $v === null ? '' : ikp_fmt((float) $v, 4);
 $sel  = static function (array $t) {
+    if (($t['diukur'] ?? true) === false) {
+        // Triwulan tanpa bulan ukur: capaian TIDAK dihitung (bukan 0, bukan 100).
+        return '<span class="sel-tidak-ukur" title="' . esc((string) $t['keterangan'], 'attr') . '">—<small>'
+            . esc($t['status'] === 'menunggu_rilis' ? 'bukan bulan rilis' : 'tidak diukur') . '</small></span>';
+    }
     if ($t['realisasi'] === null && $t['target'] === null) {
         return '<span class="bulan-kunci">–</span>';
     }
@@ -34,8 +39,10 @@ $sel  = static function (array $t) {
 <div class="ikp-info">
     <i class="fas fa-pen-to-square"></i>
     <div>
-        <p>Isi <strong>realisasi</strong> setiap bulan; target bulan itu tampil kecil di bawah kotak. Rekap triwulan dan capaian dihitung otomatis dari bulan yang sudah terisi.
+        <p>Isi <strong>realisasi</strong> pada bulan ukur setiap IKP; target bulan itu tampil kecil di bawah kotak. Rekap triwulan dan capaian dihitung otomatis dari bulan yang sudah terisi.
             Angka <strong>0 adalah realisasi yang sah</strong> (tidak sama dengan kosong); kosongkan kotak untuk menghapus realisasi.</p>
+        <p class="small mb-1">Sel <strong>"—"</strong> = bulan yang tidak diukur menurut pola ukur IKP itu (posisi triwulanan/semesteran, atau indeks resmi di luar bulan rilisnya) — tidak diisi dan tidak dihitung.
+            IKP <span class="ikp-pola rilis">Rilis</span> diisi lewat tombol <em>Catat nilai resmi</em> saat nilainya keluar, wajib dengan tautan bukti publikasi.</p>
         <p class="small text-secondary mb-0">
             <?php if ($bulanTerbuka >= 12): ?>
                 Seluruh bulan <?= (int) $tahun ?> sudah dapat diisi.
@@ -91,26 +98,46 @@ $sel  = static function (array $t) {
                     <?php
                     $ikp    = $r['ikp'];
                     $id     = (int) $ikp['id'];
-                    $metode = (string) ($ikp['metode'] ?? '');
+                    $pola   = $r['pola'];
+                    $metode = (string) $pola['metode'];
+                    $rilis  = $pola['pola'] === 'rilis';
                     $tb     = $r['tahun_berjalan'];
                     ?>
-                    <tr data-ikp="<?= $id ?>">
+                    <tr data-ikp="<?= $id ?>" data-pola="<?= esc($pola['pola'], 'attr') ?>" data-penerbit="<?= esc((string) ($pola['penerbit'] ?? ''), 'attr') ?>">
                         <td class="lekat">
                             <div class="nama"><?= esc(mb_strimwidth((string) $ikp['output_prioritas'], 0, 120, '…')) ?></div>
                             <div class="sub"><?= esc($ikp['satuan_label'] !== '' ? $ikp['satuan_label'] : '-') ?> ·
-                                <?= $metode !== '' ? esc($metodeSingkat[$metode] ?? $metode) : '<span class="text-danger">metode belum dipilih</span>' ?>
-                                · target <?= esc(ikp_fmt($r['target_tahunan'], 4)) ?></div>
+                                <?= $metode !== '' ? '<span class="ikp-pola ' . esc($pola['pola'], 'attr') . '" title="' . esc(ikp_pola_meta()[$pola['pola']]['realisasi'], 'attr') . '">' . esc(ikp_pola_ringkas($pola, (int) $tahun)) . '</span>' : '<span class="text-danger">pola ukur belum dikonfirmasi</span>' ?>
+                                · target <?= esc(ikp_fmt($r['target_tahunan'], 4)) ?>
+                                <?php if (($r['kelengkapan']['abaikan'] ?? 0) > 0): ?><span class="d-block text-secondary" style="font-size:.66rem" title="Isian di bulan yang tidak diukur tetap tersimpan tetapi tidak dihitung"><i class="fas fa-eye-slash me-1"></i><?= (int) $r['kelengkapan']['abaikan'] ?> isian lama di bulan non-ukur diabaikan</span><?php endif; ?></div>
                         </td>
                         <?php for ($m = 1; $m <= 12; $m++): ?>
-                            <?php $b = $r['bulan'][$m]; $kunci = $m > $bulanTerbuka || ! $bolehUbah; $adaCat = ($b['keterangan'] ?? '') !== '' || ($b['bukti_url'] ?? '') !== ''; ?>
-                            <td data-bulan="<?= $m ?>" data-ket="<?= esc((string) ($b['keterangan'] ?? ''), 'attr') ?>" data-bukti="<?= esc((string) ($b['bukti_url'] ?? ''), 'attr') ?>">
+                            <?php
+                            $b      = $r['bulan'][$m];
+                            $adaCat = ($b['keterangan'] ?? '') !== '' || ($b['bukti_url'] ?? '') !== '';
+                            ?>
+                            <?php if (! $b['diukur']): ?>
+                                <td data-bulan="<?= $m ?>" data-ukur="0" title="<?= esc($b['keadaan_ket'], 'attr') ?>">
+                                    <span class="sel-tidak-ukur">—<small><?= $rilis ? 'bukan bulan rilis' : 'tidak diukur' ?></small></span>
+                                </td>
+                                <?php continue; ?>
+                            <?php endif; ?>
+                            <?php $kunci = ! $b['terbuka'] || ! $bolehUbah; ?>
+                            <td data-bulan="<?= $m ?>" data-ket="<?= esc((string) ($b['keterangan'] ?? ''), 'attr') ?>" data-bukti="<?= esc((string) ($b['bukti_url'] ?? ''), 'attr') ?>"
+                                <?= $b['keadaan'] !== 'diukur' ? 'title="' . esc($b['keadaan_ket'], 'attr') . '"' : '' ?>>
                                 <div class="sel-bulan">
-                                    <input type="text" class="isian" data-nol="sah" data-bulan="<?= $m ?>"
-                                           aria-label="Realisasi <?= esc(ikp_nama_bulan($m), 'attr') ?>"
-                                           value="<?= esc($fmt4($b['realisasi']), 'attr') ?>" placeholder="<?= $m > $bulanTerbuka ? '' : '–' ?>" <?= $kunci ? 'disabled' : '' ?>>
+                                    <input type="text" class="isian" data-nol="sah" data-bulan="<?= $m ?>" <?= $rilis ? 'data-rilis="1" readonly' : '' ?>
+                                           aria-label="<?= $rilis ? 'Nilai resmi ' . esc(ikp_bulan_rilis_label($pola, (int) $tahun, $m, false), 'attr') : 'Realisasi ' . esc(ikp_nama_bulan($m), 'attr') ?>"
+                                           value="<?= esc($fmt4($b['realisasi']), 'attr') ?>" placeholder="<?= $b['terbuka'] ? '–' : '' ?>" <?= $kunci ? 'disabled' : '' ?>>
                                     <span class="tgt" title="Target <?= esc(ikp_nama_bulan($m), 'attr') ?>">T: <?= esc(ikp_fmt($b['target'], 4)) ?></span>
-                                    <button type="button" class="cat<?= $adaCat ? ' ada' : '' ?>" data-bulan="<?= $m ?>" <?= $m > $bulanTerbuka ? 'disabled' : '' ?>
-                                            title="<?= $adaCat ? 'Lihat/ubah keterangan & bukti' : 'Tambah keterangan & bukti' ?>"><i class="fas fa-paperclip"></i><?= $adaCat ? ' ada' : '' ?></button>
+                                    <?php if ($rilis && $b['keadaan'] === 'belum_waktunya'): ?>
+                                        <span class="tgt" style="color:#9a6b00">menunggu rilis</span>
+                                    <?php elseif ($rilis && ! $kunci): ?>
+                                        <button type="button" class="cat catat-rilis<?= $adaCat ? ' ada' : '' ?>" data-bulan="<?= $m ?>" title="Catat nilai resmi beserta tautan bukti publikasi"><i class="fas fa-certificate"></i> Catat nilai resmi</button>
+                                    <?php else: ?>
+                                        <button type="button" class="cat<?= $adaCat ? ' ada' : '' ?>" data-bulan="<?= $m ?>" <?= $b['terbuka'] ? '' : 'disabled' ?>
+                                                title="<?= $adaCat ? 'Lihat/ubah keterangan & bukti' : 'Tambah keterangan & bukti' ?>"><i class="fas fa-paperclip"></i><?= $adaCat ? ' ada' : '' ?></button>
+                                    <?php endif; ?>
                                 </div>
                             </td>
                         <?php endfor; ?>
@@ -132,7 +159,7 @@ $sel  = static function (array $t) {
             </tbody>
         </table>
     </div>
-    <p class="small text-secondary mt-2 mb-0"><i class="fas fa-circle-info me-1"></i>Capaian triwulan hanya memakai bulan yang realisasinya terisi (triwulan berjalan ditandai "berjalan"). Warna status mengikuti ambang capaian Pengaturan Dashboard.</p>
+    <p class="small text-secondary mt-2 mb-0"><i class="fas fa-circle-info me-1"></i>Capaian triwulan hanya memakai bulan ukur yang realisasinya terisi (triwulan berjalan ditandai "berjalan"). Hitungan = jumlah realisasi ÷ jumlah target; posisi &amp; rilis = nilai ukur terakhir ÷ target bulan itu. Triwulan tanpa bulan ukur tampil "—" dan tidak dihitung. Warna status mengikuti ambang capaian Pengaturan Dashboard.</p>
 <?php endif; ?>
 
 <!-- Modal keterangan & bukti -->
@@ -145,9 +172,14 @@ $sel  = static function (array $t) {
             </div>
             <div class="modal-body">
                 <div class="small text-secondary mb-2" id="modal-catatan-ikp"></div>
+                <div id="blok-nilai-rilis" hidden>
+                    <label class="form-label wajib" for="cat-nilai">Nilai resmi yang dirilis</label>
+                    <input type="text" class="form-control isian w-100 text-start mb-1" data-nol="sah" id="cat-nilai" placeholder="mis. 97,25">
+                    <div class="form-text mb-3" id="cat-nilai-ket">Tulis persis nilai yang diumumkan penerbit. Nilai rilis tidak dicicil dan tidak dijumlah.</div>
+                </div>
                 <label class="form-label" for="cat-keterangan">Keterangan (opsional)</label>
                 <textarea class="form-control mb-3" id="cat-keterangan" rows="3" maxlength="2000" placeholder="mis. Penambahan 21 nasabah dari 3 bank sampah unit baru"></textarea>
-                <label class="form-label" for="cat-bukti">Tautan bukti dukung (opsional)</label>
+                <label class="form-label" for="cat-bukti" id="cat-bukti-label">Tautan bukti dukung (opsional)</label>
                 <input type="url" class="form-control" id="cat-bukti" maxlength="500" placeholder="https://…">
                 <div class="form-text">Tautan ke dokumen/foto (mis. Google Drive). Harus diawali http:// atau https://.</div>
                 <div class="mt-2" id="cat-bukti-buka" hidden><a href="#" target="_blank" rel="noopener noreferrer"><i class="fas fa-up-right-from-square me-1"></i>Buka tautan bukti</a></div>

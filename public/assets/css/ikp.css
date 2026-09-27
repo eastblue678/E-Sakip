@@ -173,6 +173,26 @@ main .ikp-grid tbody tr > td.tw, main .ikp-grid tbody tr:hover > td.tw { backgro
 .ikp-bs-tanda { display: inline-flex; align-items: center; gap: 6px; font-size: .76rem; background: #eef6f1; color: #0b5a33; border: 1px solid #d3e8db; border-radius: 8px; padding: 3px 8px; }
 .ikp-metode-ket { font-size: .78rem; color: #4d5b52; background: #f6f9f7; border-radius: 10px; padding: 8px 10px; margin-top: 6px; }
 .wajib::after { content: ' *'; color: #dc3545; }
+/* Pola ukur (28-09-2026): tiga kartu + chip bulan ukur. Chip = kotak centang biasa yang dirapikan; tanpa elemen melayang. */
+.ikp-polapilih { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.ikp-polapilih .kjl + .kjl { margin-top: 3px; }
+.ikp-chip-bulan { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 6px; }
+.ikp-chip-bulan label { margin: 0; cursor: pointer; }
+.ikp-chip-bulan input { position: absolute; opacity: 0; pointer-events: none; }
+.ikp-chip-bulan span { display: block; text-align: center; font-size: .78rem; font-weight: 700; padding: 6px 0; border-radius: 9px; border: 1.5px solid #dfe7e2; color: #7b8a80; background: #fff; }
+.ikp-chip-bulan input:checked + span { background: #00743e; border-color: #00743e; color: #fff; }
+.ikp-chip-bulan input:focus-visible + span { outline: 2px solid #6eab11; outline-offset: 2px; }
+.ikp-pola { display: inline-flex; align-items: center; gap: 5px; font-size: .7rem; font-weight: 700; border-radius: 7px; padding: 2px 7px; white-space: nowrap; }
+.ikp-pola.hitungan { background: #e7f0fb; color: #1864ab; }
+.ikp-pola.posisi { background: #e6f5ec; color: #0b6b3a; }
+.ikp-pola.rilis { background: #fbf3dc; color: #7a5a00; }
+.ikp-pola.tebak { background: #fff4e0; color: #9a5b00; border: 1px dashed #e0a340; }
+/* Sel bulan yang tidak diukur (kisi target & realisasi) */
+.sel-tidak-ukur { display: block; text-align: center; color: #9aa7a0; font-weight: 700; line-height: 1.15; }
+.sel-tidak-ukur small { display: block; font-weight: 600; font-size: .6rem; color: #a3afa8; white-space: normal; }
+.ikp-sel.tidak-ukur { background: #f6f8f7; border-style: dashed; }
+.ikp-sel.tidak-ukur .isian { background: transparent; }
+
 /* Dulu sticky di bawah layar: saat digulir, isian formulir tembus di belakangnya ("field melayang"). Kini di ujung formulir. */
 .ikp-tombol-bawah { position: static; background: #fff; border-top: 1px solid #e6ece8; padding: 12px 0; margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 
@@ -204,4 +224,5 @@ main .ikp-grid tbody tr > td.tw, main .ikp-grid tbody tr:hover > td.tw { backgro
   .ikp-sel-grid.thn { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .ikp-bagian { padding: 12px 12px 2px; }
   .ikp-tabel .sembunyi-hp { display: none; }
+  .ikp-chip-bulan { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 }

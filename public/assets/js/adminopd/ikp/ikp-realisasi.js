@@ -33,6 +33,14 @@
 
         function isiTw(td, t) {
             td.innerHTML = '';
+            if (t.diukur === false) {
+                // Triwulan tanpa bulan ukur: capaian tidak dihitung (pola ukur).
+                var n = document.createElement('span'); n.className = 'sel-tidak-ukur'; n.title = t.keterangan || '';
+                n.textContent = '—';
+                var k = document.createElement('small'); k.textContent = t.status === 'menunggu_rilis' ? 'bukan bulan rilis' : 'tidak diukur';
+                n.appendChild(k); td.appendChild(n);
+                return;
+            }
             if (t.realisasi === '-' && t.target === '-') { td.innerHTML = '<span class="bulan-kunci">–</span>'; return; }
             var d = document.createElement('div'); d.className = 'ikp-tw';
             var r = document.createElement('span'); r.className = 'r'; r.textContent = t.realisasi;
@@ -62,12 +70,15 @@
             });
             tr.querySelectorAll('td[data-bulan]').forEach(function (td) {
                 var b = baris.bulan[td.dataset.bulan];
-                if (!b) return;
+                if (!b || td.dataset.ukur === '0') return;
                 td.dataset.ket = b.keterangan; td.dataset.bukti = b.bukti_url;
                 var tombol = td.querySelector('.cat');
+                if (!tombol) return;
                 var ada = b.keterangan !== '' || b.bukti_url !== '';
                 tombol.classList.toggle('ada', ada);
-                tombol.innerHTML = '<i class="fas fa-paperclip"></i>' + (ada ? ' ada' : '');
+                tombol.innerHTML = tombol.classList.contains('catat-rilis')
+                    ? '<i class="fas fa-certificate"></i> Catat nilai resmi'
+                    : '<i class="fas fa-paperclip"></i>' + (ada ? ' ada' : '');
             });
             tr.querySelectorAll('td[data-tw]').forEach(function (td) { isiTw(td, baris.triwulan[td.dataset.tw]); });
             isiYtd(tr.querySelector('td[data-ytd]'), baris.tahun_berjalan);
@@ -106,6 +117,14 @@
 
         tabel.querySelectorAll('tbody tr').forEach(function (tr) {
             tr.querySelectorAll('input.isian').forEach(function (el) {
+                // Nilai rilis diisi lewat modal (wajib bukti publikasi), bukan diketik di kisi.
+                if (el.dataset.rilis === '1') {
+                    el.addEventListener('click', function () {
+                        var t = el.closest('td').querySelector('button.catat-rilis');
+                        if (t && !t.disabled) t.click();
+                    });
+                    return;
+                }
                 el.addEventListener('input', function () {
                     (kotor[tr.dataset.ikp] = kotor[tr.dataset.ikp] || {})[el.dataset.bulan] = true;
                     el.classList.add('berubah');
@@ -135,18 +154,29 @@
         }
         inBukti.addEventListener('input', segarBuka);
 
+        var blokNilai = document.getElementById('blok-nilai-rilis');
+        var inNilai = document.getElementById('cat-nilai');
         tabel.addEventListener('click', function (e) {
             var b = e.target.closest('button.cat');
             if (!b || b.disabled || !modal) return;
             var td = b.closest('td'), tr = b.closest('tr');
-            aktif = { tr: tr, td: td, bulan: td.dataset.bulan };
+            var rilis = b.classList.contains('catat-rilis');
+            aktif = { tr: tr, td: td, bulan: td.dataset.bulan, rilis: rilis };
+            blokNilai.hidden = !rilis;
+            document.getElementById('cat-bukti-label').textContent = rilis ? 'Tautan bukti publikasi resmi (wajib)' : 'Tautan bukti dukung (opsional)';
+            document.getElementById('cat-bukti-label').classList.toggle('wajib', rilis);
+            if (rilis) {
+                inNilai.value = td.querySelector('input.isian').value;
+                var pen = tr.dataset.penerbit;
+                document.getElementById('cat-nilai-ket').textContent = 'Tulis persis nilai yang diumumkan' + (pen ? ' ' + pen : ' penerbit') + '. Nilai rilis tidak dicicil dan tidak dijumlah.';
+            }
             var nama = tr.querySelector('.lekat .nama').textContent.trim();
             document.getElementById('modal-catatan-judul').textContent = 'Keterangan & bukti — ' + ['', 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'][td.dataset.bulan] + ' ' + tahun;
             document.getElementById('modal-catatan-ikp').textContent = nama;
             inKet.value = td.dataset.ket || '';
             inBukti.value = td.dataset.bukti || '';
             var bisa = !!document.getElementById('cat-simpan') && !td.querySelector('input.isian').disabled;
-            inKet.disabled = !bisa; inBukti.disabled = !bisa;
+            inKet.disabled = !bisa; inBukti.disabled = !bisa; inNilai.disabled = !bisa;
             var sb = document.getElementById('cat-simpan');
             if (sb) sb.hidden = !bisa;
             segarBuka();
@@ -164,6 +194,11 @@
             }
             var bulan = {};
             bulan[aktif.bulan] = { keterangan: inKet.value.trim(), bukti_url: bukti };
+            if (aktif.rilis) {
+                if (!A.sah(inNilai.value)) { A.toast('Nilai resmi harus berupa angka (contoh: 97,25).', 'galat'); inNilai.focus(); return; }
+                if (!A.kosong(inNilai.value) && bukti === '') { A.toast('Nilai resmi wajib disertai tautan bukti publikasi.', 'galat'); inBukti.focus(); return; }
+                bulan[aktif.bulan].realisasi = inNilai.value;
+            }
             catSimpan.disabled = true;
             A.kirim(url, { ikp_id: parseInt(aktif.tr.dataset.ikp, 10), tahun: tahun, bulan: bulan })
                 .then(function (d) {

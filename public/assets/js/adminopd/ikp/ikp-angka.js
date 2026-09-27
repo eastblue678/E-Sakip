@@ -149,6 +149,32 @@
         return h(true, 'Periode terakhir sama dengan target ' + fmt(induk, 4) + (naik ? ', naik bertahap.' : ', turun bertahap.'), 0, 'cocok');
     }
 
+    // ------------------------------------------------------------------
+    // Pola ukur (cermin ikp_bagi_pola / ikp_cek_bulanan_pola)
+    // pola = { pola: 'hitungan'|'posisi'|'rilis', metode: 'sum'|'trend_*', bulan_ukur: [..] }
+    // ------------------------------------------------------------------
+
+    /** Target tahunan -> {bulan: nilai} HANYA untuk bulan ukur. */
+    function bagiPola(total, pola, awal, bulat) {
+        var ukur = (pola && pola.bulan_ukur) || [];
+        if (!ukur.length || !metodeSah(pola.metode)) return {};
+        var hasil = pola.pola === 'hitungan'
+            ? bagiRata(total, ukur.length, 'sum', null, bulat)
+            : bagiRata(total, ukur.length, pola.metode, awal, bulat);
+        var out = {};
+        ukur.forEach(function (m, i) { out[m] = hasil[i]; });
+        return out;
+    }
+
+    /** Cek target bulanan: hanya bulan ukur; "periode terakhir" = bulan ukur terakhir. */
+    function cekPola(pola, induk, bulan) {
+        var ukur = (pola && pola.bulan_ukur) || [];
+        return cek(pola ? pola.metode : '', induk, ukur.map(function (m) {
+            var v = bulan[m];
+            return v === undefined ? null : v;
+        }));
+    }
+
     /** HTML lencana hasil cek (kelas .ikp-cek.cocok|selisih|netral). */
     function lencanaCek(h) {
         var kelas = h.status === 'cocok' ? 'cocok' : (h.status === 'selisih' ? 'selisih' : 'netral');
@@ -267,6 +293,7 @@
         tanya: tanya,
         rapikan: rapikan, kosong: kosong, sah: sah, baca: baca, fmt: fmt, metodeSah: metodeSah,
         triwulan: triwulan, bagiRata: bagiRata, cek: cek, lencanaCek: lencanaCek,
+        bagiPola: bagiPola, cekPola: cekPola,
         kirim: kirim, ambil: ambil, toast: toast, pasangIsian: pasangIsian
     };
 

@@ -20,16 +20,22 @@
         function isian(tr) { return Array.prototype.slice.call(tr.querySelectorAll('input.isian')); }
         function induk(tr) { return jenis === 'tahunan' ? angka(tr.dataset.t5) : angka(tr.dataset.induk); }
 
+        function pola(tr) { try { return JSON.parse(tr.dataset.pola || '{}'); } catch (e) { return {}; } }
+
         function segar(tr) {
-            var nilai = isian(tr).map(function (el) { return A.baca(el.value, true); });
+            var inputs = isian(tr);
+            var nilai = inputs.map(function (el) { return el.dataset.ukur === '0' ? null : A.baca(el.value, true); });
             var sel = tr.querySelector('.sel-cek');
             sel.innerHTML = '';
-            sel.appendChild(A.lencanaCek(A.cek(tr.dataset.metode, induk(tr), nilai)));
             if (jenis === 'bulanan') {
+                // Pola ukur: hanya bulan ukur yang diperiksa & direkap.
                 var bulan = {};
-                nilai.forEach(function (v, i) { bulan[i + 1] = v; });
+                inputs.forEach(function (el, i) { bulan[el.dataset.kunci] = nilai[i]; });
+                sel.appendChild(A.lencanaCek(A.cekPola(pola(tr), induk(tr), bulan)));
                 var tw = A.triwulan(bulan, tr.dataset.metode);
                 tr.querySelectorAll('td[data-tw]').forEach(function (td) { td.textContent = A.fmt(tw[td.dataset.tw], 4); });
+            } else {
+                sel.appendChild(A.lencanaCek(A.cek(tr.dataset.metode, induk(tr), nilai)));
             }
         }
 
@@ -53,7 +59,7 @@
                         inputs.forEach(function (el) { if (d.tahunan[el.dataset.kunci] !== undefined) el.value = d.tahunan[el.dataset.kunci]; });
                         sel.innerHTML = ''; sel.appendChild(A.lencanaCek(d.cek_tahunan));
                     } else if (d.baris) {
-                        inputs.forEach(function (el) { el.value = d.baris.bulan[el.dataset.kunci].target; });
+                        inputs.forEach(function (el) { if (el.dataset.ukur !== '0') el.value = d.baris.bulan[el.dataset.kunci].target; });
                         tr.querySelectorAll('td[data-tw]').forEach(function (td) { td.textContent = d.baris.triwulan[td.dataset.tw].target; });
                         sel.innerHTML = ''; sel.appendChild(A.lencanaCek(d.baris.cek_bulanan));
                     }
@@ -73,12 +79,18 @@
                 A.toast(jenis === 'tahunan' ? 'Target 5 tahun IKP ini belum berupa angka.' : 'Target tahunan ' + tahun + ' IKP ini belum diisi.', 'galat');
                 return;
             }
-            var inputs = isian(tr);
+            var inputs = isian(tr).filter(function (el) { return el.dataset.ukur !== '0'; });
             var awal = jenis === 'tahunan' ? angka(tr.dataset.baseline) : angka(tr.dataset.awal);
-            var hasil = A.bagiRata(total, inputs.length, tr.dataset.metode, awal, tr.dataset.bulat === '1');
-            if (!hasil.length) { A.toast('Pilih metode perhitungan IKP ini dulu.', 'galat'); return; }
+            var hasil;
+            if (jenis === 'tahunan') {
+                hasil = A.bagiRata(total, inputs.length, tr.dataset.metode, awal, tr.dataset.bulat === '1');
+            } else {
+                var peta = A.bagiPola(total, pola(tr), awal, tr.dataset.bulat === '1');
+                hasil = Object.keys(peta).length ? inputs.map(function (el) { return peta[el.dataset.kunci]; }) : [];
+            }
+            if (!hasil.length) { A.toast('Pilih pola ukur IKP ini dulu (form IKP).', 'galat'); return; }
             var ada = inputs.some(function (el) { return !A.kosong(el.value); });
-            (ada ? A.tanya('Isian pada baris ini akan diganti hasil Bagi Rata. Lanjutkan?') : Promise.resolve(true)).then(function (ya) {
+            (ada ? A.tanya('Isian pada baris ini akan diganti. Lanjutkan?') : Promise.resolve(true)).then(function (ya) {
                 if (!ya) return;
                 inputs.forEach(function (el, i) { el.value = A.fmt(hasil[i], 4); el.classList.add('berubah'); el.classList.remove('salah'); });
                 tr.classList.add('kotor'); adaKotor = true;

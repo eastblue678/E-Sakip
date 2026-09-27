@@ -85,14 +85,18 @@ $no = 0;
                     <td class="c"><?= $no ?></td>
                     <td>
                         <?= esc($ikp['output_prioritas']) ?>
-                        <div class="kecil"><?= esc(trim(($ikp['pu_nama'] ?? '') . ' · ' . ($metodeSingkat[$ikp['metode'] ?? ''] ?? 'metode belum dipilih'), ' ·')) ?></div>
+                        <div class="kecil"><?= esc(trim(($ikp['pu_nama'] ?? '') . ' · ' . ikp_pola_ringkas($r['pola'], (int) $tahun), ' ·')) ?></div>
                     </td>
                     <td class="c"><?= esc($ikp['satuan_label'] !== '' ? $ikp['satuan_label'] : '-') ?></td>
                     <td class="r"><?= esc($f($r['target_tahunan'])) ?></td>
                     <?php for ($q = 1; $q <= 4; $q++): $t = $r['triwulan'][$q]; ?>
-                        <td class="r"><?= esc($f($t['target'])) ?></td>
-                        <td class="r"><?= esc($f($t['realisasi'])) ?></td>
-                        <?= $pct($t['capaian'], $t['warna'], $t['status_label']) ?>
+                        <?php if (($t['diukur'] ?? true) === false): ?>
+                            <td class="c pdf-muted" colspan="3">— tidak diukur</td>
+                        <?php else: ?>
+                            <td class="r"><?= esc($f($t['target'])) ?></td>
+                            <td class="r"><?= esc($f($t['realisasi'])) ?></td>
+                            <?= $pct($t['capaian'], $t['warna'], $t['status_label']) ?>
+                        <?php endif; ?>
                     <?php endfor; ?>
                     <?php $w = dash_color($tb['warna']); ?>
                     <td class="c" style="background:<?= esc($w['soft'], 'attr') ?>;color:<?= esc($w['hex'], 'attr') ?>;font-weight:bold">
@@ -106,8 +110,9 @@ $no = 0;
 </table>
 
 <div class="catatan">
-    Catatan: IKP berada pada periode RPJMD <?= (int) $periode['awal'] ?>–<?= (int) $periode['akhir'] ?>. Metode akumulasi menjumlahkan nilai bulanan;
-    metode posisi memakai nilai bulan terakhir yang terisi. Capaian hanya menghitung bulan yang realisasinya sudah diisi
+    Catatan: IKP berada pada periode RPJMD <?= (int) $periode['awal'] ?>–<?= (int) $periode['akhir'] ?>. Pola ukur hitungan menjumlahkan nilai bulan ukur;
+    pola posisi dan rilis memakai nilai bulan ukur terakhir yang terisi (nilai rilis resmi pihak lain tidak pernah dicicil atau dijumlah).
+    Triwulan tanpa bulan ukur tertulis "tidak diukur" dan tidak dihitung. Capaian hanya menghitung bulan yang realisasinya sudah diisi
     (triwulan berjalan belum penuh). Warna mengikuti ambang status capaian Pengaturan Dashboard AKSARA.
 </div>
 </body>

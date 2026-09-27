@@ -11,6 +11,11 @@
  */
 $metodeSingkat = ['sum' => 'Akumulasi', 'trend_naik' => 'Posisi ↑', 'trend_turun' => 'Posisi ↓', 'trend_flat' => 'Tetap'];
 $sel = static function (array $t) {
+    if (($t['diukur'] ?? true) === false) {
+        // Triwulan tanpa bulan ukur (pola ukur): tidak dihitung, bukan 0 dan bukan 100.
+        return '<span class="sel-tidak-ukur" title="' . esc((string) $t['keterangan'], 'attr') . '">—<small>'
+            . esc($t['status'] === 'menunggu_rilis' ? 'bukan bulan rilis' : 'tidak diukur') . '</small></span>';
+    }
     if ($t['realisasi'] === null && $t['target'] === null) {
         return '<span class="text-secondary">–</span>';
     }
@@ -56,7 +61,7 @@ $no = 0;
                 <?= ikp_lencana_status('hijau', (int) $ringkas['hijau'] . ' tercapai / melampaui') ?>
                 <?= ikp_lencana_status('kuning', (int) $ringkas['kuning'] . ' mendekati / perlu perhatian') ?>
                 <?= ikp_lencana_status('merah', (int) $ringkas['merah'] . ' kritis') ?>
-                <?= ikp_lencana_status('abu', (int) $ringkas['abu'] . ' belum dapat dinilai') ?>
+                <?= ikp_lencana_status('abu', (int) $ringkas['abu'] . ' belum dapat dinilai' . ((int) ($ringkas['menunggu_rilis'] ?? 0) > 0 ? ' (' . (int) $ringkas['menunggu_rilis'] . ' menunggu rilis)' : '')) ?>
             </div>
             <div class="ks">Status per IKP memakai ambang capaian Pengaturan Dashboard; hanya bulan yang realisasinya terisi yang dihitung.</div>
         </div>
@@ -113,7 +118,8 @@ $no = 0;
                                     <span class="ikp-pu mb-1" style="--pu: <?= esc($ikp['pu_warna'] ?: '#00743e', 'attr') ?>"><i class="fas <?= esc($ikp['pu_ikon'] ?: 'fa-star', 'attr') ?>"></i><?= esc($ikp['pu_nama']) ?></span>
                                 <?php endif; ?>
                                 <div class="nama"><a class="text-reset text-decoration-none" href="<?= esc($u('adminopd/ikp/target/' . (int) $ikp['id'], ['tahun' => $tahun]), 'attr') ?>"><?= esc($ikp['output_prioritas']) ?></a></div>
-                                <div class="sub"><?= esc($ikp['satuan_label'] !== '' ? $ikp['satuan_label'] : '-') ?> · <?= esc($metodeSingkat[$ikp['metode'] ?? ''] ?? 'metode belum dipilih') ?></div>
+                                <div class="sub"><?= esc($ikp['satuan_label'] !== '' ? $ikp['satuan_label'] : '-') ?> ·
+                                    <span class="ikp-pola <?= esc($r['pola']['pola'], 'attr') ?>"><?= esc(ikp_pola_ringkas($r['pola'], (int) $tahun)) ?></span></div>
                             </td>
                             <td class="angka fw-bold"><?= esc(ikp_fmt($r['target_tahunan'], 4)) ?></td>
                             <?php for ($q = 1; $q <= 4; $q++): ?>
@@ -132,7 +138,8 @@ $no = 0;
     </div>
     <p class="small text-secondary mt-2 mb-0">
         <i class="fas fa-circle-info me-1"></i>Setiap sel triwulan: <strong>realisasi</strong> / target, lalu capaian.
-        Akumulasi: dijumlah per bulan; posisi: nilai bulan terakhir yang terisi. Triwulan berjalan dihitung dari bulan yang sudah terisi saja.
+        Hitungan: dijumlah per bulan ukur; posisi &amp; rilis: nilai bulan ukur terakhir yang terisi (tidak dijumlah). Triwulan tanpa bulan ukur tampil "—" dan tidak dihitung.
+        Triwulan berjalan dihitung dari bulan yang sudah terisi saja; indeks resmi yang belum dirilis berstatus "Menunggu Rilis" (tidak ikut rata-rata).
     </p>
 <?php endif; ?>
 

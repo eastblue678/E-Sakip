@@ -3,7 +3,7 @@
  *   - kategori penugasan_* -> tampilkan "Dasar penugasan"
  *   - saran Buku Saku (GET ikp/buku-saku?q=, ≥ 3 huruf) -> isi kolom + buku_saku_id
  *   - satuan: daftar master atau tulis sendiri
- *   - penjelasan metode
+ *   - pola ukur (hitungan/posisi/rilis): arah, periode & chip bulan ukur, penerbit + saran rilis
  *   - simpul pohon kinerja -> indikator (GET ikp/node)
  *   - penanggung jawab: Select2 AJAX (GET ikp/pegawai?q=) -> jabatan otomatis
  * Semua pilihan divalidasi ulang di server; skrip ini hanya kemudahan.
@@ -34,25 +34,104 @@
         form.querySelectorAll('input[name="kategori"]').forEach(function (r) { r.addEventListener('change', segarKategori); });
         segarKategori();
 
-        // ---------------- Metode ----------------
-        var metode = el('metode');
-        function segarMetode() {
-            var j = cfg.metodeJelas[metode.value];
-            var kotak = el('metode-ket');
-            kotak.innerHTML = '';
-            if (!j) {
-                kotak.textContent = 'Metode menentukan cara bulan dijumlah menjadi triwulan & tahun, serta cara capaian dihitung.';
-                return;
-            }
-            var b = document.createElement('strong'); b.textContent = j.judul + ': ';
-            kotak.appendChild(b);
-            kotak.appendChild(document.createTextNode(j.isi));
-            var c = document.createElement('div'); c.className = 'text-secondary mt-1';
-            c.textContent = 'Contoh: ' + j.contoh + '.';
-            kotak.appendChild(c);
+        // ---------------- Pola ukur ----------------
+        // hitungan -> metode sum (arah disembunyikan); posisi/rilis -> arah.
+        // Periode mengisi chip bulan bawaan; chip yang diubah menurunkan periode
+        // (cermin ikp_periode_dari_bulan). Rilis: penerbit + saran tabel bawaan.
+        var chips = Array.prototype.slice.call(form.querySelectorAll('input[name="bulan_ukur[]"]'));
+        var selPeriode = el('periode_ukur');
+        function pola() {
+            var r = form.querySelector('input[name="pola_ukur"]:checked');
+            return r ? r.value : '';
         }
-        metode.addEventListener('change', segarMetode);
-        segarMetode();
+        function bulanUkur() {
+            return chips.filter(function (c) { return c.checked; }).map(function (c) { return parseInt(c.value, 10); });
+        }
+        function setBulan(daftar) {
+            chips.forEach(function (c) { c.checked = daftar.indexOf(parseInt(c.value, 10)) !== -1; });
+        }
+        function periodeDari(b) {
+            var n = b.length;
+            if (n === 1) return 'tahunan';
+            var nama = { 2: 'semesteran', 4: 'triwulanan', 12: 'bulanan' }[n];
+            if (!nama) return 'khusus';
+            var jarak = 12 / n;
+            for (var i = 1; i < n; i++) if (b[i] - b[i - 1] !== jarak) return 'khusus';
+            return nama;
+        }
+        var NAMA_BLN = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+        function saranRilis() {
+            var ss = el('satuan_id');
+            var teks = el('output_prioritas').value + ' ' + (ss.options[ss.selectedIndex] && ss.value ? ss.options[ss.selectedIndex].text : '') + ' ' + el('satuan_teks').value;
+            var daftar = cfg.saranRilis || [];
+            for (var i = 0; i < daftar.length; i++) {
+                try { if (new RegExp(daftar[i].cocok, 'i').test(teks)) return daftar[i]; } catch (e) { /* pola tak terbaca: lewati */ }
+            }
+            return null;
+        }
+        function segarSaran() {
+            var kotak = el('saran-rilis');
+            if (pola() !== 'rilis') { kotak.hidden = true; return; }
+            var s = saranRilis();
+            var b = bulanUkur();
+            // Saran disembunyikan bila isian sudah sama persis dengan saran.
+            if (!s || (el('penerbit').value.trim() === s.penerbit && b.length === 1 && b[0] === s.bulan
+                && el('rilis_tahun_berikut').checked === !!s.tahun_berikut)) { kotak.hidden = true; return; }
+            el('saran-rilis-teks').textContent = 'Saran: ' + s.penerbit + ' · rilis ' + NAMA_BLN[s.bulan] + (s.tahun_berikut ? ' tahun berikutnya' : '') + '. ' + s.catatan;
+            kotak.hidden = false;
+            kotak.dataset.saran = JSON.stringify(s);
+        }
+        el('saran-rilis-pakai').addEventListener('click', function () {
+            var s = JSON.parse(el('saran-rilis').dataset.saran || 'null');
+            if (!s) return;
+            el('penerbit').value = s.penerbit;
+            setBulan([s.bulan]);
+            el('rilis_tahun_berikut').checked = !!s.tahun_berikut;
+            segarPola();
+        });
+        function segarPola(ganti) {
+            var p = pola();
+            if (ganti) {
+                // Pindah ke rilis dari "setiap bulan" = hampir pasti salah: rilis bawaan satu bulan (Des).
+                var b = bulanUkur();
+                if (p === 'rilis' && (b.length === 12 || b.length === 0)) {
+                    var s = saranRilis();
+                    setBulan([s ? s.bulan : 12]);
+                    if (s && !el('penerbit').value.trim()) { el('penerbit').value = s.penerbit; el('rilis_tahun_berikut').checked = !!s.tahun_berikut; }
+                } else if (p !== 'rilis' && b.length <= 1) {
+                    setBulan([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+                }
+            }
+            el('blok-arah').hidden = p === 'hitungan' || p === '';
+            el('blok-penerbit').hidden = p !== 'rilis';
+            el('blok-tahun-berikut').hidden = p !== 'rilis';
+            el('label-bulan-ukur').textContent = p === 'rilis' ? 'Bulan rilis' : 'Bulan ukur';
+            var b2 = bulanUkur();
+            selPeriode.value = periodeDari(b2);
+            var ket = el('pola-ket');
+            ket.innerHTML = '';
+            var m = (cfg.polaMeta || {})[p];
+            if (!m) { ket.textContent = 'Pilih salah satu pola ukur.'; segarSaran(); return; }
+            var judul = document.createElement('strong'); judul.textContent = m.judul + ': ';
+            ket.appendChild(judul);
+            var bl = b2.map(function (x) { return NAMA_BLN[x]; }).join(', ') || '(belum dipilih)';
+            var kal = p === 'rilis'
+                ? 'target hanya pada bulan rilis (' + bl + (el('rilis_tahun_berikut').checked ? ', tahun berikutnya' : '') + '); realisasi diisi saat nilai resmi keluar, wajib dengan tautan bukti publikasi. Bulan lain tampil "—".'
+                : (p === 'posisi'
+                    ? 'target = posisi yang diharapkan pada bulan ukur (' + (b2.length === 12 ? 'setiap bulan' : bl) + '); capaian = posisi bulan ukur terakhir yang terisi, bukan jumlah.'
+                    : 'target bulan ukur (' + (b2.length === 12 ? 'setiap bulan' : bl) + ') adalah cicilan yang jumlahnya = target tahunan; capaian = jumlah realisasi ÷ jumlah target bulan terisi.');
+            ket.appendChild(document.createTextNode(kal));
+            segarSaran();
+        }
+        form.querySelectorAll('input[name="pola_ukur"]').forEach(function (r) { r.addEventListener('change', function () { segarPola(true); }); });
+        chips.forEach(function (c) { c.addEventListener('change', function () { segarPola(false); }); });
+        el('rilis_tahun_berikut').addEventListener('change', function () { segarPola(false); });
+        el('penerbit').addEventListener('input', segarSaran);
+        selPeriode.addEventListener('change', function () {
+            var d = (cfg.periodeBulan || {})[selPeriode.value];
+            if (d) setBulan(d);
+            segarPola(false);
+        });
 
         // ---------------- Satuan ----------------
         var satSel = el('satuan_id'), blokTeks = el('blok-satuan-teks'), tombolTeks = el('tombol-satuan-teks');
@@ -230,13 +309,20 @@
             });
         }
 
+        segarPola(false);
+        // Saran penerbit ikut berubah saat nama/satuan indikator diubah.
+        el('output_prioritas').addEventListener('change', segarSaran);
+        if ($ && $.fn.select2) $(satSel).on('change', segarSaran); else satSel.addEventListener('change', segarSaran);
+
         // ---------------- Kirim ----------------
         form.addEventListener('submit', function (e) {
             var salah = [];
             if (!kategori()) salah.push('Pilih kategori IKP.');
             if (!ta.value.trim()) salah.push('Indikator IKP wajib diisi.');
             if (!satSel.value && !el('satuan_teks').value.trim()) salah.push('Satuan wajib diisi.');
-            if (!metode.value) salah.push('Pilih metode perhitungan.');
+            if (!pola()) salah.push('Pilih pola ukur (hitungan, posisi, atau rilis).');
+            if (!bulanUkur().length) salah.push(pola() === 'rilis' ? 'Pilih bulan rilis.' : 'Pilih minimal satu bulan ukur.');
+            if (pola() === 'rilis' && !el('penerbit').value.trim()) salah.push('Isi penerbit nilai resmi.');
             ['baseline', 'target_5_tahun'].forEach(function (id) {
                 if (!A.sah(el(id).value)) salah.push((id === 'baseline' ? 'Baseline' : 'Target 5 tahun') + ' harus berupa angka.');
             });

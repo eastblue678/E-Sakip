@@ -10,6 +10,9 @@
  * @var array  $ikp
  * @var array  $daftarPu, $daftarSp, $daftarMisi, $daftarSat
  * @var array  $kategoriList, $kategoriMeta, $metodeList, $metodeJelas
+ * @var array  $polaMeta      ikp_pola_meta()
+ * @var array  $saranRilis    tabel rilis bawaan (Config\IkpPolaUkur) untuk saran penerbit & bulan
+ * @var array  $penerbitList  daftar penerbit bawaan (datalist)
  * @var string $pjTeks    label awal Select2 penanggung jawab
  * @var ?array $bukuSaku  rujukan Buku Saku yang tersimpan
  */
@@ -30,6 +33,17 @@ $aksi = $mode === 'edit'
     : $u('adminopd/ikp/save');
 $satuanTeks = $v('satuan_teks');
 $satuanId   = $v('satuan_id');
+
+// ---- Pola ukur: nilai awal dari old() (gagal validasi) lalu ikp_pola() baris IKP ----
+$polaAwal       = $mode === 'edit' ? ($ikp['pola'] ?? ikp_pola($ikp)) : null;
+$polaDipilih    = (string) old('pola_ukur', $polaAwal['pola'] ?? '');
+$arahDipilih    = (string) old('arah', in_array($polaAwal['metode'] ?? '', ['trend_naik', 'trend_turun', 'trend_flat'], true) ? $polaAwal['metode'] : 'trend_naik');
+$bulanLama      = old('bulan_ukur');
+$bulanDipilih   = is_array($bulanLama) ? ikp_bulan_ukur_baca($bulanLama) : ($polaAwal['bulan_ukur'] ?? range(1, 12));
+$periodeDipilih = ikp_periode_dari_bulan($bulanDipilih === [] ? range(1, 12) : $bulanDipilih);
+$tahunBerikut   = old('pola_ukur') !== null ? (old('rilis_tahun_berikut') === '1') : ! empty($polaAwal['rilis_tahun_berikut']);
+$polaDitebak    = $mode === 'edit' && ! empty($polaAwal['ditebak']) && old('pola_ukur') === null;
+$polaWarna      = ['hitungan' => '#1971c2', 'posisi' => '#0a8f50', 'rilis' => '#b8860b'];
 ?>
 <?= $this->include('ikp/_kepala') ?>
 
@@ -111,20 +125,13 @@ $satuanId   = $v('satuan_id');
                     <?= ($satuanTeks !== '' && $satuanId === '') ? 'Pilih dari daftar satuan' : 'Satuan tidak ada di daftar? Tulis sendiri' ?>
                 </button>
             </div>
-            <div class="col-md-6">
-                <label class="form-label wajib" for="metode">Metode perhitungan</label>
-                <select class="form-select" name="metode" id="metode" data-no-select2 required>
-                    <option value="">— pilih metode —</option>
-                    <?php foreach ($metodeList as $k => $label): ?>
-                        <option value="<?= $k ?>" <?= $v('metode') === $k ? 'selected' : '' ?>><?= esc($metodeJelas[$k]['judul'] ?? $label) ?></option>
-                    <?php endforeach; ?>
-                </select>
-                <div class="ikp-metode-ket" id="metode-ket"></div>
+            <div class="col-md-6 d-flex align-items-end">
+                <div class="form-text m-0"><i class="fas fa-circle-info me-1"></i>Cara angka dijumlah atau diambil posisinya kini ditentukan <a href="#bagian-pola">pola ukur</a> di bawah.</div>
             </div>
             <div class="col-6 col-md-4">
                 <label class="form-label" for="baseline">Baseline (kondisi awal)</label>
                 <input type="text" class="form-control isian w-100 text-start" data-nol="sah" name="baseline" id="baseline" value="<?= esc($num('baseline'), 'attr') ?>" placeholder="mis. 200">
-                <div class="form-text">Dipakai Bagi Rata metode posisi.</div>
+                <div class="form-text">Titik awal lintasan target posisi/rilis.</div>
             </div>
             <div class="col-6 col-md-4">
                 <label class="form-label" for="target_5_tahun">Target 5 tahun (angka)</label>
@@ -139,9 +146,87 @@ $satuanId   = $v('satuan_id');
         </div>
     </section>
 
+    <!-- 3. Pola ukur -->
+    <section class="ikp-bagian" id="bagian-pola">
+        <h3><span class="no">3</span>Pola ukur: kapan angkanya ada?</h3>
+        <div class="ket">Pola ukur menentukan bulan yang punya target &amp; realisasi dan cara capaiannya dihitung. Bulan di luar bulan ukur tampil "—" (tidak diukur): tanpa target, tanpa realisasi, dan tidak ikut rata-rata capaian.</div>
+        <?php if ($polaDitebak): ?>
+            <div class="ikp-info kuning" id="pola-periksa">
+                <i class="fas fa-magnifying-glass"></i>
+                <div><p><strong>Periksa pola ukur.</strong> Pola di bawah ditebak otomatis dari nama &amp; satuan indikator saat fitur ini dipasang.
+                    Pastikan benar, lalu simpan form ini untuk mengonfirmasinya.</p></div>
+            </div>
+        <?php endif; ?>
+        <div class="ikp-katpilih ikp-polapilih" role="radiogroup" aria-label="Pola ukur">
+            <?php foreach ($polaMeta as $k => $m): ?>
+                <label>
+                    <input type="radio" name="pola_ukur" value="<?= $k ?>" <?= $polaDipilih === $k ? 'checked' : '' ?> required>
+                    <span class="kic" style="background:<?= esc($polaWarna[$k], 'attr') ?>;color:<?= esc($polaWarna[$k], 'attr') ?>"><i class="fas <?= $m['ikon'] ?>" style="color:#fff"></i></span>
+                    <span class="ktx">
+                        <span class="knm d-block"><?= esc($m['judul']) ?></span>
+                        <span class="kjl d-block"><?= esc($m['isi']) ?></span>
+                        <span class="kjl d-block"><i class="fas fa-bullseye me-1"></i><?= esc($m['target']) ?></span>
+                        <span class="kjl d-block"><i class="fas fa-pen me-1"></i><?= esc($m['realisasi']) ?></span>
+                        <span class="kjl d-block text-secondary fst-italic">Contoh: <?= esc($m['contoh']) ?>.</span>
+                    </span>
+                </label>
+            <?php endforeach; ?>
+        </div>
+
+        <div class="row g-3">
+            <div class="col-md-6" id="blok-arah" <?= $polaDipilih === 'hitungan' ? 'hidden' : '' ?>>
+                <label class="form-label wajib" for="arah">Arah nilai yang baik</label>
+                <select class="form-select" name="arah" id="arah" data-no-select2>
+                    <?php foreach (['trend_naik' => 'Makin tinggi makin baik', 'trend_turun' => 'Makin rendah makin baik', 'trend_flat' => 'Dipertahankan (sama di setiap bulan ukur)'] as $k => $label): ?>
+                        <option value="<?= $k ?>" <?= $arahDipilih === $k ? 'selected' : '' ?>><?= esc($label) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label wajib" for="periode_ukur" id="label-periode">Periode ukur</label>
+                <select class="form-select" id="periode_ukur" data-no-select2 aria-describedby="periode-ket">
+                    <?php foreach (['bulanan', 'triwulanan', 'semesteran', 'tahunan', 'khusus'] as $pr): ?>
+                        <option value="<?= $pr ?>" <?= $periodeDipilih === $pr ? 'selected' : '' ?> <?= $pr === 'khusus' ? 'disabled' : '' ?>><?= esc(ikp_periode_ukur_label($pr)) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <div class="form-text" id="periode-ket">Memilih periode mengisi bulan ukur bawaannya; bulan bisa diubah di bawah.</div>
+            </div>
+            <div class="col-12">
+                <span class="form-label wajib d-block" id="label-bulan-ukur"><?= $polaDipilih === 'rilis' ? 'Bulan rilis' : 'Bulan ukur' ?></span>
+                <div class="ikp-chip-bulan" role="group" aria-labelledby="label-bulan-ukur">
+                    <?php for ($m = 1; $m <= 12; $m++): ?>
+                        <label><input type="checkbox" name="bulan_ukur[]" value="<?= $m ?>" <?= in_array($m, $bulanDipilih, true) ? 'checked' : '' ?>><span><?= esc(ikp_nama_bulan($m, true)) ?></span></label>
+                    <?php endfor; ?>
+                </div>
+                <div class="form-text" id="bulan-ukur-ket">Hanya bulan bertanda yang punya target &amp; realisasi.</div>
+            </div>
+            <div class="col-md-7" id="blok-penerbit" <?= $polaDipilih === 'rilis' ? '' : 'hidden' ?>>
+                <label class="form-label wajib" for="penerbit">Penerbit nilai resmi</label>
+                <input type="text" class="form-control" name="penerbit" id="penerbit" maxlength="150" list="daftar-penerbit"
+                       value="<?= esc($v('penerbit'), 'attr') ?>" placeholder="mis. Komisi Informasi Provinsi Lampung">
+                <datalist id="daftar-penerbit">
+                    <?php foreach ($penerbitList as $pn): ?><option value="<?= esc($pn, 'attr') ?>"></option><?php endforeach; ?>
+                </datalist>
+                <div class="ikp-bs-tanda mt-2" id="saran-rilis" hidden>
+                    <i class="fas fa-lightbulb"></i><span id="saran-rilis-teks"></span>
+                    <button type="button" class="btn btn-link btn-sm p-0 ms-1" id="saran-rilis-pakai">Pakai saran</button>
+                </div>
+            </div>
+            <div class="col-md-5" id="blok-tahun-berikut" <?= $polaDipilih === 'rilis' ? '' : 'hidden' ?>>
+                <span class="form-label d-block">Tahun rilis</span>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="rilis_tahun_berikut" value="1" id="rilis_tahun_berikut" <?= $tahunBerikut ? 'checked' : '' ?>>
+                    <label class="form-check-label" for="rilis_tahun_berikut">Nilai tahun N baru dirilis tahun N+1</label>
+                </div>
+                <div class="form-text">Contoh: opini BPK atas LKPD 2026 terbit Mei 2027; realisasi 2026 diisi saat itu.</div>
+            </div>
+        </div>
+        <div class="ikp-metode-ket mb-3" id="pola-ket"></div>
+    </section>
+
     <!-- 3. Keterkaitan RPJMD -->
     <section class="ikp-bagian">
-        <h3><span class="no">3</span>Keterkaitan dengan RPJMD &amp; Program Unggulan</h3>
+        <h3><span class="no">4</span>Keterkaitan dengan RPJMD &amp; Program Unggulan</h3>
         <div class="ket">Mengisi kolom Lampiran II Perjanjian Kinerja (Misi, 9 Program Unggulan, 10 Sasaran Pembangunan, outcome, program OPD).</div>
 
         <label class="form-label <?= $kategori === 'program_unggulan' ? 'wajib' : '' ?>" id="label-pu">Program Unggulan Bupati</label>
@@ -201,7 +286,7 @@ $satuanId   = $v('satuan_id');
 
     <!-- 4. Tautan pohon kinerja & penanggung jawab -->
     <section class="ikp-bagian">
-        <h3><span class="no">4</span>Tautan pohon kinerja &amp; penanggung jawab</h3>
+        <h3><span class="no">5</span>Tautan pohon kinerja &amp; penanggung jawab</h3>
         <div class="ket">Hubungkan IKP dengan simpul pohon kinerja (Cascading) perangkat daerah ini dan tetapkan pegawai penanggung jawabnya. Data ini dipakai eKin untuk menurunkan SKP.</div>
         <div class="row g-3">
             <div class="col-md-6">
@@ -245,6 +330,9 @@ $satuanId   = $v('satuan_id');
 <script>
     window.IKP_FORM = {
         metodeJelas: <?= $js($metodeJelas) ?>,
+        polaMeta: <?= $js($polaMeta) ?>,
+        saranRilis: <?= $js($saranRilis) ?>,
+        periodeBulan: <?= $js(ikp_periode_ukur_bulan()) ?>,
         satuan: <?= $js(array_map(static fn ($s) => ['id' => (int) $s['id'], 'nama' => (string) $s['satuan']], $daftarSat)) ?>
     };
 </script>

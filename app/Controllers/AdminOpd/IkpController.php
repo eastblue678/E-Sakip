@@ -286,9 +286,13 @@ class IkpController extends BaseController
             return redirect()->back()->withInput()->with('error', pesanGalatBerawalan($e, 'IKP gagal diperbarui', 'opd.ikp.ubah'));
         }
 
-        $pesan = 'Perubahan IKP tersimpan.';
-        if (($lama['metode'] ?? null) !== $data['metode']) {
-            $pesan .= ' Metode perhitungan berubah: periksa kembali target bulanan & rekap triwulannya.';
+        $pesan    = 'Perubahan IKP tersimpan.';
+        $polaLama = $lama['pola'] ?? ikp_pola($lama);
+        if (($lama['metode'] ?? null) !== $data['metode'] || $polaLama['pola'] !== $data['pola_ukur']
+            || ikp_bulan_ukur_teks($polaLama['bulan_ukur']) !== (string) $data['bulan_ukur']) {
+            $pesan .= ' Pola ukur berubah: target & realisasi di luar bulan ukur tidak lagi dihitung — periksa kembali target bulanannya.';
+            log_activity('ubah', 'ikp', 'IKP #' . (int) $lama['id'] . ' pola ukur ' . $polaLama['pola'] . ' [' . ikp_bulan_ukur_teks($polaLama['bulan_ukur'])
+                . '] -> ' . $data['pola_ukur'] . ' [' . $data['bulan_ukur'] . ']');
         }
 
         return redirect()->to($this->u('adminopd/ikp', [], $scope))->with('success', $pesan);
@@ -441,7 +445,18 @@ class IkpController extends BaseController
         // dihitung eksplisit dalam Asia/Jakarta, dan bulan yang diisi selalu
         // diambil dari kiriman pengguna — bukan ditebak dari jam server.
         // =============================================================
-        $terbuka = $this->bulanTerbuka($tahun);
+        // POLA UKUR: bulan non-ukur tidak menerima realisasi; bulan rilis baru
+        // terbuka saat bulan rilisnya tiba (rilis_tahun_berikut: tahun N+1),
+        // dan nilai rilis WAJIB disertai tautan bukti publikasi resmi.
+        $pola    = $ikp['pola'] ?? ikp_pola($ikp);
+        $kini    = $this->sekarangWib();
+        $buktiDb = [];
+        $realDb  = [];
+        foreach ($this->db->table('ikp_bulanan')->select('bulan, bukti_url, realisasi')->where('ikp_id', (int) $ikp['id'])
+            ->where('tahun', $tahun)->get()->getResultArray() as $b) {
+            $buktiDb[(int) $b['bulan']] = trim((string) ($b['bukti_url'] ?? ''));
+            $realDb[(int) $b['bulan']]  = $b['realisasi'];
+        }
         $siap    = [];
         $galat   = [];
         foreach ($bulanMasuk as $m => $isi) {
@@ -451,8 +466,20 @@ class IkpController extends BaseController
 
                 continue;
             }
-            if ($m > $terbuka) {
-                $galat[] = 'Realisasi ' . ikp_nama_bulan($m) . ' ' . $tahun . ' belum dapat diisi karena bulannya belum berjalan.';
+            $keadaan = ikp_keadaan_bulan($pola, $tahun, $m, (int) $kini->format('Y'), (int) $kini->format('n'));
+            if ($keadaan['kode'] === 'tidak_diukur') {
+                // Mengosongkan sisa isian lama tetap boleh; mengisi tidak.
+                $mengisi = (array_key_exists('realisasi', $isi) && ! ikp_angka_kosong((string) $isi['realisasi']))
+                    || trim((string) ($isi['keterangan'] ?? '')) !== '' || trim((string) ($isi['bukti_url'] ?? '')) !== '';
+                if ($mengisi) {
+                    $galat[] = ikp_nama_bulan($m) . ': ' . $keadaan['ket'];
+
+                    continue;
+                }
+            } elseif (! $keadaan['terbuka']) {
+                $galat[] = $pola['pola'] === 'rilis'
+                    ? 'Realisasi ' . ikp_nama_bulan($m) . ' ' . $tahun . ' belum dapat diisi. ' . $keadaan['ket']
+                    : 'Realisasi ' . ikp_nama_bulan($m) . ' ' . $tahun . ' belum dapat diisi karena bulannya belum berjalan.';
 
                 continue;
             }
@@ -485,6 +512,16 @@ class IkpController extends BaseController
                     continue;
                 }
                 $baris['bukti_url'] = $url === '' ? null : $url;
+            }
+            $realEfektif = array_key_exists('realisasi', $baris) ? $baris['realisasi'] : ($realDb[$m] ?? null);
+            if ($pola['pola'] === 'rilis' && $realEfektif !== null && $keadaan['kode'] !== 'tidak_diukur') {
+                $bukti = array_key_exists('bukti_url', $baris) ? (string) $baris['bukti_url'] : ($buktiDb[$m] ?? '');
+                if ($bukti === '') {
+                    $galat[] = 'Nilai resmi ' . ikp_bulan_rilis_label($pola, $tahun, $m, false)
+                        . ' wajib disertai tautan bukti publikasi (situs/SK/surat penerbit' . (! empty($pola['penerbit']) ? ' ' . $pola['penerbit'] : '') . ').';
+
+                    continue;
+                }
             }
             if ($baris !== []) {
                 $siap[$m] = $baris;
@@ -726,6 +763,7 @@ class IkpController extends BaseController
             if ($tahun === null || ! in_array($tahun, $periode, true)) {
                 $galat[] = 'Tahun target bulanan tidak sah.';
             } else {
+                $pola = $ikp['pola'] ?? ikp_pola($ikp);
                 foreach ($bulanan as $m => $teks) {
                     $m = (int) $m;
                     if ($m < 1 || $m > 12) {
@@ -734,6 +772,18 @@ class IkpController extends BaseController
                         continue;
                     }
                     $teks = trim((string) $teks);
+                    // Pola ukur: bulan non-ukur TIDAK punya target. Kosong = bersihkan
+                    // sisa isian lama; angka = ditolak (indeks tidak dicicil).
+                    if (! ikp_bulan_diukur($pola, $m)) {
+                        if (! ikp_angka_kosong($teks) && ikp_angka_baca($teks) !== null) {
+                            $galat[] = ikp_nama_bulan($m) . ' bukan bulan ' . ($pola['pola'] === 'rilis' ? 'rilis' : 'ukur')
+                                . ' IKP ini (bulan ukur: ' . ikp_bulan_ukur_label($pola['bulan_ukur']) . '); targetnya tidak diisi. Ubah pola ukur di form IKP bila jadwalnya berbeda.';
+                        } else {
+                            $siapBln[$m] = null;
+                        }
+
+                        continue;
+                    }
                     if (! ikp_angka_sah($teks)) {
                         $galat[] = 'Target ' . ikp_nama_bulan($m) . ' harus berupa angka.';
 
@@ -790,7 +840,7 @@ class IkpController extends BaseController
 
         // Balasan: nilai tersimpan (terformat) + hasil cek server (sumber kebenaran).
         $id      = (int) $ikp['id'];
-        $metode  = (string) ($ikp['metode'] ?? '');
+        $metode  = (string) (($ikp['pola'] ?? ikp_pola($ikp))['metode']);
         $thnDb   = $svc->targetTahunan([$id])[$id] ?? [];
         $anakThn = [];
         foreach ($periode as $th) {
@@ -839,7 +889,7 @@ class IkpController extends BaseController
         if ($r === null) {
             return null;
         }
-        $metode = (string) ($r['ikp']['metode'] ?? '');
+        $pola   = $r['pola'];
         $tw     = [];
         foreach ($r['triwulan'] as $q => $t) {
             $tw[$q] = [
@@ -852,6 +902,7 @@ class IkpController extends BaseController
                 'keterangan'   => $t['keterangan'],
                 'berjalan'     => $t['berjalan'],
                 'sampai_label' => ($t['sampai_bulan'] ?? null) ? ikp_nama_bulan((int) $t['sampai_bulan'], true) : null,
+                'diukur'       => $t['diukur'] ?? true,
             ];
         }
         $bulan = [];
@@ -863,6 +914,9 @@ class IkpController extends BaseController
                 'realisasi'  => $b['realisasi'] === null ? '' : ikp_fmt($b['realisasi'], 4),
                 'keterangan' => (string) ($b['keterangan'] ?? ''),
                 'bukti_url'  => (string) ($b['bukti_url'] ?? ''),
+                'diukur'     => (bool) ($b['diukur'] ?? true),
+                'keadaan'    => (string) ($b['keadaan'] ?? 'diukur'),
+                'keadaan_ket'=> (string) ($b['keadaan_ket'] ?? ''),
             ];
         }
         $tb = $r['tahun_berjalan'];
@@ -880,7 +934,7 @@ class IkpController extends BaseController
                 'keterangan'   => $tb['keterangan'],
             ],
             'target_tahunan' => $r['target_tahunan'] === null ? '' : ikp_fmt($r['target_tahunan'], 4),
-            'cek_bulanan'    => ikp_cek($metode, $r['target_tahunan'], $tgt),
+            'cek_bulanan'    => ikp_cek_bulanan_pola($pola, $r['target_tahunan'], $tgt),
             'kelengkapan'    => $r['kelengkapan'],
         ];
     }
@@ -962,12 +1016,45 @@ class IkpController extends BaseController
             $data['satuan_teks'] = null; // master satuan menang; teks bebas hanya cadangan
         }
 
-        // --- metode ---
-        $metode = $in('metode');
-        if (! array_key_exists($metode, IkpModel::METODE)) {
-            $galat[] = 'Pilih metode perhitungan agar rekap triwulan & capaian dapat dihitung.';
+        // --- pola ukur (menentukan metode) ---
+        // MENGAPA metode tidak lagi dipilih langsung: hitungan selalu dijumlah
+        // (sum), posisi & rilis selalu diambil posisinya (trend_* = arah). Dengan
+        // begitu nilai rilis mustahil "dicicil" lewat salah pilih metode.
+        $pola = $in('pola_ukur');
+        if (! ikp_pola_valid($pola)) {
+            $galat[] = 'Pilih pola ukur (hitungan, posisi, atau rilis resmi).';
+            $pola = '';
         }
-        $data['metode'] = $metode === '' ? null : $metode;
+        $arah = $in('arah');
+        if ($pola === 'hitungan') {
+            $data['metode'] = 'sum';
+        } elseif (in_array($arah, ['trend_naik', 'trend_turun', 'trend_flat'], true)) {
+            $data['metode'] = $arah;
+        } else {
+            $data['metode'] = null;
+            if ($pola !== '') {
+                $galat[] = 'Pilih arah nilai yang baik (makin tinggi, makin rendah, atau dipertahankan).';
+            }
+        }
+        $bulanUkur = ikp_bulan_ukur_baca($this->request->getPost('bulan_ukur'));
+        if ($pola !== '' && $bulanUkur === []) {
+            $galat[] = $pola === 'rilis' ? 'Pilih bulan rilis nilai resmi.' : 'Pilih minimal satu bulan ukur.';
+        }
+        $penerbit = $in('penerbit');
+        if ($pola === 'rilis') {
+            if ($penerbit === '') {
+                $galat[] = 'Isi penerbit nilai resmi (mis. Komisi Informasi, BPS, KemenPANRB).';
+            } elseif (mb_strlen($penerbit) > 150 || $this->berTag($penerbit)) {
+                $galat[] = 'Penerbit terlalu panjang (maks. 150 karakter) atau memuat tag HTML.';
+            }
+        }
+        $data['pola_ukur']           = $pola === '' ? null : $pola;
+        $data['bulan_ukur']          = $bulanUkur === [] ? null : ikp_bulan_ukur_teks($bulanUkur);
+        $data['periode_ukur']        = $bulanUkur === [] ? null : ikp_periode_dari_bulan($bulanUkur);
+        $data['penerbit']            = $pola === 'rilis' && $penerbit !== '' ? mb_substr($penerbit, 0, 150) : null;
+        $data['rilis_tahun_berikut'] = $pola === 'rilis' && $in('rilis_tahun_berikut') === '1' ? 1 : 0;
+        // Disimpan admin = dikonfirmasi; chip "Periksa pola ukur" hilang.
+        $data['pola_ditebak']        = 0;
 
         // --- angka ---
         $baseline = $in('baseline');
@@ -1069,7 +1156,36 @@ class IkpController extends BaseController
             'tanpaTahun' => true,
             'pjTeks'     => $pjTeks,
             'bukuSaku'   => $bukuSaku,
+            'polaMeta'   => ikp_pola_meta(),
+            'saranRilis' => $this->saranRilis(),
+            'penerbitList' => array_values(array_unique(array_filter(array_column(config('IkpPolaUkur')->rilisBawaan, 'penerbit')))),
         ]);
+    }
+
+    /**
+     * Tabel rilis bawaan (Config\IkpPolaUkur) dalam bentuk yang bisa dibaca JS:
+     * pola PHP "/…/iu" -> sumber RegExp. Hanya SARAN di form; nilai yang
+     * disimpan tetap isian admin.
+     *
+     * @return list<array{cocok:string, penerbit:string, bulan:int, tahun_berikut:bool, catatan:string}>
+     */
+    private function saranRilis(): array
+    {
+        $out = [];
+        foreach (config('IkpPolaUkur')->rilisBawaan as $r) {
+            if (! preg_match('~^/(.*)/[a-z]*$~s', (string) $r['cocok'], $m)) {
+                continue;
+            }
+            $out[] = [
+                'cocok'         => $m[1],
+                'penerbit'      => (string) $r['penerbit'],
+                'bulan'         => (int) $r['bulan'],
+                'tahun_berikut' => (bool) $r['tahun_berikut'],
+                'catatan'       => (string) ($r['catatan'] ?? ''),
+            ];
+        }
+
+        return $out;
     }
 
     // =====================================================================

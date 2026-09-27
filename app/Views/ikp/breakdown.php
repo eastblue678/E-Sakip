@@ -74,7 +74,8 @@ $urlTab = static fn (string $t) => $u('adminopd/ikp/breakdown', ['tab' => $t, 't
                     <?php
                     $ikp    = $r['ikp'];
                     $id     = (int) $ikp['id'];
-                    $metode = (string) ($ikp['metode'] ?? '');
+                    $pola   = $r['pola'];
+                    $metode = (string) $pola['metode'];
                     $t5     = $ikp['target_5_tahun'] === null ? null : (float) $ikp['target_5_tahun'];
                     $thn    = $tahunan[$id] ?? [];
                     $awal   = $thn[$tahun - 1]['target'] ?? $ikp['baseline'];
@@ -86,11 +87,13 @@ $urlTab = static fn (string $t) => $u('adminopd/ikp/breakdown', ['tab' => $t, 't
                         data-baseline="<?= $ikp['baseline'] === null ? '' : (float) $ikp['baseline'] ?>"
                         data-induk="<?= $r['target_tahunan'] === null ? '' : (float) $r['target_tahunan'] ?>"
                         data-awal="<?= $awal === null ? '' : (float) $awal ?>"
-                        data-bulat="<?= $bulat ? '1' : '0' ?>">
+                        data-bulat="<?= $bulat ? '1' : '0' ?>"
+                        data-pola="<?= esc(json_encode(['pola' => $pola['pola'], 'metode' => $metode, 'bulan_ukur' => $pola['bulan_ukur']]), 'attr') ?>">
                         <td class="lekat">
                             <div class="nama"><?= esc(mb_strimwidth((string) $ikp['output_prioritas'], 0, 120, '…')) ?></div>
                             <div class="sub"><?= esc($ikp['satuan_label'] !== '' ? $ikp['satuan_label'] : '-') ?> ·
-                                <?= $metode !== '' ? esc($metodeSingkat[$metode] ?? $metode) : '<span class="text-danger">metode belum dipilih</span>' ?></div>
+                                <?= $metode !== '' ? '<span class="ikp-pola ' . esc($pola['pola'], 'attr') . '">' . esc(ikp_pola_ringkas($pola, (int) $tahun)) . '</span>' : '<span class="text-danger">pola ukur belum dikonfirmasi</span>' ?>
+                                <?php if (! empty($pola['ditebak'])): ?><a class="ikp-pola tebak" href="<?= esc($u('adminopd/ikp/edit/' . $id) . '#bagian-pola', 'attr') ?>">Periksa pola ukur</a><?php endif; ?></div>
                         </td>
                         <?php if ($tab === 'tahunan'): ?>
                             <td class="angka fw-bold">
@@ -106,8 +109,13 @@ $urlTab = static fn (string $t) => $u('adminopd/ikp/breakdown', ['tab' => $t, 't
                         <?php else: ?>
                             <td class="angka fw-bold"><?= esc(ikp_fmt($r['target_tahunan'], 4)) ?></td>
                             <?php for ($m = 1; $m <= 12; $m++): ?>
-                                <td><input type="text" class="isian" data-kunci="<?= $m ?>" aria-label="Target <?= esc(ikp_nama_bulan($m), 'attr') ?>"
-                                           value="<?= esc($fmt4($r['bulan'][$m]['target']), 'attr') ?>" placeholder="–" <?= $bisa ? '' : 'disabled' ?>></td>
+                                <?php if ($r['bulan'][$m]['diukur']): ?>
+                                    <td><input type="text" class="isian" data-kunci="<?= $m ?>" data-ukur="1" aria-label="Target <?= esc(ikp_nama_bulan($m), 'attr') ?>"
+                                               value="<?= esc($fmt4($r['bulan'][$m]['target']), 'attr') ?>" placeholder="–" <?= $bisa ? '' : 'disabled' ?>></td>
+                                <?php else: ?>
+                                    <td title="<?= esc($r['bulan'][$m]['keadaan_ket'], 'attr') ?>"><input type="hidden" class="isian" data-kunci="<?= $m ?>" data-ukur="0" value="">
+                                        <span class="sel-tidak-ukur">—<small><?= $pola['pola'] === 'rilis' ? 'bukan rilis' : 'tidak diukur' ?></small></span></td>
+                                <?php endif; ?>
                             <?php endfor; ?>
                             <?php for ($q = 1; $q <= 4; $q++): ?>
                                 <td class="tw" data-tw="<?= $q ?>"><?= esc(ikp_fmt($r['triwulan'][$q]['target'], 4)) ?></td>
@@ -132,7 +140,9 @@ $urlTab = static fn (string $t) => $u('adminopd/ikp/breakdown', ['tab' => $t, 't
         <?php if ($tab === 'tahunan'): ?>
             <i class="fas fa-circle-info me-1"></i>Bagi rata tahunan: akumulasi dibagi rata (sisa ke tahun awal); posisi naik/turun bertahap dari baseline ke target 5 tahun; tetap = sama tiap tahun.
         <?php else: ?>
-            <i class="fas fa-circle-info me-1"></i>Bagi rata bulanan: akumulasi dibagi 12 (bilangan bulat untuk satuan orang/unit/dokumen); posisi bertahap dari target <?= (int) $tahun - 1 ?> (atau baseline) ke target <?= (int) $tahun ?>; tetap = sama tiap bulan.
+            <i class="fas fa-circle-info me-1"></i>Tombol isi per baris mengikuti pola ukur: <strong>hitungan</strong> dibagi rata ke bulan ukur (bilangan bulat untuk satuan orang/unit/dokumen);
+            <strong>posisi</strong> bulan ukur terakhir = target <?= (int) $tahun ?>, bulan ukur sebelumnya bertahap dari target <?= (int) $tahun - 1 ?> (atau baseline);
+            <strong>rilis</strong> hanya bulan rilis = target tahunan (tidak dicicil). Sel "—" = bulan yang tidak diukur.
         <?php endif; ?>
     </div>
 <?php endif; ?>
