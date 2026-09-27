@@ -1,7 +1,7 @@
 <?php
 /**
  * Ruang OPD — Rencana Aksi Pegawai (AKSARA+). Data: eKin api/aksara/opd/{id}/rencana-aksi (bulan terpilih) +
- * opd/{id}/pk-pegawai (status PK). Realisasi = kemajuan dari kinerja harian DISETUJUI (logika e-Kinerja BKN),
+ * opd/{id}/pk-pegawai (status PK). Realisasi = kegiatan dari kinerja harian DISETUJUI (logika e-Kinerja BKN),
  * sumber yang sama dengan halaman Rencana Aksi eKin.
  *
  * @var bool   $ada
@@ -147,7 +147,7 @@ $saringan = ['' => 'Semua', 'belum' => 'Ada RA tanpa kegiatan', 'berjalan' => 'B
       <?php endforeach; ?>
     </div>
     <p class="ro-catatan mt-2"><i class="fas fa-circle-info me-1"></i>Rencana aksi bulanan disusun pegawai di eKin dari SKP-nya. Realisasi dihitung dari kinerja harian yang sudah disetujui atasan
-      (Trajectory: setiap kemajuan menambah realisasi; Non-Trajectory: dihitung setelah ditandai Selesai), sama dengan halaman Rencana Aksi di eKin.
+      (Trajectory: setiap kegiatan menambah realisasi; Non-Trajectory: dihitung setelah ditandai Selesai), sama dengan halaman Rencana Aksi di eKin.
       Capaian dibatasi 100% per rencana aksi. Untuk Kepala Perangkat Daerah, rencana aksi dari IKP memakai realisasi bulanan IKP di AKSARA
       (bulan yang belum dilaporkan tidak dihitung). Baris redup = atasan yang ditampilkan sebagai konteks saringan.</p>
   <?php endif; ?>
