@@ -273,19 +273,7 @@ class RuangOpdController extends BaseController
                 continue;
             }
             $d = $ekin->rencanaAksiOpd($id, $tahun, $bulan);
-            $r = ['opd_id' => $id, 'nama' => $nama[$id], 'ada' => $d !== null, 'pegawai' => 0, 'ber_skp' => 0, 'ra' => 0, 'tercapai' => 0, 'belum' => 0, 'capaian' => null];
-            $cap = [];
-            foreach ($d['pegawai'] ?? [] as $p) {
-                $r['pegawai']++;
-                $r['ber_skp'] += $p['skp'] !== null ? 1 : 0;
-                $r['ra'] += (int) ($p['ra']['jumlah'] ?? 0);
-                $r['tercapai'] += (int) ($p['ra']['tercapai'] ?? 0);
-                $r['belum'] += (int) ($p['ra']['belum_ada_kegiatan'] ?? 0);
-                if (($p['ra']['capaian'] ?? null) !== null) {
-                    $cap[] = (float) $p['ra']['capaian'];
-                }
-            }
-            $r['capaian'] = $cap === [] ? null : round(array_sum($cap) / count($cap), 1);
+            $r = ['opd_id' => $id, 'nama' => $nama[$id], 'ada' => $d !== null] + self::ringkasRa($d['pegawai'] ?? []);
             $baris[] = $r;
         }
         usort($baris, static fn ($a, $b) => strcmp($a['nama'], $b['nama']));
@@ -329,33 +317,11 @@ class RuangOpdController extends BaseController
             $pkStatus[(int) ($r['pegawai']['id'] ?? 0)] = (string) ($r['status'] ?? '');
         }
 
-        $susun = $data === null ? [] : EkinClient::susunPerAtasan($data['pegawai']);
-        $ringkas = ['pegawai' => count($susun), 'ber_skp' => 0, 'ra' => 0, 'tercapai' => 0, 'belum' => 0, 'capaian' => []];
-        foreach ($susun as $b) {
-            $ra = $b['p']['ra'] ?? [];
-            $ringkas['ber_skp'] += $b['p']['skp'] !== null ? 1 : 0;
-            $ringkas['ra'] += (int) ($ra['jumlah'] ?? 0);
-            $ringkas['tercapai'] += (int) ($ra['tercapai'] ?? 0);
-            $ringkas['belum'] += (int) ($ra['belum_ada_kegiatan'] ?? 0);
-            if (($ra['capaian'] ?? null) !== null) {
-                $ringkas['capaian'][] = (float) $ra['capaian'];
-            }
-        }
-        $ringkas['capaian'] = $ringkas['capaian'] === [] ? null : round(array_sum($ringkas['capaian']) / count($ringkas['capaian']), 1);
+        $susun   = $data === null ? [] : EkinClient::susunPerAtasan($data['pegawai']);
+        $ringkas = self::ringkasRa(array_column($susun, 'p'));
 
         // Saringan: baris yang tidak cocok disembunyikan, tetapi atasannya tetap tampil sebagai konteks (redup).
-        $cocok = static function (array $p) use ($status, $q): bool {
-            $ra = $p['ra'] ?? [];
-            $ok = match ($status) {
-                'belum'     => $p['skp'] !== null && (int) ($ra['belum_ada_kegiatan'] ?? 0) > 0,
-                'berjalan'  => $p['skp'] !== null && (int) ($ra['jumlah'] ?? 0) > 0 && (int) ($ra['tercapai'] ?? 0) < (int) ($ra['jumlah'] ?? 0),
-                'tercapai'  => (int) ($ra['jumlah'] ?? 0) > 0 && (int) ($ra['tercapai'] ?? 0) === (int) ($ra['jumlah'] ?? 0),
-                'tanpa_skp' => $p['skp'] === null,
-                default     => true,
-            };
-
-            return $ok && ($q === '' || str_contains(mb_strtolower(($p['nama'] ?? '') . ' ' . ($p['jabatan'] ?? '')), mb_strtolower($q)));
-        };
+        $cocok = static fn (array $p): bool => self::cocokSaringan($p, $status, $q);
         $baris = [];
         foreach ($susun as $b) {
             $b['cocok'] = $cocok($b['p']);
@@ -423,6 +389,57 @@ class RuangOpdController extends BaseController
             'bulanKini' => self::bulanDari(null, $tahun),
             'ekinPesan' => $data === null ? $this->pesanEkin($ekin, $opd['id'], $tahun) : '',
         ]);
+    }
+
+    /**
+     * Ringkasan rencana aksi sebulan sekumpulan pegawai (butir `pegawai` API opd/{id}/rencana-aksi).
+     *
+     * `ra` = rencana aksi yang DIUKUR bulan itu; rencana aksi PERSIAPAN (bulan non-ukur indikator posisi/rilis, tanpa
+     * target angka — eKin README §23) dihitung terpisah di `persiapan` dan tidak ikut penyebut maupun rata-rata capaian.
+     * Capaian = rata-rata capaian pegawai yang punya capaian (sama dengan sebelumnya).
+     *
+     * @param list<array<string,mixed>> $pegawai
+     *
+     * @return array{pegawai:int, ber_skp:int, ra:int, persiapan:int, tercapai:int, belum:int, capaian:?float}
+     */
+    public static function ringkasRa(array $pegawai): array
+    {
+        $r   = ['pegawai' => 0, 'ber_skp' => 0, 'ra' => 0, 'persiapan' => 0, 'tercapai' => 0, 'belum' => 0, 'capaian' => null];
+        $cap = [];
+        foreach ($pegawai as $p) {
+            $a = EkinClient::angkaRa($p['ra'] ?? null);
+            $r['pegawai']++;
+            $r['ber_skp']   += ($p['skp'] ?? null) !== null ? 1 : 0;
+            $r['ra']        += $a['jumlah'];
+            $r['persiapan'] += $a['persiapan'];
+            $r['tercapai']  += $a['tercapai'];
+            $r['belum']     += $a['belum'];
+            if ($a['capaian'] !== null) {
+                $cap[] = $a['capaian'];
+            }
+        }
+        $r['capaian'] = $cap === [] ? null : round(array_sum($cap) / count($cap), 1);
+
+        return $r;
+    }
+
+    /**
+     * Saringan daftar Rencana Aksi Pegawai (status: belum | berjalan | tercapai | tanpa_skp; q = nama/jabatan).
+     * "Berjalan"/"tercapai" membandingkan dengan rencana aksi yang DIUKUR: pegawai yang bulan ini hanya punya RA
+     * persiapan tidak dianggap "semua tercapai" maupun "belum semua tercapai".
+     */
+    public static function cocokSaringan(array $p, string $status, string $q): bool
+    {
+        $a  = EkinClient::angkaRa($p['ra'] ?? null);
+        $ok = match ($status) {
+            'belum'     => ($p['skp'] ?? null) !== null && $a['belum'] > 0,
+            'berjalan'  => ($p['skp'] ?? null) !== null && $a['jumlah'] > 0 && $a['tercapai'] < $a['jumlah'],
+            'tercapai'  => $a['jumlah'] > 0 && $a['tercapai'] >= $a['jumlah'],
+            'tanpa_skp' => ($p['skp'] ?? null) === null,
+            default     => true,
+        };
+
+        return $ok && ($q === '' || str_contains(mb_strtolower(($p['nama'] ?? '') . ' ' . ($p['jabatan'] ?? '')), mb_strtolower($q)));
     }
 
     /** Bulan dari ?bulan= (1–12); bawaan bulan berjalan untuk tahun berjalan, Desember untuk tahun lampau, Januari untuk tahun depan. */

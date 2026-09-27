@@ -1,7 +1,11 @@
 <?php
 /**
  * Ruang OPD — rencana aksi setahun satu pegawai (AKSARA+). Data: eKin api/aksara/pegawai/{id}/rencana-aksi.
- * Kisi RHK → IKI kuantitas → bulan 1–12: target (T) dan realisasi terhitung (R) dari kinerja harian disetujui.
+ * Kisi RHK → IKI kuantitas → bulan 1–12: target (T) dan realisasi terhitung (R) dari kegiatan harian disetujui.
+ * eKin README §22–§23: Trajectory/Non-Trajectory kini dipilih per kegiatan harian (`jenis_bkn` RA usang, tidak
+ * ditampilkan); setiap IKI kuantitas punya pola ukur (hitungan/posisi/rilis) dan bulan non-ukur = rencana aksi
+ * PERSIAPAN tanpa target angka; RHK/IKI bisa bergaris IKP (pemilik, pemikul angka, pendukung). Kunci baru boleh absen
+ * (eKin lama) — halaman lalu tampil seperti dulu tanpa chip.
  *
  * @var array|null $data
  * @var array|null $pk        PKRINGKAS pegawai ini (status PK Pegawai)
@@ -27,19 +31,26 @@ $pkLbl = [
 $aspekLbl = ['kuantitas' => 'Kuantitas', 'kualitas' => 'Kualitas', 'waktu' => 'Waktu', 'biaya' => 'Biaya'];
 $kembali = base_url('ruang-opd/' . (int) $opd['id'] . '/rencana-aksi-pegawai?tahun=' . (int) $tahun);
 $tahunIni = (int) date('Y');
-/** Kelas sel: tercapai / berjalan (bulan ini) / kurang (bulan lalu belum tercapai) / rencana (bulan depan). */
-$kelasSel = static function (array $ra) use ($bulanKini, $tahun, $tahunIni): string {
-    if (! empty($ra['tercapai'])) {
-        return 'c-capai';
+/** Kelas sel: persiapan / tercapai / berjalan (bulan ini) / kurang (bulan lalu belum tercapai) / rencana (bulan depan). */
+$kelasSel = static fn (array $ra): string => \App\Services\EkinClient::kelasSelRa($ra, (int) $tahun, $tahunIni, (int) $bulanKini);
+/** Chip pola ukur IKI (null = eKin tidak mengirim pola). */
+$chipPola = static function (?array $iki): string {
+    $pola = $iki === null ? null : \App\Services\EkinClient::polaIki($iki);
+    if ($pola === null) {
+        return '';
     }
-    // Realisasi Kepala OPD dari IKP AKSARA yang belum dilaporkan: netral, bukan "belum tercapai".
-    if (($ra['sumber_realisasi'] ?? '') === 'ikp' && empty($ra['ikp_dilaporkan'])) {
-        return 'c-belum';
-    }
-    $lalu = $tahun < $tahunIni || ($tahun === $tahunIni && $ra['bulan'] < $bulanKini);
-    $kini = $tahun === $tahunIni && $ra['bulan'] === $bulanKini;
+    $ikon = ['hitungan' => 'fa-calculator', 'posisi' => 'fa-location-crosshairs', 'rilis' => 'fa-certificate'][$pola['kode']];
 
-    return $lalu ? 'c-kurang' : ($kini ? 'c-jalan' : 'c-rencana');
+    return '<span class="rad-pola p-' . esc($pola['kode'], 'attr') . '" data-pola="' . esc($pola['kode'], 'attr') . '" title="' . esc($pola['judul'], 'attr') . '">'
+        . '<i class="fas ' . $ikon . '" aria-hidden="true"></i>' . esc($pola['label'])
+        . ($pola['ditebak'] ? '<span class="tebak" aria-label="pola tebakan">?</span>' : '') . '</span>';
+};
+/** Chip peran IKP (IKP / Mendukung IKP / IKP · porsi pimpinan). */
+$chipPeran = static function (?string $peran): string {
+    $c = \App\Services\EkinClient::peranIkp($peran);
+
+    return $c === null ? '' : '<span class="rad-peran ' . esc($c['kelas'], 'attr') . '" data-peran-ikp="' . esc($c['kode'], 'attr') . '" title="' . esc($c['judul'], 'attr') . '">'
+        . '<i class="fas ' . ($c['kelas'] === 'dukung' ? 'fa-star-half-stroke' : 'fa-star') . '" aria-hidden="true"></i>' . esc($c['label']) . '</span>';
 };
 ?>
 <?= $this->include('ruang_opd/_kepala') ?>
@@ -68,6 +79,16 @@ $kelasSel = static function (array $ra) use ($bulanKini, $tahun, $tahunIni): str
   .rad-kisi .t { display: block; font-weight: 700; }
   .rad-kisi .r { display: block; }
   .rad-kisi .jenis { font-size: .58rem; font-weight: 800; opacity: .75; }
+  .rad-kisi .siap { display: block; font-size: .64rem; font-weight: 700; font-style: italic; }
+  .rad-kisi td.kiri .rad-pola { margin-top: 3px; }
+  .rad-pola, .rad-peran { display: inline-flex; align-items: center; gap: 4px; font-size: .64rem; font-weight: 700; border-radius: 6px; padding: 1px 7px; white-space: nowrap; vertical-align: 1px; }
+  .rad-pola { border: 1px solid #d6dfd9; color: #33483b; background: #fff; }
+  .rad-pola.p-posisi { border-color: #bfd4f2; color: #1e4f91; background: #f1f6fd; }
+  .rad-pola.p-rilis { border-color: #d9cdf2; color: #5b3d99; background: #f6f2fd; }
+  .rad-pola .tebak { font-weight: 800; opacity: .7; }
+  .rad-peran.ikp { color: #3d5a00; background: #eef7d9; }
+  .rad-peran.dukung { color: #3d5a00; background: #fff; border: 1px dashed #9cbf4a; }
+  .c-siap { background: #f6f2fd !important; color: #5b3d99 !important; }
   .c-capai { background: #e3f4ea !important; color: #0f5132 !important; }
   .c-jalan { background: #fff4d6 !important; color: #7a5300 !important; }
   .c-kurang { background: #fdecea !important; color: #9b1c1c !important; }
@@ -89,13 +110,7 @@ $kelasSel = static function (array $ra) use ($bulanKini, $tahun, $tahunIni): str
     $skp = $data['skp'];
     [$sc, $sl] = $skp === null ? ['s-merah', 'Belum ada SKP'] : ($skpLbl[$skp['status']] ?? ['s-abu', 'SKP ' . $skp['status']]);
     $pkS = (string) ($pk['status'] ?? '');
-    $jml = ['ra' => 0, 'capai' => 0];
-    foreach ($data['rhk'] as $r) {
-        foreach ($r['rencana_aksi'] as $ra) {
-            $jml['ra']++;
-            $jml['capai'] += ! empty($ra['tercapai']) ? 1 : 0;
-        }
-    }
+    $jml = \App\Services\EkinClient::hitungRaPegawai($data);
 ?>
   <div class="rad-kepala">
     <div>
@@ -109,6 +124,7 @@ $kelasSel = static function (array $ra) use ($bulanKini, $tahun, $tahunIni): str
     <div class="text-end">
       <div style="font-size:1.3rem;font-weight:800;color:#1f3a2a;"><?= $jml['capai'] ?>/<?= $jml['ra'] ?></div>
       <div class="sub">rencana aksi <?= (int) $tahun ?> mencapai target</div>
+      <?php if ($jml['persiapan'] > 0): ?><div class="sub" style="color:#5b3d99;font-weight:700;" title="Rencana aksi persiapan: bulan tanpa target angka (indeks/nilai resmi yang belum dirilis, atau bulan non-ukur indikator posisi). Tidak dihitung di atas.">+<?= $jml['persiapan'] ?> persiapan indeks/nilai rilis</div><?php endif; ?>
       <?php if ($pkS !== '' && $pkS !== 'belum_ada_skp'): ?>
         <a class="btn btn-sm btn-outline-success mt-2" href="<?= base_url('ruang-opd/' . (int) $opd['id'] . '/pk-pegawai/' . (int) $p['pegawai_id'] . '?tahun=' . (int) $tahun) ?>" data-ro-tautan>
           <i class="fas fa-file-signature me-1"></i><?= $pkS === 'lewat_aksara' ? 'PK AKSARA' : 'Dokumen PK Pegawai' ?></a>
@@ -125,7 +141,11 @@ $kelasSel = static function (array $ra) use ($bulanKini, $tahun, $tahunIni): str
     <div class="rad-legenda">
       <span><i class="c-capai"></i>Tercapai</span><span><i class="c-jalan"></i>Bulan berjalan</span>
       <span><i class="c-kurang"></i>Bulan lalu, belum tercapai</span><span><i class="c-rencana"></i>Direncanakan</span><span><i class="c-belum"></i>Belum dilaporkan di AKSARA (IKP)</span>
-      <span>T = target, R = realisasi dari kinerja harian disetujui (Kepala Perangkat Daerah: dari IKP AKSARA, tanda "IKP") · TR/NT = Trajectory / Non-Trajectory</span>
+      <span><i class="c-siap"></i>Persiapan — bulan tanpa target angka (tidak dihitung)</span>
+      <span>T = target, R = realisasi dari kegiatan harian disetujui (Kepala Perangkat Daerah: dari IKP AKSARA, tanda "IKP").
+        Pola ukur indikator: <b>Hitungan</b> = hasil dijumlah, target bulanan cicilan; <b>Posisi</b> = keadaan yang diukur sendiri di bulan ukur;
+        <b>Rilis</b> = nilai resmi pihak lain, angka hanya di bulan rilis. <b>IKP</b> / <b>Mendukung IKP</b> = RHK atau indikator yang memikul angka / mendukung IKP perangkat daerah.
+        Trajectory / Non-Trajectory dipilih per kegiatan harian di eKin.</span>
     </div>
     <?php foreach ($data['rhk'] as $r):
         // Baris kisi: satu per IKI yang punya rencana aksi, lalu rencana aksi tanpa IKI.
@@ -145,6 +165,7 @@ $kelasSel = static function (array $ra) use ($bulanKini, $tahun, $tahunIni): str
         <div class="rad-rhk-kepala">
           <span class="rad-jenis <?= $r['jenis'] === 'tambahan' ? 'tambahan' : '' ?>"><?= $r['jenis'] === 'tambahan' ? 'Tambahan' : 'Utama' ?></span>
           <h4><?= esc((string) $r['rumusan']) ?></h4>
+          <?= $chipPeran($r['peran_ikp'] ?? null) ?>
           <?php if ($raIkp !== []): ?><span class="rad-ikp" title="Realisasi Kepala Perangkat Daerah untuk RHK dari IKP dibaca dari realisasi bulanan IKP di AKSARA<?= $sinkron ? ' (sinkron ' . esc($sinkron, 'attr') . ' WIB)' : '' ?>; kegiatan harian tetap dihitung sebagai jam kerja."><i class="fas fa-link"></i>Realisasi dari IKP AKSARA</span><?php endif; ?>
         </div>
         <?php if (($r['rhk_atasan'] ?? '') !== ''): ?><div class="rad-atasan"><i class="fas fa-turn-up fa-rotate-90 me-1"></i>RHK pimpinan yang diintervensi: <?= esc((string) $r['rhk_atasan']) ?></div><?php endif; ?>
@@ -152,7 +173,8 @@ $kelasSel = static function (array $ra) use ($bulanKini, $tahun, $tahunIni): str
         <div class="rad-iki">
           <?php foreach ($r['iki'] as $i): ?>
             <span><b><?= esc($aspekLbl[$i['aspek']] ?? $i['aspek']) ?>:</b> <?= esc((string) $i['indikator']) ?>
-              <?php if ($i['target'] !== null || ($i['target_teks'] ?? '') !== ''): ?> — <?= $i['target'] !== null ? $angka($i['target']) : esc((string) $i['target_teks']) ?> <?= esc((string) $i['satuan']) ?><?php endif; ?></span>
+              <?php if ($i['target'] !== null || ($i['target_teks'] ?? '') !== ''): ?> — <?= $i['target'] !== null ? $angka($i['target']) : esc((string) $i['target_teks']) ?> <?= esc((string) $i['satuan']) ?><?php endif; ?>
+              <?= ($i['ikp_peran'] ?? null) !== null && ($i['ikp_peran'] ?? null) !== ($r['peran_ikp'] ?? null) ? $chipPeran($i['ikp_peran']) : '' ?></span>
           <?php endforeach; ?>
         </div>
         <?php if ($perBaris === []): ?>
@@ -165,18 +187,34 @@ $kelasSel = static function (array $ra) use ($bulanKini, $tahun, $tahunIni): str
               <tbody>
                 <?php foreach ($perBaris as $ikiId => $perBulan): ?>
                   <tr>
-                    <td class="kiri"><?= $ikiId > 0 && isset($namaIki[$ikiId]) ? esc(mb_strimwidth((string) $namaIki[$ikiId]['indikator'], 0, 70, '…')) : 'Rencana aksi lain' ?></td>
+                    <td class="kiri"><?= $ikiId > 0 && isset($namaIki[$ikiId]) ? esc(mb_strimwidth((string) $namaIki[$ikiId]['indikator'], 0, 70, '…')) : 'Rencana aksi lain' ?>
+                      <?php if ($ikiId > 0 && isset($namaIki[$ikiId])): ?><br><?= $chipPola($namaIki[$ikiId]) ?><?php endif; ?></td>
                     <?php for ($b = 1; $b <= 12; $b++): $isi = $perBulan[$b] ?? []; ?>
                       <?php if ($isi === []): ?>
                         <td class="sel">·</td>
                       <?php else: ?>
                         <td class="sel <?= $kelasSel($isi[0]) ?>">
                           <?php foreach ($isi as $ra): ?>
-                            <?php $ikp = ($ra['sumber_realisasi'] ?? '') === 'ikp'; ?>
-                            <div class="ra" title="<?= esc($ra['uraian'] . ' · ' . ($ra['jenis_bkn'] === 'non_trajectory' ? 'Non-Trajectory' : 'Trajectory') . ($ra['status'] !== '' ? ' · ' . str_replace('_', ' ', $ra['status']) : '') . (! empty($ra['keterangan']) ? ' · ' . $ra['keterangan'] : ''), 'attr') ?>">
-                              <span class="t">T <?= $angka($ra['target']) ?></span>
-                              <span class="r">R <?= $ikp && ($ra['realisasi'] ?? null) === null ? '–' : $angka($ra['realisasi'] ?? 0) ?></span>
-                              <span class="jenis"><?= $ra['jenis_bkn'] === 'non_trajectory' ? 'NT' : 'TR' ?><?= $ikp ? ' · IKP' : '' ?></span>
+                            <?php
+                              $ikp  = ($ra['sumber_realisasi'] ?? '') === 'ikp';
+                              $siap = ! empty($ra['persiapan']);
+                              $pkj  = $ra['pekerjaan'] ?? [];
+                              $info = array_filter([
+                                  (string) ($ra['uraian'] ?? ''),
+                                  (string) ($ra['keadaan_label'] ?? ''),
+                                  ! $siap && ($ra['status'] ?? '') !== '' ? str_replace('_', ' ', (string) $ra['status']) : '',
+                                  (string) ($ra['keterangan'] ?? ''),
+                                  (int) ($pkj['berjalan'] ?? 0) > 0 ? (int) $pkj['berjalan'] . ' pekerjaan bertahap berjalan' : '',
+                              ], static fn ($t) => $t !== '');
+                            ?>
+                            <div class="ra" title="<?= esc(implode(' · ', array_unique($info)), 'attr') ?>"<?= $siap ? ' data-persiapan' : '' ?>>
+                              <?php if ($siap): ?>
+                                <span class="siap">persiapan</span>
+                              <?php else: ?>
+                                <span class="t">T <?= $angka($ra['target']) ?></span>
+                                <span class="r">R <?= $ikp && ($ra['realisasi'] ?? null) === null ? '–' : $angka($ra['realisasi'] ?? 0) ?></span>
+                                <?php if ($ikp): ?><span class="jenis">IKP</span><?php endif; ?>
+                              <?php endif; ?>
                             </div>
                           <?php endforeach; ?>
                         </td>

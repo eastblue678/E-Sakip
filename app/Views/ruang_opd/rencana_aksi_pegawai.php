@@ -51,6 +51,8 @@ $saringan = ['' => 'Semua', 'belum' => 'Ada RA tanpa kegiatan', 'berjalan' => 'B
   .rap-ra .batang { height: 6px; border-radius: 99px; background: #edf1ee; overflow: hidden; margin-top: 3px; }
   .rap-ra .batang span { display: block; height: 100%; background: linear-gradient(90deg, #00743e, #6eab11); }
   .rap-ra .peringatan { color: #9a6b00; font-weight: 700; }
+  .rap-ra .siap, .rap-ringkas .siap { color: #5b4a8b; font-size: .7rem; font-weight: 700; }
+  .rap-ringkas .siap { display: block; margin-top: 2px; }
   .rap-aksi { text-align: right; font-size: .76rem; color: #00743e; font-weight: 700; white-space: nowrap; }
   .rap-kepala { background: #f6f9f7; font-size: .68rem; font-weight: 800; letter-spacing: .4px; text-transform: uppercase; color: #5d6b62; }
   @media (max-width: 767.98px) {
@@ -96,7 +98,8 @@ $saringan = ['' => 'Semua', 'belum' => 'Ada RA tanpa kegiatan', 'berjalan' => 'B
 
   <div class="rap-ringkas">
     <div><b><?= (int) $ringkas['ber_skp'] ?>/<?= (int) $ringkas['pegawai'] ?></b><span>pegawai ber-SKP <?= (int) $tahun ?></span></div>
-    <div><b><?= (int) $ringkas['ra'] ?></b><span>rencana aksi <?= esc($namaBulan[$bulan]) ?></span></div>
+    <div><b><?= (int) $ringkas['ra'] ?></b><span>rencana aksi <?= esc($namaBulan[$bulan]) ?></span>
+      <?php if ((int) $ringkas['persiapan'] > 0): ?><span class="siap" title="Rencana aksi persiapan: bulan tanpa target angka (indeks/nilai resmi yang belum dirilis, atau bulan non-ukur indikator posisi). Tidak dihitung di jumlah, tercapai, maupun capaian.">+<?= (int) $ringkas['persiapan'] ?> persiapan indeks/nilai rilis</span><?php endif; ?></div>
     <div><b><?= (int) $ringkas['tercapai'] ?></b><span>sudah mencapai target</span></div>
     <div><b><?= $ringkas['capaian'] === null ? '–' : number_format((float) $ringkas['capaian'], 1, ',', '.') . '%' ?></b><span>capaian rata-rata pegawai</span></div>
     <div><b><?= (int) $ringkas['belum'] ?></b><span>rencana aksi belum ada kegiatan harian</span></div>
@@ -112,8 +115,8 @@ $saringan = ['' => 'Semua', 'belum' => 'Ada RA tanpa kegiatan', 'berjalan' => 'B
       <?php foreach ($baris as $b):
           $p   = $b['p'];
           $pid = (int) $p['pegawai_id'];
-          $ra  = $p['ra'] ?? [];
-          $n   = (int) ($ra['jumlah'] ?? 0);
+          $ra  = \App\Services\EkinClient::angkaRa($p['ra'] ?? null);
+          $n   = $ra['jumlah'];
           $skp = $p['skp'] ?? null;
           [$sc, $sl] = $skp === null ? ['s-merah', 'Belum ada SKP'] : ($skpLbl[$skp['status']] ?? ['s-abu', 'SKP ' . $skp['status']]);
           $pk  = $pkStatus[$pid] ?? '';
@@ -133,22 +136,29 @@ $saringan = ['' => 'Semua', 'belum' => 'Ada RA tanpa kegiatan', 'berjalan' => 'B
           <span class="rap-ra">
             <?php if ($skp === null): ?>
               <span class="text-muted">–</span>
-            <?php elseif ($n === 0): ?>
+            <?php elseif ($n === 0 && $ra['persiapan'] === 0): ?>
               <span class="text-muted">Tidak ada rencana aksi bulan ini</span>
             <?php else: ?>
-              <?= $n ?> rencana aksi · <b><?= (int) ($ra['tercapai'] ?? 0) ?></b> tercapai<?= ($ra['capaian'] ?? null) !== null ? ' · ' . number_format((float) $ra['capaian'], 1, ',', '.') . '%' : '' ?>
-              <?php if (($ra['capaian'] ?? null) !== null): ?><div class="batang"><span style="width:<?= min(100, (float) $ra['capaian']) ?>%"></span></div><?php endif; ?>
-              <?php if ((int) ($ra['belum_ada_kegiatan'] ?? 0) > 0): ?><div class="peringatan"><?= (int) $ra['belum_ada_kegiatan'] ?> belum ada kegiatan harian</div><?php endif; ?>
-              <?php if ((int) ($ra['sumber_ikp'] ?? 0) > 0): ?><div class="text-muted" style="font-size:.7rem;"><i class="fas fa-link me-1"></i><?= (int) $ra['sumber_ikp'] ?> dari IKP AKSARA<?= (int) ($ra['belum_dilaporkan'] ?? 0) > 0 ? ' · ' . (int) $ra['belum_dilaporkan'] . ' belum dilaporkan' : '' ?></div><?php endif; ?>
+              <?php if ($n === 0): ?>
+                <span class="text-muted">Hanya rencana aksi persiapan bulan ini</span>
+              <?php else: ?>
+                <?= $n ?> rencana aksi · <b><?= $ra['tercapai'] ?></b> tercapai<?= $ra['capaian'] !== null ? ' · ' . number_format($ra['capaian'], 1, ',', '.') . '%' : '' ?>
+                <?php if ($ra['capaian'] !== null): ?><div class="batang"><span style="width:<?= min(100, $ra['capaian']) ?>%"></span></div><?php endif; ?>
+              <?php endif; ?>
+              <?php if ($ra['persiapan'] > 0): ?><div class="siap" title="Bulan tanpa target angka: menunggu rilis indeks/nilai resmi, atau bulan non-ukur indikator posisi. Tidak dihitung di jumlah maupun capaian.">+<?= $ra['persiapan'] ?> persiapan indeks/nilai rilis</div><?php endif; ?>
+              <?php if ($ra['belum'] > 0): ?><div class="peringatan"><?= $ra['belum'] ?> belum ada kegiatan harian</div><?php endif; ?>
+              <?php if ($ra['sumber_ikp'] > 0): ?><div class="text-muted" style="font-size:.7rem;"><i class="fas fa-link me-1"></i><?= $ra['sumber_ikp'] ?> dari IKP AKSARA<?= $ra['belum_dilaporkan'] > 0 ? ' · ' . $ra['belum_dilaporkan'] . ' belum dilaporkan' : '' ?></div><?php endif; ?>
+              <?php if ($ra['pekerjaan_berjalan'] > 0): ?><div class="text-muted" style="font-size:.7rem;"><i class="fas fa-layer-group me-1"></i><?= $ra['pekerjaan_berjalan'] ?> pekerjaan bertahap berjalan</div><?php endif; ?>
             <?php endif; ?>
           </span>
           <span class="rap-aksi"><?= $skp !== null ? 'Rincian <i class="fas fa-arrow-right"></i>' : '' ?></span>
         </<?= $tag ?>>
       <?php endforeach; ?>
     </div>
-    <p class="ro-catatan mt-2"><i class="fas fa-circle-info me-1"></i>Rencana aksi bulanan disusun pegawai di eKin dari SKP-nya. Realisasi dihitung dari kinerja harian yang sudah disetujui atasan
-      (Trajectory: setiap kegiatan menambah realisasi; Non-Trajectory: dihitung setelah ditandai Selesai), sama dengan halaman Rencana Aksi di eKin.
-      Capaian dibatasi 100% per rencana aksi. Untuk Kepala Perangkat Daerah, rencana aksi dari IKP memakai realisasi bulanan IKP di AKSARA
+    <p class="ro-catatan mt-2"><i class="fas fa-circle-info me-1"></i>Rencana aksi bulanan disusun pegawai di eKin dari SKP-nya. Realisasi dihitung dari kegiatan harian yang sudah disetujui atasan
+      — setiap kegiatan harian dipilih Trajectory (hasilnya jadi dalam kegiatan itu, langsung menambah realisasi) atau Non-Trajectory (tahap pekerjaan bertahap, dihitung saat pekerjaannya selesai),
+      sama dengan halaman Rencana Aksi di eKin. Capaian dibatasi 100% per rencana aksi. Rencana aksi <b>persiapan</b> (bulan tanpa target angka: indeks/nilai resmi yang belum dirilis,
+      atau bulan non-ukur indikator posisi) ditampilkan terpisah dan tidak ikut jumlah, tercapai, maupun capaian. Untuk Kepala Perangkat Daerah, rencana aksi dari IKP memakai realisasi bulanan IKP di AKSARA
       (bulan yang belum dilaporkan tidak dihitung). Baris redup = atasan yang ditampilkan sebagai konteks saringan.</p>
   <?php endif; ?>
 <?php endif; ?>

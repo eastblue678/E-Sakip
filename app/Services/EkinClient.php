@@ -155,7 +155,10 @@ class EkinClient
      *
      * @return array<string,mixed>|null {"opd_id","tahun","bulan","pegawai":[{pegawai_id,nama,jabatan,jenis_jabatan,
      *                                  fiktif,atasan_pegawai_id,ppk_pegawai_id,skp:{id,status}|null,ra:{jumlah,tercapai,
-     *                                  selesai,berjalan,belum_ada_kegiatan,capaian}}]}
+     *                                  selesai,berjalan,belum_ada_kegiatan,belum_dilaporkan?,persiapan?,sumber_ikp?,
+     *                                  capaian,pekerjaan?:{berjalan,selesai,tertunda,dihentikan}}}]}
+     *                                  eKin README §23: jumlah = selesai + berjalan + belum_ada_kegiatan + belum_dilaporkan
+     *                                  + persiapan; persiapan tidak pernah ikut tercapai/capaian — baca lewat angkaRa().
      */
     public function rencanaAksiOpd(int $opdId, int $tahun, int $bulan): ?array
     {
@@ -170,7 +173,10 @@ class EkinClient
     /**
      * Rencana aksi setahun satu pegawai: SKP → RHK → IKI → rencana aksi bulan 1–12 + kemajuan.
      *
-     * @return array<string,mixed>|null {"tahun","pegawai","skp","rhk":[{id,jenis,rumusan,rhk_atasan,iki[],rencana_aksi[]}]}
+     * @return array<string,mixed>|null {"tahun","pegawai","skp","rhk":[{id,jenis,rumusan,rhk_atasan,peran_ikp?,iki[],rencana_aksi[]}]}
+     *                                  IKI kuantitas (eKin §23, boleh absen): pola_ukur, periode_ukur, bulan_ukur, penerbit,
+     *                                  rilis_tahun_berikut, pola_ditebak, ikp_peran, delegasi_id. RA: persiapan?, keadaan_label?,
+     *                                  pekerjaan?; `jenis_bkn` USANG (boleh null — Trajectory kini dipilih per kegiatan harian).
      */
     public function rencanaAksiPegawai(int $pegawaiId, int $tahun): ?array
     {
@@ -390,6 +396,171 @@ class EkinClient
             str_contains($j, 'pelaksana')                                                       => 4,
             default                                                                              => 5,
         };
+    }
+
+    // -----------------------------------------------------------------
+    // Rencana aksi pegawai: pola ukur, persiapan, IKP turunan (eKin README §22–§23)
+    // -----------------------------------------------------------------
+
+    /** Label pola ukur IKI (sama dengan lencana pola AKSARA+ ikp_pola_meta()['singkat']). */
+    public const POLA_LABEL = ['hitungan' => 'Hitungan', 'posisi' => 'Posisi', 'rilis' => 'Rilis'];
+
+    /** Penjelasan pola untuk title & legenda (sama maknanya dengan kartu pola di form IKP). */
+    public const POLA_ARTI = [
+        'hitungan' => 'Hasil dijumlahkan sepanjang periode: target bulanan = cicilan, realisasi = jumlah hasil yang tercatat.',
+        'posisi'   => 'Keadaan yang diukur sendiri pada bulan ukur: target = posisi yang diharapkan, realisasi = posisi terbaru (bukan tambahan). Bulan lain persiapan tanpa angka.',
+        'rilis'    => 'Nilai resmi yang dikeluarkan pihak lain: angka hanya di bulan rilis, tidak pernah dicicil atau dijumlah. Bulan lain persiapan tanpa angka.',
+    ];
+
+    /**
+     * Peran RHK/IKI dalam garis IKP (eKin `peran_ikp` RHK, `ikp_peran` IKI): [label chip, kelas, penjelasan].
+     * Kata chip mengikuti bagan Pohon Kinerja AKSARA+ ("★ IKP" pemikul angka, "☆ Mendukung IKP").
+     */
+    public const PERAN_IKP = [
+        'pemilik'   => ['IKP', 'ikp', 'IKP perangkat daerah yang dipimpin pegawai ini (Perjanjian Kinerja Kepala Perangkat Daerah).'],
+        'angka'     => ['IKP', 'ikp', 'IKP turunan — pemikul angka: target pegawai ini dihitung ke IKP perangkat daerah.'],
+        'pendukung' => ['Mendukung IKP', 'dukung', 'IKP turunan — pendukung: indikator proses milik pegawai ini; tidak menambah angka IKP.'],
+        'turunan'   => ['IKP · porsi pimpinan', 'ikp', 'Porsi dari RHK IKP pimpinan (Cascading "Bagi ke bawahan" di eKin).'],
+    ];
+
+    private const BULAN_PENDEK = [1 => 'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+
+    /**
+     * Angka ringkasan rencana aksi satu pegawai (butir `ra` API opd/{id}/rencana-aksi) yang DIUKUR bulan itu.
+     *
+     * MENGAPA persiapan dipisah: rencana aksi PERSIAPAN (bulan non-ukur indikator posisi/rilis — indeks yang belum
+     * dirilis, survei semesteran) sengaja tanpa target angka. eKin mengirimnya di `jumlah` (jumlah = selesai + berjalan
+     * + belum_ada_kegiatan + belum_dilaporkan + persiapan) tetapi tidak pernah di `tercapai`/`capaian`; bila tetap
+     * dihitung di penyebut, "tercapai x dari y" turun hanya karena indeksnya belum keluar. eKin lama (tanpa kunci
+     * `persiapan`) = 0 persiapan, perilaku lama utuh.
+     *
+     * @param array<string,mixed>|null $ra
+     *
+     * @return array{jumlah:int, persiapan:int, tercapai:int, belum:int, belum_dilaporkan:int, sumber_ikp:int, capaian:?float, pekerjaan_berjalan:int}
+     */
+    public static function angkaRa(?array $ra): array
+    {
+        $ra        = $ra ?? [];
+        $persiapan = max(0, (int) ($ra['persiapan'] ?? 0));
+
+        return [
+            'jumlah'             => max(0, (int) ($ra['jumlah'] ?? 0) - $persiapan),
+            'persiapan'          => $persiapan,
+            'tercapai'           => (int) ($ra['tercapai'] ?? 0),
+            'belum'              => (int) ($ra['belum_ada_kegiatan'] ?? 0),
+            'belum_dilaporkan'   => (int) ($ra['belum_dilaporkan'] ?? 0),
+            'sumber_ikp'         => (int) ($ra['sumber_ikp'] ?? 0),
+            'capaian'            => isset($ra['capaian']) && is_numeric($ra['capaian']) ? (float) $ra['capaian'] : null,
+            'pekerjaan_berjalan' => (int) ($ra['pekerjaan']['berjalan'] ?? 0),
+        ];
+    }
+
+    /**
+     * Rencana aksi setahun satu pegawai (API pegawai/{id}/rencana-aksi): berapa yang diukur, tercapai, persiapan.
+     *
+     * @return array{ra:int, capai:int, persiapan:int}
+     */
+    public static function hitungRaPegawai(array $data): array
+    {
+        $n = ['ra' => 0, 'capai' => 0, 'persiapan' => 0];
+        foreach ($data['rhk'] ?? [] as $r) {
+            foreach ($r['rencana_aksi'] ?? [] as $ra) {
+                if (! empty($ra['persiapan'])) {
+                    $n['persiapan']++;
+
+                    continue;
+                }
+                $n['ra']++;
+                $n['capai'] += ! empty($ra['tercapai']) ? 1 : 0;
+            }
+        }
+
+        return $n;
+    }
+
+    /**
+     * Chip pola ukur satu IKI dari eKin: label singkat ("Hitungan · bulanan", "Posisi · semesteran", "Rilis · Des",
+     * "Rilis · Jun th. berikut") + penjelasan. Null bila eKin tidak mengirim pola (eKin lama, IKI kualitas/waktu).
+     *
+     * @return array{kode:string, label:string, judul:string, ditebak:bool}|null
+     */
+    public static function polaIki(array $iki): ?array
+    {
+        $pola = (string) ($iki['pola_ukur'] ?? '');
+        if (! isset(self::POLA_LABEL[$pola])) {
+            return null;
+        }
+        $bulan = [];
+        foreach ((array) ($iki['bulan_ukur'] ?? []) as $b) {
+            if (is_numeric($b) && (int) $b >= 1 && (int) $b <= 12) {
+                $bulan[(int) $b] = (int) $b;
+            }
+        }
+        ksort($bulan);
+        $daftar = implode(', ', array_map(static fn ($b) => self::BULAN_PENDEK[$b], $bulan));
+        $label  = self::POLA_LABEL[$pola];
+        $judul  = self::POLA_ARTI[$pola];
+
+        if ($pola === 'rilis') {
+            $label .= ' · ' . ($daftar !== '' ? $daftar : 'Des') . (! empty($iki['rilis_tahun_berikut']) ? ' th. berikut' : '');
+            $penerbit = trim((string) ($iki['penerbit'] ?? ''));
+            if ($penerbit !== '') {
+                $judul = 'Dirilis ' . $penerbit . '. ' . $judul;
+            }
+        } else {
+            $periode = (string) ($iki['periode_ukur'] ?? '');
+            if (count($bulan) === 12 || ($bulan === [] && $periode === '')) {
+                $label .= ' · bulanan';
+            } elseif (in_array($periode, ['triwulanan', 'semesteran', 'tahunan', 'bulanan'], true)) {
+                $label .= ' · ' . $periode;
+            } else {
+                $label .= ' · ' . $daftar;
+            }
+            if ($bulan !== [] && count($bulan) < 12) {
+                $judul .= ' Diukur ' . $daftar . '.';
+            }
+        }
+        $ditebak = ! empty($iki['pola_ditebak']);
+        if ($ditebak) {
+            $judul .= ' Pola ditebak eKin dari nama & satuan indikator; belum dikonfirmasi pemilik SKP.';
+        }
+
+        return ['kode' => $pola, 'label' => $label, 'judul' => $judul, 'ditebak' => $ditebak];
+    }
+
+    /**
+     * Chip peran IKP (IKP turunan sampai pelaksana): null bila RHK/IKI tidak bergaris IKP atau eKin lama.
+     *
+     * @return array{kode:string, label:string, kelas:string, judul:string}|null
+     */
+    public static function peranIkp(?string $peran): ?array
+    {
+        $p = self::PERAN_IKP[(string) $peran] ?? null;
+
+        return $p === null ? null : ['kode' => (string) $peran, 'label' => $p[0], 'kelas' => $p[1], 'judul' => $p[2]];
+    }
+
+    /**
+     * Kelas sel kisi rencana aksi setahun: c-siap (persiapan, tanpa target) / c-capai / c-belum (IKP Kepala PD belum
+     * dilaporkan di AKSARA) / c-kurang (bulan lalu belum tercapai) / c-jalan (bulan berjalan) / c-rencana (bulan depan).
+     */
+    public static function kelasSelRa(array $ra, int $tahun, int $tahunIni, int $bulanKini): string
+    {
+        if (! empty($ra['persiapan'])) {
+            return 'c-siap';
+        }
+        if (! empty($ra['tercapai'])) {
+            return 'c-capai';
+        }
+        // Realisasi Kepala OPD dari IKP AKSARA yang belum dilaporkan: netral, bukan "belum tercapai".
+        if (($ra['sumber_realisasi'] ?? '') === 'ikp' && empty($ra['ikp_dilaporkan'])) {
+            return 'c-belum';
+        }
+        $bulan = (int) ($ra['bulan'] ?? 0);
+        $lalu  = $tahun < $tahunIni || ($tahun === $tahunIni && $bulan < $bulanKini);
+        $kini  = $tahun === $tahunIni && $bulan === $bulanKini;
+
+        return $lalu ? 'c-kurang' : ($kini ? 'c-jalan' : 'c-rencana');
     }
 
     /** IKI aspek kuantitas pertama (untuk angka target di pohon). */

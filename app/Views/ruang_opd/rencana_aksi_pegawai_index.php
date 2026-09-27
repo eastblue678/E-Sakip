@@ -14,13 +14,14 @@ $namaBulan   = [1 => 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Ju
 $persen = static fn ($v) => $v === null ? '–' : number_format((float) $v, 1, ',', '.') . '%';
 ?>
 <?= $this->include('templates/shell_atas') ?>
+<style>.rapi-siap { color: #5b4a8b; font-weight: 700; font-size: .7rem; white-space: nowrap; }</style>
 
 <div class="ro">
   <div class="ro-hero mb-3">
     <div class="ic"><i class="fas fa-list-check"></i></div>
     <div class="isi">
       <h2>Rencana Aksi Pegawai</h2>
-      <p>Rencana aksi bulanan sampai pelaksana, disusun pegawai di eKin dari SKP-nya. Realisasi dihitung dari kinerja harian yang sudah disetujui atasan.</p>
+      <p>Rencana aksi bulanan sampai pelaksana, disusun pegawai di eKin dari SKP-nya. Realisasi dihitung dari kegiatan harian yang sudah disetujui atasan.</p>
       <p class="mt-2 d-flex flex-wrap gap-2 align-items-center">
         <span class="ro-lencana"><i class="fas fa-eye"></i> Hanya baca</span>
         <span class="ro-lencana"><i class="fas fa-users"></i> Sumber: eKin</span>
@@ -61,7 +62,7 @@ $persen = static fn ($v) => $v === null ? '–' : number_format((float) $v, 1, '
                 <td class="num text-muted" colspan="5">Data eKin perangkat daerah ini belum terbaca.</td>
               <?php else: ?>
                 <td class="num"><?= (int) $r['ber_skp'] ?>/<?= (int) $r['pegawai'] ?></td>
-                <td class="num"><?= (int) $r['ra'] ?></td>
+                <td class="num"><?= (int) $r['ra'] ?><?php if ((int) ($r['persiapan'] ?? 0) > 0): ?><br><small class="rapi-siap" title="Rencana aksi persiapan: bulan tanpa target angka (indeks/nilai resmi yang belum dirilis, atau bulan non-ukur indikator posisi). Tidak dihitung di jumlah, tercapai, maupun capaian.">+<?= (int) $r['persiapan'] ?> persiapan indeks/nilai rilis</small><?php endif; ?></td>
                 <td class="num"><?= (int) $r['tercapai'] ?></td>
                 <td class="num"><?= $persen($r['capaian']) ?></td>
                 <td class="num"><?= (int) $r['belum'] > 0 ? '<span style="color:#9a6b00;font-weight:700;">' . (int) $r['belum'] . '</span>' : '0' ?></td>
@@ -72,7 +73,8 @@ $persen = static fn ($v) => $v === null ? '–' : number_format((float) $v, 1, '
         </tbody>
       </table>
     </div>
-    <p class="ro-catatan mt-2"><i class="fas fa-circle-info me-1"></i>Hanya perangkat daerah yang pegawainya sudah dimuat di eKin. Rencana aksi triwulan pada Perjanjian Kinerja tetap di menu Target &amp; Rencana Aksi.</p>
+    <p class="ro-catatan mt-2"><i class="fas fa-circle-info me-1"></i>Hanya perangkat daerah yang pegawainya sudah dimuat di eKin. Kolom rencana aksi, tercapai, dan capaian hanya menghitung rencana aksi yang diukur bulan itu;
+      rencana aksi <b>persiapan</b> (indeks/nilai resmi yang belum dirilis, bulan non-ukur indikator posisi) ditulis terpisah. Rencana aksi triwulan pada Perjanjian Kinerja tetap di menu Target &amp; Rencana Aksi.</p>
   <?php endif; ?>
 </div>
 
