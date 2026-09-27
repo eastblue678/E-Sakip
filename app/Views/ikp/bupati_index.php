@@ -50,6 +50,8 @@ $this->setVar('shellCss', <<<'CSS'
 .legenda-panas { display:flex; flex-wrap:wrap; gap:6px 14px; font-size:.74rem; color:#5d6b62; }
 .panas td.opd, .panas thead th.kiri { position:sticky; left:0; z-index:1; }
 .panas td.opd { background:#fff; }
+/* Kolom lekat tetap pekat di baris genap (gaya global memaksa sel baris genap transparan). */
+main .panas tbody tr > td.opd, main .panas tbody tr:hover > td.opd { background-color:#fff !important; }
 .panas thead th.kiri { z-index:2; }
 .geser-hint { display:none; font-size:.74rem; color:#6b7a70; margin-bottom:6px; }
 @media (max-width: 767.98px) {

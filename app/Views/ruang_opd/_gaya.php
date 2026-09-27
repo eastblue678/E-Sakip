@@ -98,6 +98,12 @@ table.ro-matriks { width: 100%; min-width: 1180px !important; border-collapse: s
 .ro-matriks tbody tr:hover td { background: #f8fbf9; }
 .ro-matriks tbody tr:hover td.kol-opd { background: #f3f9f5; }
 .ro-matriks tr.ro-grup td { background: #f7faf8 !important; font-weight: 800; font-size: .74rem; color: #2f4a3a; text-transform: uppercase; letter-spacing: .4px; padding: 8px 12px; }
+/* Judul kelompok ikut diam di kiri saat matriks digeser, supaya barisnya tidak tampak sebagai pita kosong. */
+.ro-matriks tr.ro-grup td > span { position: sticky; left: 12px; }
+/* Gaya global (adminOpd|adminKabupaten/templates/style.php) memaksa sel baris GENAP dan baris ber-hover transparan
+   (!important, "baris seragam"). Kolom OPD yang lekat harus tetap pekat: tanpa latar, isi kolom yang digulir ke kiri
+   tembus dan bertumpuk dengan nama OPD. Selektor ber-`main` + kelas mengalahkan aturan global itu. */
+main .ro-matriks tbody tr > td.kol-opd, main .ro-matriks tbody tr:hover > td.kol-opd { background-color: #fff !important; }
 .ro-opd-nama { display: block; font-weight: 700; color: #15311f; font-size: .84rem; line-height: 1.25; }
 .ro-opd-nama:hover { color: #00743e; text-decoration: underline; }
 .ro-opd-kepala { display: block; font-size: .7rem; color: var(--ro-redup); line-height: 1.3; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

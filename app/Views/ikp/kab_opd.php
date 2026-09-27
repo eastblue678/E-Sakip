@@ -42,6 +42,8 @@ $this->setVar('shellCss', <<<'CSS'
 .catatan-kecil { font-size:.78rem; color:#6b7a70; }
 .grid-bulan tbody th, .grid-bulan thead th:first-child { position:sticky; left:0; z-index:1; }
 .grid-bulan thead th:first-child { background:#f3f7f4; }
+/* Kolom lekat tetap pekat di baris genap (gaya global memaksa sel baris genap transparan). */
+main .grid-bulan tbody tr > th, main .grid-bulan tbody tr:hover > th { background-color:#fbfcfb !important; }
 @media (max-width: 767.98px) {
   .ikp-kartu .skor { margin-left:0; text-align:left; }
   .tw-chip { flex:1 1 calc(50% - 8px); min-width:0; }

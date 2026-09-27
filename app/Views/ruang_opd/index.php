@@ -150,7 +150,7 @@ $this->setVar('shellCss', $shellCss);
           }
           ?>
           <?php if ($o['kelompok'] !== $kelSebelum): $kelSebelum = $o['kelompok']; ?>
-            <tr class="ro-grup" data-grup="<?= esc($o['kelompok'], 'attr') ?>"><td colspan="<?= count($kolom) + 1 ?>"><?= esc($kelompokLabel[$o['kelompok']]) ?></td></tr>
+            <tr class="ro-grup" data-grup="<?= esc($o['kelompok'], 'attr') ?>"><td colspan="<?= count($kolom) + 1 ?>"><span><?= esc($kelompokLabel[$o['kelompok']]) ?></span></td></tr>
           <?php endif; ?>
           <tr class="ro-baris" data-kelompok="<?= esc($o['kelompok'], 'attr') ?>" data-cari="<?= esc($cari, 'attr') ?>"
               data-skor="<?= $m['_skor'] ?? -1 ?>" data-asal="<?= ++$no ?>" data-status="<?= esc(implode(' ', $status), 'attr') ?>">

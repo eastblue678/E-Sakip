@@ -92,6 +92,10 @@ a.ikp-kat:hover { filter: brightness(.96); }
 .ikp-grid thead tr.dua th { top: 29px; background: #0a8f50; }
 .ikp-grid .lekat { position: sticky; left: 0; z-index: 2; box-shadow: 2px 0 0 #e3e8e4; min-width: 230px; max-width: 300px; }
 .ikp-grid thead th.lekat { z-index: 4; }
+/* Gaya global memaksa sel baris genap/ber-hover transparan (!important). Kolom indikator yang lekat harus pekat,
+   kalau tidak kotak isian bulan yang digulir tembus ke bawah nama indikator; kolom triwulan tetap berwarna. */
+main .ikp-grid tbody tr > td.lekat, main .ikp-grid tbody tr:hover > td.lekat { background-color: #fff !important; }
+main .ikp-grid tbody tr > td.tw, main .ikp-grid tbody tr:hover > td.tw { background-color: #f6faf7 !important; }
 .ikp-grid td.lekat .nama { font-weight: 700; color: #1d2b23; line-height: 1.3; font-size: .82rem; }
 .ikp-grid td.lekat .sub { font-size: .72rem; color: #6b7a70; margin-top: 2px; }
 .ikp-grid td.tw { background: #f6faf7; text-align: center; white-space: nowrap; font-variant-numeric: tabular-nums; }

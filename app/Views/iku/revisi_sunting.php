@@ -290,13 +290,10 @@ $medanIndikator = static function (
         border-left: 4px solid #dc3545 !important;
     }
 
-    /* Bilah simpan menempel di bawah: pada draft berisi banyak indikator,
-       tombol simpan yang hanya ada di ujung halaman mudah dikira tidak ada. */
+    /* Bilah simpan di ujung kartu, ikut mengalir bersama halaman. Dulu menempel (sticky) di bawah layar dan
+       menutupi isian di belakangnya — pengguna tidak ingin bilah yang "melayang" saat halaman digulir (27-09-2026). */
     .bilah-simpan {
-        position: sticky;
-        bottom: 0;
-        z-index: 100;
-        background: rgba(255, 255, 255, .97);
+        background: #fff;
         border-top: 1px solid #dee2e6;
         /* shell_atas membungkus isi dalam kartu ber-`p-4` = 1.5rem; margin
            negatifnya harus sebesar itu agar bilah benar-benar menempel ke
