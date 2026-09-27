@@ -15,6 +15,10 @@ use Throwable;
  *   opd/{id}/cascading?tahun=          {"opd_id","tahun","pegawai":[...],"rhk":[...]}
  *   opd/{id}/pk-pegawai?tahun=         {"opd_id","tahun","pk":[PKRINGKAS]}
  *   pk-pegawai/{pegawai_id}?tahun=     PKRINGKAS + pegawai/pihak_kedua lengkap + baris (rhk_id, sumber_tipe) + catatan + teks
+ *   opd/{id}/ikp-turunan?tahun=        {"opd_id","tahun","diperbarui","baris":[{"delegasi_id","ikp_id","pegawai_id",
+ *                                      "bulan":{"<1..12>":{"realisasi","pada"}}}]} — realisasi RHK/IKI yang ditarik dari
+ *                                      baris pendelegasian IKP (IKP turun sampai pelaksana); belum tentu disediakan eKin
+ *                                      (404 → belum_tersedia → halaman realisasi IKP tidak menampilkan saran).
  *
  * MENGAPA setiap kegagalan menjadi null (bukan pengecualian): Ruang OPD adalah halaman
  * baca yang merangkum BANYAK sumber. eKin yang sedang dipasang ulang, token yang belum
@@ -173,6 +177,24 @@ class EkinClient
         $j = $this->ambil('pegawai/' . $pegawaiId . '/rencana-aksi', $tahun);
         if ($j !== null && (! is_array($j['pegawai'] ?? null) || ! is_array($j['rhk'] ?? null))) {
             return $this->gagal('format', 'pegawai/rencana-aksi');
+        }
+
+        return $j;
+    }
+
+    /**
+     * Realisasi para pemikul IKP turunan satu OPD (eKin api/aksara/opd/{id}/ikp-turunan): per baris
+     * pendelegasian (delegasi_id = cascading_indikator_target.id AKSARA) dan per pegawai, realisasi
+     * bulanan yang SUDAH disetujui di eKin. Dipakai saran "Dari eKin (pemikul angka)" di halaman
+     * realisasi IKP; AKSARA sendiri yang menjumlah (hitungan) atau memilih pemikul terdekat (posisi/rilis).
+     *
+     * @return array<string,mixed>|null
+     */
+    public function ikpTurunan(int $opdId, int $tahun): ?array
+    {
+        $j = $this->ambil('opd/' . $opdId . '/ikp-turunan', $tahun);
+        if ($j !== null && ! is_array($j['baris'] ?? null)) {
+            return $this->gagal('format', 'opd/ikp-turunan');
         }
 
         return $j;

@@ -8,7 +8,9 @@
  * @var array $rekap         IkpRekapService::rekapOpd()
  * @var int   $bulanTerbuka  0..12
  * @var string $kategori
+ * @var array $saranEkin [ikp_id => [bulan => IkpTurunService::saranRealisasi()]] (kosong = eKin belum menyediakan)
  */
+$saranEkin = $saranEkin ?? [];
 $js = static fn ($v) => json_encode($v, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
 $metodeSingkat = ['sum' => 'Akumulasi', 'trend_naik' => 'Posisi ↑', 'trend_turun' => 'Posisi ↓', 'trend_flat' => 'Tetap'];
 $palet = \App\Models\DashboardThresholdModel::COLORS;
@@ -41,6 +43,10 @@ $sel  = static function (array $t) {
     <div>
         <p>Isi <strong>realisasi</strong> pada bulan ukur setiap IKP; target bulan itu tampil kecil di bawah kotak. Rekap triwulan dan capaian dihitung otomatis dari bulan yang sudah terisi.
             Angka <strong>0 adalah realisasi yang sah</strong> (tidak sama dengan kosong); kosongkan kotak untuk menghapus realisasi.</p>
+        <?php if (! empty($saranEkin)): ?>
+            <p class="small mb-1"><span class="saran-ekin d-inline-flex">eKin <b>n</b></span> = saran <strong>Dari eKin (pemikul angka)</strong>: IKP hitungan = jumlah realisasi porsi para pemikul
+                IKP turunan (* = belum semua melapor); posisi/rilis = nilai pemikul angka jenjang terdekat. Tekan <em>Gunakan</em> lalu Simpan — realisasi resmi tetap diisi di sini.</p>
+        <?php endif; ?>
         <p class="small mb-1">Sel <strong>"—"</strong> = bulan yang tidak diukur menurut pola ukur IKP itu (posisi triwulanan/semesteran, atau indeks resmi di luar bulan rilisnya) — tidak diisi dan tidak dihitung.
             IKP <span class="ikp-pola rilis">Rilis</span> diisi lewat tombol <em>Catat nilai resmi</em> saat nilainya keluar, wajib dengan tautan bukti publikasi.</p>
         <p class="small text-secondary mb-0">
@@ -130,6 +136,19 @@ $sel  = static function (array $t) {
                                            aria-label="<?= $rilis ? 'Nilai resmi ' . esc(ikp_bulan_rilis_label($pola, (int) $tahun, $m, false), 'attr') : 'Realisasi ' . esc(ikp_nama_bulan($m), 'attr') ?>"
                                            value="<?= esc($fmt4($b['realisasi']), 'attr') ?>" placeholder="<?= $b['terbuka'] ? '–' : '' ?>" <?= $kunci ? 'disabled' : '' ?>>
                                     <span class="tgt" title="Target <?= esc(ikp_nama_bulan($m), 'attr') ?>">T: <?= esc(ikp_fmt($b['target'], 4)) ?></span>
+                                    <?php $sr = $saranEkin[$id][$m] ?? null; ?>
+                                    <?php if ($sr !== null && ! $kunci): ?>
+                                        <?php
+                                        $srSama  = $b['realisasi'] !== null && abs((float) $b['realisasi'] - (float) $sr['nilai']) < 0.00005;
+                                        $srJudul = 'Dari eKin (pemikul angka): ' . ($sr['cara'] === 'jumlah_porsi'
+                                            ? 'jumlah realisasi porsi ' . count($sr['pegawai']) . ' pemikul' . ($sr['lengkap'] ? '' : ' (belum semua pemikul melapor)')
+                                            : 'nilai yang dilaporkan pemikul angka jenjang terdekat') . '. Realisasi resmi tetap Anda yang mengisi.';
+                                        ?>
+                                        <span class="saran-ekin<?= $srSama ? ' sama' : '' ?>" data-saran="<?= esc((string) $sr['nilai'], 'attr') ?>" title="<?= esc($srJudul, 'attr') ?>">
+                                            eKin <b><?= esc(ikp_fmt((float) $sr['nilai'], 4)) ?></b><?= $sr['lengkap'] ? '' : '*' ?>
+                                            <?php if (! $srSama): ?><button type="button" data-gunakan="<?= esc(ikp_fmt((float) $sr['nilai'], 4), 'attr') ?>" aria-label="Gunakan nilai eKin <?= esc(ikp_fmt((float) $sr['nilai'], 4), 'attr') ?> untuk <?= esc(ikp_nama_bulan($m), 'attr') ?>">Gunakan</button><?php else: ?>✓<?php endif; ?>
+                                        </span>
+                                    <?php endif; ?>
                                     <?php if ($rilis && $b['keadaan'] === 'belum_waktunya'): ?>
                                         <span class="tgt" style="color:#9a6b00">menunggu rilis</span>
                                     <?php elseif ($rilis && ! $kunci): ?>

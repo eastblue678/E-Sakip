@@ -407,11 +407,27 @@ class IkpController extends BaseController
             return $this->halamanPilihOpd($scope, 'adminopd/ikp/realisasi');
         }
         $tahun = $this->tahunDipilih();
+        $rekap = $this->svc()->rekapOpd($scope['opd_id'], $tahun, ['kategori' => $this->kategoriDiminta()]);
+
+        // IKP turun sampai pelaksana: saran "Dari eKin (pemikul angka)" per bulan ukur. eKin yang belum
+        // menyediakan api/aksara/opd/{id}/ikp-turunan (atau tidak terjangkau) = tanpa saran, halaman tetap jalan.
+        // Realisasi resmi IKP tetap diisi/disahkan Admin OPD di sini (tidak ditimpa otomatis).
+        $saranEkin = [];
+        try {
+            $klien = new \App\Services\EkinClient();
+            if ($klien->terkonfigurasi()) {
+                $saranEkin = (new \App\Services\IkpTurunService($this->db))->saranUntukOpd($rekap, $tahun, $klien->ikpTurunan((int) $scope['opd_id'], $tahun));
+            }
+        } catch (\Throwable $e) {
+            log_message('warning', '[ikp.realisasi] saran eKin dilewati: ' . $e->getMessage());
+            $saranEkin = [];
+        }
 
         return view('ikp/realisasi', $this->dataHalaman($scope, $tahun, [
             'title'        => 'Realisasi Bulanan IKP',
             'aktif'        => 'realisasi',
-            'rekap'        => $this->svc()->rekapOpd($scope['opd_id'], $tahun, ['kategori' => $this->kategoriDiminta()]),
+            'rekap'        => $rekap,
+            'saranEkin'    => $saranEkin,
             'bulanTerbuka' => $this->bulanTerbuka($tahun),
             'kategori'     => $this->kategoriDiminta(),
         ]));

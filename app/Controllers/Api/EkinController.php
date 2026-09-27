@@ -5,6 +5,7 @@ namespace App\Controllers\Api;
 use App\Controllers\BaseController;
 use App\Models\OpdModel;
 use App\Services\IkpRekapService;
+use App\Services\IkpTurunService;
 use Throwable;
 
 /**
@@ -43,8 +44,12 @@ class EkinController extends BaseController
 
     private const PESAN_TAHUN = 'Parameter tahun tidak valid: gunakan tahun 4 digit antara 2000 dan 2100, mis. tahun=2026.';
 
-    /** Urutan alasan IKP bila satu IKP muncul karena beberapa sebab (paling spesifik dulu). */
-    private const PRIORITAS_ALASAN = ['pj' => 1, 'simpul' => 2, 'kepala_opd' => 3];
+    /**
+     * Urutan alasan IKP bila satu IKP muncul karena beberapa sebab (paling spesifik dulu).
+     * `delegasi` (IKP turun sampai pelaksana lewat pohon kinerja, IkpTurunService) paling spesifik:
+     * membawa peran, porsi, dan profil bulanan orang itu sendiri.
+     */
+    private const PRIORITAS_ALASAN = ['delegasi' => 0, 'pj' => 1, 'simpul' => 2, 'kepala_opd' => 3];
 
     /** @var \CodeIgniter\Database\BaseConnection */
     protected $db;
@@ -447,9 +452,11 @@ class EkinController extends BaseController
         $nodeIds = array_map('intval', array_column($milikAktif, 'node_id'));
 
         // Indikator simpul milik + target tahun itu + IKP tertaut.
+        $adaTurun = $this->db->fieldExists('ikp_peran', 'cascading_indikator_target');
         $indMilik = $this->db->table('cascading_indikator_opd ci')
             ->select('ci.id, ci.cascading_sasaran_id, ci.indikator, ci.satuan, cit.target, cit.target_teks, cit.metode, cit.ikp_id,
-                      ikp.dihapus_pada AS ikp_dihapus')
+                      ' . ($adaTurun ? 'cit.id AS cit_id, cit.ikp_peran, cit.sumber AS ikp_sumber,' : 'NULL AS cit_id, NULL AS ikp_peran, NULL AS ikp_sumber,') . '
+                      ikp.dihapus_pada AS ikp_dihapus', false)
             ->join('cascading_indikator_target cit', 'cit.cascading_indikator_id = ci.id AND cit.tahun = ' . (int) $tahun, 'left', false)
             ->join('ikp', 'ikp.id = cit.ikp_id', 'left')
             ->whereIn('ci.cascading_sasaran_id', $nodeIds)
@@ -461,20 +468,42 @@ class EkinController extends BaseController
                 $ikpTaut[] = (int) $r['ikp_id'];
             }
         }
-        $bulananIkp = $this->targetBulananIkp(array_values(array_unique($ikpTaut)), $tahun);
+        $ikpTaut    = array_values(array_unique($ikpTaut));
+        $bulananIkp = $this->targetBulananIkp($ikpTaut, $tahun);
+        $rekapSvc   = new IkpRekapService($this->db);
+        $polaTaut   = $ikpTaut !== [] ? $rekapSvc->polaPerIkp($ikpTaut) : [];
 
         $perSimpul = [];
         foreach ($indMilik as $r) {
-            $ikpId = $r['ikp_id'] !== null && $r['ikp_dihapus'] === null ? (int) $r['ikp_id'] : null;
+            $ikpId  = $r['ikp_id'] !== null && $r['ikp_dihapus'] === null ? (int) $r['ikp_id'] : null;
+            $peran  = $ikpId !== null ? ($r['ikp_peran'] === 'pendukung' ? 'pendukung' : 'angka') : null;
+            $sumber = $ikpId !== null ? ($r['ikp_sumber'] ?? null) : null;
+            $deleg  = $ikpId !== null && $sumber === 'delegasi';
+            $target = $r['target'] !== null ? (float) $r['target'] : null;
+            // IKP turun sampai pelaksana: baris "delegasi" membawa profil bulanan PORSI orang itu
+            // (hitungan: cicilan IKP × porsi/target; posisi/rilis: target di bulan ukur; pendukung:
+            // indikator proses dicicil 12 bulan). Tautan "lama" tetap memakai target bulanan IKP.
+            $bulanan = null;
+            if ($ikpId !== null) {
+                $bulanan = $deleg && isset($polaTaut[$ikpId])
+                    ? IkpTurunService::profilBulanan($polaTaut[$ikpId], $bulananIkp[$ikpId] ?? [], $target, (string) $peran)
+                    : ($bulananIkp[$ikpId] ?? null);
+            }
             $perSimpul[(int) $r['cascading_sasaran_id']][] = [
                 'id'             => (int) $r['id'],
                 'nama'           => (string) $r['indikator'],
                 'satuan'         => ($r['satuan'] ?? '') !== '' ? (string) $r['satuan'] : null,
-                'target_tahunan' => $r['target'] !== null ? (float) $r['target'] : null,
+                'target_tahunan' => $target,
                 'target_teks'    => $r['target_teks'] ?? null,
                 'metode'         => $r['metode'] ?? null,
-                'ikp_id'         => $ikpId,
-                'target_bulanan' => $ikpId !== null ? ($bulananIkp[$ikpId] ?? null) : null,
+                // Pendukung TIDAK memikul angka IKP: ikp_id dikosongkan (konsumen lama tidak mengira
+                // indikator proses = indikator IKP); IKP yang didukung ada di ikp_didukung_id.
+                'ikp_id'          => $peran === 'pendukung' ? null : $ikpId,
+                'ikp_didukung_id' => $peran === 'pendukung' ? $ikpId : null,
+                'ikp_peran'       => $peran,
+                'ikp_sumber'      => $sumber,
+                'ikp_delegasi_id' => $deleg ? (int) $r['cit_id'] : null,
+                'target_bulanan'  => $bulanan,
             ];
         }
 
@@ -580,6 +609,9 @@ class EkinController extends BaseController
 
     /**
      * IKP yang relevan bagi seorang pegawai, dengan alasan:
+     *   delegasi    IKP diturunkan ke indikator simpul miliknya lewat halaman Turunkan
+     *               IKP (cascading_indikator_target.sumber = 'delegasi'); entri membawa
+     *               `peran` dan `delegasi` [peran, porsi, profil bulanan, rantai induk, …]
      *   pj          ikp.pj_pegawai_id = dia
      *   simpul      IKP tertaut ke simpul yang ia miliki (ikp.cascading_sasaran_id,
      *               ikp.cascading_indikator_id, atau cascading_indikator_target.ikp_id)
@@ -649,6 +681,19 @@ class EkinController extends BaseController
             }
         }
 
+        // IKP turun sampai pelaksana: baris "delegasi" di simpul miliknya (angka ATAU pendukung).
+        $turunSvc = new IkpTurunService($this->db);
+        if ($simpulMilik !== [] && $turunSvc->siap()) {
+            foreach ($this->db->table('cascading_indikator_target cit')
+                ->select('cit.ikp_id, ci.cascading_sasaran_id AS node_id, i.opd_id')
+                ->join('cascading_indikator_opd ci', 'ci.id = cit.cascading_indikator_id', 'inner')
+                ->join('ikp i', 'i.id = cit.ikp_id AND i.dihapus_pada IS NULL', 'inner', false)
+                ->whereIn('ci.cascading_sasaran_id', $simpulMilik)->where('cit.tahun', $tahun)->where('cit.sumber', 'delegasi')
+                ->get()->getResultArray() as $r) {
+                $catat((int) $r['ikp_id'], (int) $r['opd_id'], 'delegasi', (int) $r['node_id']);
+            }
+        }
+
         foreach ($opdKepala as $opd) {
             foreach ($dasar()->where('i.opd_id', $opd)->get()->getResultArray() as $r) {
                 $catat((int) $r['id'], (int) $r['opd_id'], 'kepala_opd');
@@ -664,9 +709,28 @@ class EkinController extends BaseController
         foreach ($kandidat as $ikpId => $k) {
             $perOpd[$k['opd']][] = $ikpId;
         }
-        $hasil = [];
+        $hasil  = [];
+        $rekaps = [];
+        $polaD  = $bulD = $tgtD = $labelD = [];
         foreach ($perOpd as $opd => $ids) {
-            foreach ($svc->rekapOpd((int) $opd, $tahun, ['ids' => $ids]) as $r) {
+            $rekaps[$opd] = $svc->rekapOpd((int) $opd, $tahun, ['ids' => $ids]);
+            foreach ($rekaps[$opd] as $r) {
+                $id = (int) $r['ikp']['id'];
+                if (($kandidat[$id]['alasan'] ?? '') !== 'delegasi') {
+                    continue;
+                }
+                $polaD[$id] = $r['pola'];
+                $tgtD[$id]  = $r['target_tahunan'];
+                for ($m = 1; $m <= 12; $m++) {
+                    $bulD[$id][$m] = $r['bulan'][$m]['target'] ?? null;
+                }
+                $labelD[(int) $opd] = $this->labelLevel((int) $opd);
+            }
+        }
+        $delegasi = $polaD !== [] ? $turunSvc->untukPegawai($simpulMilik, $tahun, $polaD, $bulD, $tgtD, $labelD) : [];
+
+        foreach ($perOpd as $opd => $ids) {
+            foreach ($rekaps[$opd] as $r) {
                 $i  = $r['ikp'];
                 $id = (int) $i['id'];
                 $tb = [];
@@ -695,7 +759,11 @@ class EkinController extends BaseController
                     'cascading_indikator_id' => $i['cascading_indikator_id'] !== null ? (int) $i['cascading_indikator_id'] : null,
                     'alasan'                 => $kandidat[$id]['alasan'],
                     'node_ids'               => $kandidat[$id]['node_ids'],
-                ];
+                ] + ($kandidat[$id]['alasan'] === 'delegasi' ? [
+                    // IKP turun sampai pelaksana. peran = 'angka' bila minimal satu baris memikul angka.
+                    'peran'    => in_array('angka', array_column($delegasi[$id] ?? [], 'peran'), true) ? 'angka' : 'pendukung',
+                    'delegasi' => $delegasi[$id] ?? [],
+                ] : []);
             }
         }
         usort($hasil, static fn ($a, $b) => [self::PRIORITAS_ALASAN[$a['alasan']], $a['ikp_id']] <=> [self::PRIORITAS_ALASAN[$b['alasan']], $b['ikp_id']]);

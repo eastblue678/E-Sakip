@@ -156,6 +156,25 @@
 
         var blokNilai = document.getElementById('blok-nilai-rilis');
         var inNilai = document.getElementById('cat-nilai');
+
+        // Saran "Dari eKin (pemikul angka)": isi kotak bulan itu (rilis: buka dialog nilai resmi dengan nilai terisi).
+        // Tidak menyimpan apa pun — Admin OPD tetap menekan Simpan (rilis: bukti publikasi tetap wajib).
+        tabel.addEventListener('click', function (e) {
+            var g = e.target.closest('button[data-gunakan]');
+            if (!g) return;
+            e.preventDefault();
+            var td = g.closest('td');
+            var el = td.querySelector('input.isian');
+            if (!el || el.disabled) return;
+            if (el.dataset.rilis === '1') {
+                var t = td.querySelector('button.catat-rilis');
+                if (t) { t.click(); inNilai.value = g.dataset.gunakan; }
+                return;
+            }
+            el.value = g.dataset.gunakan;
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.focus();
+        });
         tabel.addEventListener('click', function (e) {
             var b = e.target.closest('button.cat');
             if (!b || b.disabled || !modal) return;
