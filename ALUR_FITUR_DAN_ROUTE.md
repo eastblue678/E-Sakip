@@ -479,6 +479,11 @@ Rekap per OPD · Per Program Unggulan · Pemilik Kinerja · Cetak Rekap = tab (`
 | GET | `adminkab/ikp/program-unggulan` | `AdminKab\IkpController::programUnggulan` *(`?pu=slug`)* |
 | GET | `adminkab/ikp/cetak` | `AdminKab\IkpController::cetak` *(PDF)* |
 | GET | `bupati/ikp` · `bupati/ikp/opd/(:num)` | `Bupati\IkpMonitoringController::index` / `opd` *(read-only)* |
+| GET | `adminkab/ikp/turun` · `adminkab/ikp/turun/(:num)` | `AdminOpd\IkpTurunController::index` / `detail` *(baca; `?opd_id&tahun`; tab "Turun ke Pelaksana")* |
+
+IKP turun sampai pelaksana (lihat §9.10): tab **Turun ke Pelaksana** membuka pohon pendelegasian IKP
+satu OPD (baca saja; rute tulis hanya ada di `/adminopd`), dan rekap per OPD (`adminkab/ikp`) punya kolom
+**Turun sampai pelaksana** (n dari m IKP) dari `IkpTurunService::rekapKabupaten()`.
 
 Pola ukur (lihat §9.10): "Realisasi bulan X" dihitung terhadap IKP yang **wajib** melapor bulan itu
 (bulan ukurnya & sudah tiba) — `agregat.wajib_bulan`, bukan jumlah IKP; indeks resmi yang menunggu
@@ -717,6 +722,20 @@ kini diturunkan dari pola (hitungan → `sum`; posisi/rilis → `trend_*` = arah
 | GET | `adminopd/ikp/inovasi` | `AdminOpd\IkpInovasiController::index` |
 | POST | `adminopd/ikp/inovasi/save` · `update/(:num)` · `delete/(:num)` | `save` / `update` / `delete` |
 | GET | `adminopd/ikp/lampiran-pk` | `AdminOpd\IkpInovasiController::lampiranPk` *(PDF Folio: PK + Lamp. I–V)* |
+| GET | `adminopd/ikp/turun` | `AdminOpd\IkpTurunController::index` *(daftar IKP + "Turun sampai")* |
+| GET | `adminopd/ikp/turun/(:num)` | `detail` *(pohon mini satu IKP; `?tahun`, `?usul=1` = isi otomatis dari pohon)* |
+| POST | `adminopd/ikp/turun/(:num)/save` | `save` *(izin `ikp_opd.update`; form biasa, bukan JSON)* |
+
+**IKP turun sampai pelaksana (28-09-2026).** Tab **Turunkan IKP**: IKP diturunkan lewat INDIKATOR SIMPUL
+pohon kinerja (jalur yang sama dengan IKU) — Kepala OPD (pemilik IKP) → Eselon III → IV/Ketua Tim →
+pelaksana; pemilik simpul (Pemilik Kinerja) otomatis memikulnya. Satu baris `cascading_indikator_target`
+= "IKP X diturunkan ke indikator simpul Y, tahun T, porsi Z, peran P" (kolom baru `ikp_peran`
+angka|pendukung, `ikp_induk_id`, `dibuat_oleh`, `sumber` delegasi|lama, `sebelum_delegasi`; migrasi
+`2026-09-28-000002_AddIkpTurunToCascadingTarget` / `db/update_2026-09-28_ikp_turun.sql`). Pemikul angka
+hitungan membawa **porsi** (Σ porsi anak = target induk), posisi/rilis membawa **target utuh** (satu
+pemikul angka per jenjang); pendukung memakai indikator **proses** sendiri. Pemeriksa per jenjang
+hanya memperingatkan. Realisasi IKP menampilkan saran **Dari eKin (pemikul angka)** + tombol *Gunakan*
+bila eKin menyediakan `api/aksara/opd/{id}/ikp-turunan`. Rincian: `AKSARA_PLUS_IKP_PEMILIK_KINERJA.md`.
 
 ### 9.11 Pemilik Kinerja (pohon kinerja sampai pelaksana) — AKSARA+
 
@@ -729,7 +748,10 @@ PK JPT/Camat. Dasar SKP eKin (RHK diturunkan dari simpul yang dimiliki).
 | GET | `adminopd/pemilik-kinerja` | `AdminOpd\PemilikKinerjaController::index` *(`?tahun`)* |
 | GET | `adminopd/pemilik-kinerja/pegawai` | `pegawai` *(JSON Select2)* |
 | POST | `adminopd/pemilik-kinerja/save` · `delete/(:num)` | `save` / `delete` |
-| POST | `adminopd/pemilik-kinerja/indikator` | `indikator` *(satuan, target tahunan, metode, tautan IKP)* |
+| POST | `adminopd/pemilik-kinerja/indikator` | `indikator` *(satuan, target tahunan, metode, tautan IKP; baris hasil Turunkan IKP: hanya satuan)* |
+
+Simpul yang memikul IKP diberi chip **★ IKP** (pendukung saja: **☆ Mendukung IKP**) di sini dan di bagan
+Pohon Kinerja (`adminOpd/cascading/_pohon_opd_tree`, data `PohonPemilikService::untukPohon()['ikp']`).
 
 ---
 

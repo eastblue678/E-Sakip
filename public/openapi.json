@@ -1885,16 +1885,67 @@
           },
           "ikp_id": {
             "type": "integer",
-            "nullable": true
+            "nullable": true,
+            "description": "IKP yang DIPIKUL angkanya (tautan lama / pemikul angka). Indikator proses pendukung: null (lihat ikp_didukung_id)."
           },
+          "ikp_didukung_id": { "type": "integer", "nullable": true, "description": "IKP yang didukung indikator PROSES ini (peran pendukung)." },
+          "ikp_peran": { "type": "string", "nullable": true, "enum": ["angka", "pendukung", null] },
+          "ikp_sumber": { "type": "string", "nullable": true, "enum": ["delegasi", "lama", null], "description": "delegasi = halaman Turunkan IKP; lama = tautan langsung sebelum fitur itu." },
+          "ikp_delegasi_id": { "type": "integer", "nullable": true, "description": "cascading_indikator_target.id bila sumber delegasi." },
           "target_bulanan": {
             "type": "object",
-            "description": "Kunci \"1\"..\"12\"; null = belum diisi.",
+            "description": "Kunci \"1\"..\"12\". Tautan lama = target bulanan IKP; baris delegasi = profil porsi orang itu (hitungan: cicilan × porsi; posisi/rilis: hanya bulan ukur; pendukung: proses dicicil 12 bulan).",
             "additionalProperties": {
               "type": "number",
               "nullable": true
             },
             "nullable": true
+          }
+        }
+      },
+      "EkinDelegasiIkp": {
+        "type": "object",
+        "description": "Satu baris IKP turun sampai pelaksana yang dipikul pegawai ini (alasan delegasi).",
+        "properties": {
+          "delegasi_id": { "type": "integer" },
+          "node_id": { "type": "integer" },
+          "level": { "type": "string", "enum": ["es3", "es4", "pelaksana"] },
+          "level_label": { "type": "string" },
+          "sasaran": { "type": "string" },
+          "peran": { "type": "string", "enum": ["angka", "pendukung"] },
+          "indikator_id": { "type": "integer" },
+          "indikator": { "type": "string" },
+          "satuan": { "type": "string", "nullable": true },
+          "porsi_target_tahunan": { "type": "number", "nullable": true, "description": "angka+hitungan: porsi; angka+posisi/rilis: target utuh IKP; pendukung: target indikator proses." },
+          "target_teks": { "type": "string", "nullable": true },
+          "porsi_persen": { "type": "number", "nullable": true, "description": "porsi ÷ target IKP × 100 (hanya angka + hitungan)." },
+          "metode": { "type": "string" },
+          "pola_indikator": { "type": "string", "enum": ["hitungan", "posisi", "rilis"] },
+          "bulan_ukur_indikator": { "type": "array", "items": { "type": "integer", "minimum": 1, "maximum": 12 } },
+          "target_bulanan": {
+            "type": "object",
+            "description": "Kunci \"1\"..\"12\"; null = tidak ada target bulan itu (posisi/rilis: bukan bulan ukur).",
+            "additionalProperties": { "type": "number", "nullable": true }
+          },
+          "induk_delegasi_id": { "type": "integer", "nullable": true },
+          "rantai_induk": {
+            "type": "array",
+            "description": "Jenjang di atasnya yang memikul IKP yang sama sampai Kepala OPD (peran pemilik_ikp).",
+            "items": {
+              "type": "object",
+              "properties": {
+                "delegasi_id": { "type": "integer", "nullable": true },
+                "node_id": { "type": "integer", "nullable": true },
+                "level": { "type": "string", "enum": ["es2", "es3", "es4", "pelaksana"] },
+                "level_label": { "type": "string" },
+                "sasaran": { "type": "string", "nullable": true },
+                "indikator_id": { "type": "integer", "nullable": true },
+                "indikator": { "type": "string", "nullable": true },
+                "peran": { "type": "string", "enum": ["angka", "pendukung", "pemilik_ikp"] },
+                "target": { "type": "number", "nullable": true },
+                "pemilik_pegawai_ids": { "type": "array", "items": { "type": "integer" } }
+              }
+            }
           }
         }
       },
@@ -2068,14 +2119,17 @@
           },
           "alasan": {
             "type": "string",
-            "enum": ["pj", "simpul", "kepala_opd"]
+            "enum": ["delegasi", "pj", "simpul", "kepala_opd"],
+            "description": "Sebab paling spesifik: delegasi → pj → simpul → kepala_opd."
           },
           "node_ids": {
             "type": "array",
             "items": {
               "type": "integer"
             }
-          }
+          },
+          "peran": { "type": "string", "enum": ["angka", "pendukung"], "description": "Hanya alasan delegasi: angka bila minimal satu baris memikul angka." },
+          "delegasi": { "type": "array", "items": { "$ref": "#/components/schemas/EkinDelegasiIkp" }, "description": "Hanya alasan delegasi." }
         }
       },
       "EkinPkIndikator": {

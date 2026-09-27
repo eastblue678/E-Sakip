@@ -653,7 +653,7 @@ Rincian `cascading[]`:
 
 - `level`: `es3|es4|pelaksana`; `level_label` sudah digeser untuk kecamatan (Camat = Eselon III, dst.).
 - `induk.jenis = "iku"` untuk simpul Eselon III: induknya indikator IKU OPD (`induk.node_id = null`, `induk.sasaran_id` = id sasaran IKU, `pemilik_pegawai_ids` = kepala OPD dari PK). Untuk Eselon IV/Pelaksana `induk.jenis = "cascading"`: simpul induk + **indikator induk** (`es3_indikator_id`) + pemilik simpul induk tahun itu (penanggung jawab lebih dulu). Rantai ini adalah rantai **intervensi**, bukan rantai penilai — pejabat penilai tetap diatur di eKin.
-- `target_bulanan` hanya terisi bila indikator ditautkan ke IKP (`ikp_id`); nilainya target bulanan IKP tahun itu. Selain itu `null` — target bulanan pegawai disusun di Rencana Aksi eKin.
+- `target_bulanan` hanya terisi bila indikator memikul/mendukung IKP; tautan `lama` = target bulanan IKP tahun itu, baris `delegasi` = profil porsi orang itu (lihat "IKP turun sampai pelaksana" di bawah). Selain itu `null` — target bulanan pegawai disusun di Rencana Aksi eKin.
 - Simpul yang tidak tampil di pohon (IKU induknya dihentikan, atau periode IKU tidak memuat tahun itu) **tidak dikirim**; jumlahnya ada di `meta.simpul_tersembunyi`.
 
 Rincian `ikp[]`:
@@ -670,15 +670,50 @@ Rincian `ikp[]`:
 }
 ```
 
-`alasan` (satu nilai per IKP; bila beberapa sebab berlaku, yang paling spesifik dipakai: `pj` → `simpul` → `kepala_opd`):
+`alasan` (satu nilai per IKP; bila beberapa sebab berlaku, yang paling spesifik dipakai: `delegasi` → `pj` → `simpul` → `kepala_opd`):
 
 | `alasan` | Arti |
 | --- | --- |
+| `delegasi` | IKP **diturunkan** (menu Kinerja Prioritas › Turunkan IKP) ke indikator simpul yang ia miliki tahun itu — baris `cascading_indikator_target.sumber = 'delegasi'`. Butir membawa `peran` dan `delegasi[]` (lihat di bawah). |
 | `pj` | `ikp.pj_pegawai_id` = pegawai ini. |
 | `simpul` | IKP tertaut ke simpul yang ia miliki tahun itu: `ikp.cascading_sasaran_id` = simpulnya, `ikp.cascading_indikator_id` = indikator simpulnya, atau `cascading_indikator_target.ikp_id` pada indikator simpulnya. `node_ids` menyebut simpul penautnya. |
 | `kepala_opd` | Ia pihak pertama PK JPT/Camat OPD itu tahun itu → **semua** IKP aktif OPD dikirim. |
 
 `target_bulanan`/`realisasi_bulanan` selalu berkunci `"1"`..`"12"`; `null` = belum diisi (realisasi `0` tetap `0`). Hanya IKP yang belum dihapus.
+
+**IKP turun sampai pelaksana (28-09-2026) — alasan `delegasi`.** Kunci IKP di atas (`target_tahunan`, `target_bulanan`, …) tetap angka **IKP** (tingkat OPD). Angka milik pegawai ini ada di `delegasi[]` (satu butir per simpul miliknya yang memikul IKP itu; biasanya satu):
+
+```json
+{
+  "ikp_id": 380, "alasan": "delegasi", "peran": "pendukung", "node_ids": [1724],
+  "pola_ukur": "rilis", "bulan_ukur": [12], "target_tahunan": 99, "…": "…",
+  "delegasi": [{
+    "delegasi_id": 364, "node_id": 1724, "level": "pelaksana", "level_label": "Pelaksana",
+    "sasaran": "Terlaksananya Pelayanan Informasi Publik",
+    "peran": "pendukung",
+    "indikator_id": 2638, "indikator": "Jumlah bukti dukung SAQ Keterbukaan Informasi yang dilengkapi", "satuan": "Dokumen",
+    "porsi_target_tahunan": 40, "target_teks": "40", "porsi_persen": null, "metode": "sum",
+    "pola_indikator": "hitungan", "bulan_ukur_indikator": [1,2,3,4,5,6,7,8,9,10,11,12],
+    "target_bulanan": { "1": 3, "2": 4, "…": "…", "12": 3 },
+    "induk_delegasi_id": 363,
+    "rantai_induk": [
+      { "delegasi_id": 363, "node_id": 1722, "level": "es4", "peran": "pendukung", "indikator_id": 2637, "indikator": "Jumlah laporan layanan informasi publik PPID yang disusun", "target": 12, "pemilik_pegawai_ids": [306], "…": "…" },
+      { "delegasi_id": 362, "node_id": 619, "level": "es3", "peran": "angka", "indikator_id": 739, "indikator": "Indeks Keterbukaan Informasi Publik", "target": 99, "pemilik_pegawai_ids": [1012], "…": "…" },
+      { "delegasi_id": null, "node_id": null, "level": "es2", "peran": "pemilik_ikp", "pemilik_pegawai_ids": [151] }
+    ]
+  }]
+}
+```
+
+| Kunci `delegasi[]` | Arti |
+| --- | --- |
+| `peran` | `angka` = pemikul angka: targetnya dihitung ke IKP. `pendukung` = bekerja untuk IKP lewat indikator **proses** miliknya sendiri; tidak menambah angka IKP. `peran` di tingkat butir = `angka` bila minimal satu baris memikul angka. |
+| `porsi_target_tahunan` | angka + hitungan: **porsi** (Σ porsi anak = target induk); angka + posisi/rilis: **target utuh** (= target IKP, tidak dibagi); pendukung: target indikator proses. `porsi_persen` = porsi ÷ target IKP (hanya angka + hitungan). |
+| `target_bulanan` | profil untuk rencana aksi: angka + hitungan = cicilan IKP × porsi/target (pembulatan kumulatif, Σ = porsi); angka + posisi/rilis = target IKP **hanya di bulan ukur** (bulan lain `null`, tidak pernah dicicil); pendukung = target proses dicicil 12 bulan. |
+| `pola_indikator`, `bulan_ukur_indikator` | pola indikator baris ini: angka mengikuti IKP; pendukung = `hitungan` bulanan. |
+| `rantai_induk` | jenjang di atasnya yang memikul IKP yang sama sampai Kepala OPD (`peran: "pemilik_ikp"`) — dasar "RHK pimpinan yang diintervensi" (RHK IKP milik pemilik simpul induk). Jenjang yang tidak ikut dilompati. |
+
+Pada `cascading[].indikator[]`, indikator yang memikul IKP kini juga membawa `ikp_peran` (`angka|pendukung`), `ikp_sumber` (`delegasi|lama`), `ikp_delegasi_id`, dan `ikp_didukung_id`. **Indikator proses pendukung dikirim dengan `ikp_id = null`** (IKP-nya di `ikp_didukung_id`) supaya konsumen lama tidak mengiranya indikator IKP; `target_bulanan` baris `delegasi` = profil di atas, baris `lama` = target bulanan IKP seperti sebelumnya.
 
 **Pola ukur (28-09-2026).** Setiap butir `ikp[]` (dan `data[]` endpoint 11) juga membawa:
 

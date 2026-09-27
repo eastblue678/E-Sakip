@@ -19,7 +19,7 @@ menilai kinerja Kepala OPD setiap bulan, dan penilaian SKP bulanan menjadi prose
 | Lingkungan | Langkah |
 |---|---|
 | Dengan CLI | `php spark migrate` lalu `php spark db:seed IkpReferensiSeeder` |
-| Tanpa CLI (phpMyAdmin) | jalankan `db/update_2026-09-26_ikp_kinerja.sql`, lalu `db/update_2026-09-26_ikp_referensi.sql` |
+| Tanpa CLI (phpMyAdmin) | jalankan `db/update_2026-09-26_ikp_kinerja.sql`, lalu `db/update_2026-09-26_ikp_referensi.sql`, `db/update_2026-09-28_ikp_pola_ukur.sql`, `db/update_2026-09-28_ikp_turun.sql` |
 
 Keduanya idempoten. Untuk API eKin tambahkan `EKIN_API_TOKEN` di `.env` (token terpisah dari `API_TOKEN`).
 Untuk Ruang OPD membaca eKin: `EKIN_INTERNAL_URL` dan `EKIN_AKSARA_TOKEN` (tanpa keduanya bagian eKin tampil "belum tersedia").
@@ -312,6 +312,163 @@ rekap Kabupaten/Bupati; tanpa gulir samping; tanpa elemen melayang).
     (`spark ekin:sinkron-ikp`) dan rencana aksi IKI rilis mengikuti `bulan_ukur` (tugas sisi eKin).
 13. Klasifikasi otomatis memakai nama + satuan; "Jumlah … (satuan Indeks/Persen)" tetap posisi bertanda periksa.
     Perlu daftar putih/hitam per OPD?
+
+## IKP turun sampai pelaksana — pendelegasian lewat pohon kinerja (28-09-2026)
+
+**Keluhan pengguna.** "SKP dari IKU sudah turun temurun. Tapi IKP belum turun temurun … IKP hanya berhenti di
+Es 2, ga sampai bawah. Pikirkan proses pendelegasiannya, termasuk bagaimana bisa sampai masuk ke RHK dsb."
+Keadaan sebelumnya: IKP melekat di PK Kepala OPD; eKin menawarkan IKP lewat alasan `kepala_opd` (semua IKP OPD),
+`pj` (12 IKP) dan `simpul` (8 tautan langsung) — tidak ada alur menurunkannya jenjang demi jenjang.
+
+**Keputusan: jalur resmi = pohon kinerja AKSARA+ (sama dengan IKU), tanpa jalur kedua.** IKP diturunkan dengan
+menautkannya ke **indikator simpul** di setiap jenjang: Kepala OPD (Es II, pemilik IKP) → Eselon III → Eselon IV /
+Ketua Tim → pelaksana. Pemilik simpul (menu Pemilik Kinerja) otomatis menjadi pemikul IKP turunan itu dan
+menariknya di eKin (Tarik dari SAKIP) menjadi RHK. Bila satu simpul pelaksana dimiliki beberapa orang, eKin membagi
+porsi per orang lewat Cascading "Bagi ke bawahan" yang sudah ada.
+
+| Peran | Target baris | Aturan pemeriksa per jenjang |
+|---|---|---|
+| **Pemikul angka** (`ikp_peran = angka`) — hitungan | **porsi** IKP | Σ porsi anak = porsi/target induk → *terbagi habis* / *kurang* (sisa belum diturunkan) / *lebih* |
+| **Pemikul angka** — posisi/rilis | **target utuh** (= target IKP, terkunci, tidak dibagi) | tepat **satu** pemikul angka per jenjang di satu cabang (> 1 = peringatan; 0 di bawah Kabid dengan pendukung = netral "angka tetap dipikul jenjang ini"; 0 di akar = peringatan) |
+| **Pendukung** (`ikp_peran = pendukung`) | target **indikator proses** miliknya sendiri (pola hitungan) | tidak menambah angka IKP; pemikul angka DI BAWAH pendukung = "rantai angka terputus" |
+
+Contoh IKIP (rilis Des, target 99): Kabid IKP = pemikul angka (indikator "Indeks Keterbukaan Informasi Publik", 99,
+hanya Desember); Pranata Humas (Es IV/JF) pendukung "Jumlah laporan layanan informasi publik PPID yang disusun";
+PPID pelaksana pendukung **"Jumlah bukti dukung SAQ Keterbukaan Informasi yang dilengkapi"** (40, dicicil 12 bulan) —
+di sinilah kerja sepanjang tahun diukur tanpa pernah mencicil indeks. Pemeriksa hanya **memperingatkan**; penyimpanan
+tidak diblokir (porsi yang sengaja *kurang* — mis. Dikdas 1.000 siswa berprestasi, baru SMPN 1 yang ada di pohon — sah).
+
+**Skema** (migrasi `2026-09-28-000002_AddIkpTurunToCascadingTarget`, kembaran `db/update_2026-09-28_ikp_turun.sql`,
+idempoten, tanpa mengubah angka): `cascading_indikator_target` + `ikp_peran` (angka|pendukung, bawaan angka),
+`ikp_induk_id` (baris induk IKP yang sama; NULL = langsung dari IKP/Kepala OPD; FK ke tabel yang sama, `SET NULL`),
+`dibuat_oleh` (users.id; NULL = migrasi/simulasi), `sumber` (`delegasi` | `lama`), `sebelum_delegasi` (JSON keadaan
+indikator sebelum diambil alih). Satu baris = "IKP X diturunkan ke indikator simpul Y, tahun T, porsi Z, peran P".
+Delapan tautan lama diberi `sumber = lama`, peran angka. `ikp_induk_id` dirawat `IkpTurunService::rapikanInduk()`
+dari struktur pohon: induk = leluhur **terdekat** yang memikul IKP yang sama (jenjang yang tidak ikut dilompati).
+
+**Layar** (Kinerja Prioritas → tab **Turunkan IKP**, `adminopd/ikp/turun[/{id}]`; Admin Kabupaten/Inspektorat
+membaca lewat tab **Turun ke Pelaksana**, `adminkab/ikp/turun`):
+- *Daftar*: kartu per IKP — pola, target, lencana **"Turun sampai: Eselon III ✓ · Eselon IV / JF ✓ · Pelaksana ✗"**
+  (label jenjang mengikuti jenis unit: di kecamatan Camat = Eselon III, jadi es4 sudah "Pelaksana / JF" dan dihitung
+  sampai pelaksana), ringkasan pemeriksa, dan tiga angka (IKP, sudah diturunkan, sampai pelaksana).
+- *Pohon mini satu IKP*: Kepala OPD (pemilik IKP, dari PK JPT/Camat) di puncak, lalu simpul aktif (aturan tampil sama
+  dengan Pemilik Kinerja & API eKin) dengan pemiliknya. Setiap simpul: centang **Ikut memikul IKP ini**, peran,
+  indikator (pilih yang ada — indikator yang sudah memikul IKP lain tidak bisa dipilih — atau **buat indikator baru dari
+  rumusan IKP**), porsi (hitungan, dengan % terhadap atasan), target utuh terkunci (posisi/rilis), atau indikator proses
+  (pendukung). Kotak **pemeriksa per jenjang** di bawah setiap induk dihitung server dan diperbarui seketika oleh
+  `ikp-turun.js` (cerminan `IkpTurunService::periksa`). Cabang yang memikul tampil lebih dulu; cabang lain terlipat.
+- **Usulkan dari pohon** (`?usul=1`, belum tersimpan sampai ditekan Simpan): simpul yang teks sasaran/indikatornya
+  mirip IKP (kata bermakna, ≥ 60 %) atau yang sudah bertaut IKP ini. Hitungan: semua daun yang cocok memikul angka,
+  porsi proporsional target indikator simpul (satuan sepadan) atau rata, leluhur = Σ porsi turunannya. Posisi: satu
+  rantai angka ke simpul paling cocok (seri → paling dalam). Rilis: satu rantai angka ke simpul paling cocok (seri →
+  paling **dangkal**: nilai resmi dipegang pejabat) + maks. 2 cabang pendukung dengan indikator proses bawaan
+  (`IkpTurunService::teksProses`). Pendelegasian yang sudah tersimpan tidak diubah usulan.
+- *Mencabut* (hilangkan centang lalu Simpan) memulihkan indikator: indikator yang dibuat pendelegasian dihapus bila
+  tidak dipakai (tanpa simpul anak berjangkar padanya dan tanpa target tahun lain), indikator lama mendapat kembali
+  target/metode sebelum diambil alih (`sebelum_delegasi`), tautan lama kehilangan IKP-nya tetapi targetnya tetap.
+- Chip **★ IKP** (pemikul angka; ×n bila beberapa IKP) / **☆ Mendukung IKP** pada simpul di bagan **Pohon Kinerja**
+  dan kartu **Pemilik Kinerja**; tag indikator menyebut perannya. Modal indikator Pemilik Kinerja **mengunci** target,
+  metode, dan tautan IKP untuk baris `delegasi` (hanya satuan yang boleh diubah — porsi diatur di Turunkan IKP);
+  tautan langsung yang dibuat dari modal itu tercatat `sumber = lama`.
+- *Rekap Kabupaten* (`adminkab/ikp`): kolom **Turun sampai pelaksana** (n/m IKP per OPD, bertaut ke halaman baca) dan
+  jumlah total di kartu IKP Terdaftar (`IkpTurunService::rekapKabupaten`).
+
+**Masuk ke RHK (API ke eKin).** `api/ekin/pegawai/{id}/kinerja`: alasan baru **`delegasi`** (paling spesifik:
+`delegasi → pj → simpul → kepala_opd`) dengan `peran` dan `delegasi[]`: `delegasi_id`, simpul & indikator, `peran`,
+`porsi_target_tahunan` (+ `porsi_persen`), **profil bulanan** menurut pola (hitungan = cicilan IKP × porsi/target
+dengan pembulatan kumulatif, Σ = porsi; posisi/rilis = target IKP **hanya di bulan ukur**; pendukung = proses dicicil
+12 bulan), `pola_indikator`, `rantai_induk` sampai Kepala OPD (dasar "RHK pimpinan yang diintervensi" = RHK IKP milik
+pemilik simpul induk). Indikator simpul membawa `ikp_peran`, `ikp_sumber`, `ikp_delegasi_id`; **indikator proses
+pendukung dikirim dengan `ikp_id = null`** (IKP-nya di `ikp_didukung_id`) supaya konsumen lama tidak mengiranya
+indikator IKP. Alasan `pj`/`simpul`/`kepala_opd` dan tautan `lama` tidak berubah; Kepala OPD tetap `kepala_opd`.
+Kontrak lengkap: `API_DOCUMENTATION.md` §10 & `public/openapi.json` (`EkinDelegasiIkp`). Yang dilakukan eKin
+(TarikSakip, keputusan spesifikasi): `angka` → RHK `sumber_tipe='ikp'` berlencana IKP dengan IKI kuantitas bertarget
+porsi + pola ukur + RA sesuai profil; `pendukung` → RHK bertanda pendukung ("Mendukung IKP") dengan IKI proses; SKP
+draf → RHK langsung masuk; SKP sudah diajukan/disetujui → penugasan "IKP turunan" yang harus diterima pegawai.
+
+**Realisasi naik — saran "Dari eKin (pemikul angka)".** Halaman realisasi IKP membaca kontrak eKin
+`GET api/aksara/opd/{id}/ikp-turunan?tahun=` (`EkinClient::ikpTurunan`):
+
+```json
+{ "opd_id": 20, "tahun": 2026, "diperbarui": "…",
+  "baris": [ { "delegasi_id": 369, "ikp_id": 323, "pegawai_id": 307,
+               "bulan": { "1": { "realisasi": 31.5, "pada": "2026-01-25" }, "…": "…" } } ] }
+```
+
+`delegasi_id` = `cascading_indikator_target.id` AKSARA (dikirim eKin dari RHK/IKI hasil tarikan baris itu),
+`realisasi` = realisasi bulan itu yang sudah disetujui di eKin, per pegawai. AKSARA sendiri yang merangkum
+(`IkpTurunService::saranRealisasi`): hitungan = Σ realisasi pemikul angka **terbawah** di setiap cabang (atasan dan
+pendukung tidak ikut dijumlah — satu hasil dihitung satu kali oleh pemiliknya); posisi/rilis = nilai pemikul angka
+jenjang **terdekat** ke IKP (Eselon III dulu; belum melapor → turun satu jenjang). Sel bulan ukur yang terbuka
+menampilkan "eKin *n* **Gunakan**" (\* = belum semua pemikul melapor); *Gunakan* hanya mengisi kotak (rilis: membuka
+dialog "Catat nilai resmi" berisi nilainya — bukti publikasi tetap wajib). **Realisasi resmi IKP tetap diisi/disahkan
+Admin OPD**, tidak pernah ditimpa otomatis. eKin yang belum menyediakan endpoint ini (404 → `belum_tersedia`), mati,
+atau belum dikonfigurasi = tidak ada saran, halaman tetap berjalan.
+
+**Data simulasi** (`/root/demo-kinerja/simulasi/03b_ikp_turun.php`, di luar repo; `AKSARA_DB`, bawaan `aksara_demo`;
+idempoten, `--kering` = ROLLBACK; menulis peta id `03b_ikp_turun[.<db>].json` tanpa nama/NIP). Meniru
+`IkpTurunService::simpan`: 24 IKP diturunkan (88 baris, 61 indikator simpul baru, 27 indikator lama diambil alih
+dengan `sebelum_delegasi`) memakai pohon & pemilik yang ada — **Diskominfo** (IKIP/IPS/KAMI: Kabid pemikul angka +
+pendukung proses sampai pelaksana; empat IKP posisi SPBE rantai angka Kabid → Es IV → pelaksana; konten 150 = 100 +
+50 dua cabang), **Kecamatan Pringsewu + Kelurahan Pringsewu Barat** (aman-tertib 15 = 14 kecamatan + 1 kelurahan
+sampai petugas keamanan kelurahan sebagai pendukung; usulan kelurahan 5 = 4 + 1), **Dinkes/UPTD Puskesmas
+Pringsewu** (CKG 60.000 = 52.800 Bidang P2P + 7.200 Puskesmas sampai pelaksana CKG; hipertensi & DM dengan porsi
+Puskesmas 1.955 / 475; pendukung rekam medis), **Disdikbud/UPT SMPN 1** (siswa berprestasi porsi 30 dari 1.000 —
+sengaja "kurang 970"; diklat guru 600 = 588 Bidang GTK + 12 SMPN 1), **DLH** (bank sampah nasabah aktif posisi +
+pendukung lintas bidang penilaian bank sampah; berat sampah, adiwiyata, B3, pengaduan). Sengaja belum diturunkan:
+381, 383, 239, DLH 459–470, IKP Dinkes/Disdikbud lain (rekap memperlihatkan "belum"). Dijalankan HANYA pada
+`aksara_uji`; lari kedua 0 perubahan. Tahap ini tidak menyentuh realisasi, penilaian, maupun pemilik simpul.
+
+**Uji.** Unit `tests/unit/IkpTurunTest.php` (26 kasus: pemeriksa porsi & satu pemikul angka, rantai terputus,
+cakupan termasuk kecamatan, pembulatan kumulatif, profil bulanan per pola/peran, porsi sisa terbesar, kemiripan,
+susun induk, usulan rilis/hitungan/tautan lama, saran realisasi hitungan & rilis). Peramban
+`uji/malam/cek_ikp_turun.mjs` (repo demo; 111 pemeriksaan pada 1366 & 390 px): daftar & lencana, IKIP rilis
+(target utuh terkunci, pendukung PPID), peringatan "2 pemikul angka" seketika pada posisi, usulan → simpan → cabut
+IKP 381 dengan sidik jari tabel kembali identik, penolakan porsi bukan angka, lingkup OPD, chip ★ IKP di Pohon &
+Pemilik Kinerja, porsi CKG & "Kurang 200" seketika, "Kurang 970" Dikdas, rekap & halaman baca kabupaten, API
+`delegasi` (IKIP hanya Desember 99; PPID pendukung 12 bulan & `ikp_id` null; CKG Puskesmas 7.200 = 12 %, 600/bulan;
+Kepala tetap `kepala_opd`), saran eKin + *Gunakan* lewat tiruan eKin (`uji/malam/mock_ekin_turunan.php`) dan tanpa
+saran bila eKin belum menyediakan. Tanpa gulir samping, tanpa elemen melayang.
+
+### Terbuka untuk dibahas
+
+1. **Siapa yang menurunkan.** Kini Admin OPD atas nama Kepala OPD untuk seluruh pohon. Apakah Kabid boleh menurunkan
+   sendiri IKP di cabangnya (akun per pejabat belum ada di AKSARA)?
+2. **Realisasi IKP otomatis dari eKin** untuk pola hitungan? Kini hanya saran + *Gunakan*; Admin OPD tetap pengesah.
+3. **Kontrak `api/aksara/opd/{id}/ikp-turunan` belum disediakan eKin** — AKSARA siap membacanya (diuji dengan tiruan).
+   eKin perlu menyimpan `delegasi_id` pada RHK/IKI hasil tarikan baris `delegasi` agar realisasinya bisa dikirim balik.
+4. **IKI proses bawaan untuk pendukung** kini teks bawaan per pola ("Jumlah bukti dukung penilaian … yang dilengkapi",
+   "Jumlah rekap data …", "Jumlah kegiatan pendukung …") yang diketik ulang per simpul. Perlu katalog per jenis indeks
+   (SAQ KIP, kuesioner SPBE, bukti Indeks KAMI, LKE SAKIP, …)?
+5. **Profil bulanan pendukung** = target proses dicicil rata 12 bulan (pembulatan kumulatif). Kerja nyata sering
+   menumpuk menjelang penilaian (mis. SAQ Mei–Agustus) — perlu bulan kerja pilihan?
+6. **Definisi "sampai pelaksana"** = ada baris (angka ATAU pendukung) di jenjang pelaksana, walau jenjang tengah
+   dilompati; di kecamatan jenjang es4 ("Pelaksana / JF") sudah dihitung. Apakah untuk hitungan harus ada PEMIKUL
+   ANGKA sampai pelaksana?
+7. **Satu IKP per indikator per tahun** (kunci unik lama `cascading_indikator_id + tahun`). Karena itu satu simpul yang
+   memikul beberapa IKP mendapat beberapa indikator ("buat dari rumusan IKP"), dan indikator yang sudah memikul IKP lain
+   tidak bisa dipilih. Alternatif: tabel penghubung IKP ↔ indikator (lebih luwes, migrasi lebih besar).
+8. **Mengambil alih indikator yang sudah ada** mengganti targetnya dengan porsi/target utuh IKP (mis. indikator Kabid
+   IKIP 97,5 → 99). Keadaan lama disimpan di `sebelum_delegasi` dan dipulihkan saat dicabut. Bila target Renstra simpul
+   dan porsi IKP berbeda, mana yang berlaku? Kini porsi IKP.
+9. **Pemeriksa tidak memblokir** (kurang/lebih/ganda boleh disimpan dengan peringatan). Perlu mode ketat sebelum PK
+   ditandatangani?
+10. **Porsi bawaan usulan** proporsional target indikator simpul menghasilkan angka ganjil (CKG 53.571 / 6.429);
+    Admin OPD menyesuaikan. Porsi simulasi Dinkes (Puskesmas Pringsewu 12 % kabupaten) adalah asumsi.
+11. **Pendukung lintas bidang** (DLH: penilaian kinerja bank sampah di Bidang Penataan mendukung IKP nasabah aktif
+    Bidang Sampah) diperbolehkan; induknya langsung IKP (tidak ada leluhur yang memikul).
+12. **Pendelegasian per tahun**: tahun berikutnya perlu diturunkan ulang — belum ada "salin dari tahun lalu".
+13. **Modal Pemilik Kinerja** masih bisa membuat tautan langsung IKP (`sumber = lama`, porsi = target yang diketik).
+    Sebaiknya dihapus dan diarahkan ke Turunkan IKP? Kini dibiarkan agar alur lama tidak putus; baris `delegasi` dikunci.
+14. **Perubahan kecil kontrak API**: indikator proses pendukung dikirim `ikp_id = null` (+ `ikp_didukung_id`); eKin
+    lama tidak lagi menandainya "tercakup IKP". Butir `ikp[]` beralasan `delegasi` tetap membawa angka IKP tingkat OPD
+    di kunci lama — konsumen harus memakai `delegasi[]` untuk angka orang itu.
+15. **Saran rilis** baru muncul saat bulan rilis terbuka (sama dengan kisi realisasi); nilai yang dilaporkan pemikul
+    angka Es III didahulukan walau jenjang bawah melapor lebih baru.
+16. **Simpul tersembunyi**: pendelegasian di simpul yang IKU induknya kemudian dihentikan tetap tersimpan, dicatat
+    di halaman, dan tidak dikirim ke eKin (aturan sama dengan pemilik simpul).
+17. **aksara_demo belum dibangun ulang**: `03b_ikp_turun.php` hanya dijalankan pada `aksara_uji` (aturan malam ini) dan
+    belum masuk `jalankan.sh` (butuh migrasi cabang ini di `/root/e-sakip` lebih dulu).
 
 ## Keputusan desain penting
 
