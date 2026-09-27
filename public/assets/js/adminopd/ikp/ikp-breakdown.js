@@ -49,7 +49,8 @@
                 return;
             }
             var nilai = {};
-            inputs.forEach(function (el) { nilai[el.dataset.kunci] = el.value; });
+            // Bulan non-ukur tidak dikirim: isian lamanya tetap tersimpan (tidak dihitung, tidak dihapus).
+            inputs.forEach(function (el) { if (el.dataset.ukur !== '0') nilai[el.dataset.kunci] = el.value; });
             var tombol = tr.querySelector('.tombol-simpan');
             if (tombol) tombol.disabled = true;
             A.kirim(url, { ikp_id: parseInt(tr.dataset.ikp, 10), jenis: jenis, tahun: tahun, nilai: nilai })

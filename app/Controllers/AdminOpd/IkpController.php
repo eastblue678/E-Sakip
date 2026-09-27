@@ -788,14 +788,15 @@ class IkpController extends BaseController
                         continue;
                     }
                     $teks = trim((string) $teks);
-                    // Pola ukur: bulan non-ukur TIDAK punya target. Kosong = bersihkan
-                    // sisa isian lama; angka = ditolak (indeks tidak dicicil).
+                    // Pola ukur: bulan non-ukur TIDAK punya target. Angka = ditolak (indeks tidak
+                    // dicicil); kosong = DIABAIKAN — isian lama bulan itu tetap tersimpan (hanya tidak
+                    // dihitung). MENGAPA tidak dibersihkan: pola bisa masih TEBAKAN migrasi (pola_ditebak);
+                    // IKP yang salah ditebak rilis/semesteran akan kehilangan 11 bulan target sah hanya
+                    // karena admin menyimpan satu sel. Keputusan A1: tidak ada angka yang hilang.
                     if (! ikp_bulan_diukur($pola, $m)) {
                         if (! ikp_angka_kosong($teks) && ikp_angka_baca($teks) !== null) {
                             $galat[] = ikp_nama_bulan($m) . ' bukan bulan ' . ($pola['pola'] === 'rilis' ? 'rilis' : 'ukur')
                                 . ' IKP ini (bulan ukur: ' . ikp_bulan_ukur_label($pola['bulan_ukur']) . '); targetnya tidak diisi. Ubah pola ukur di form IKP bila jadwalnya berbeda.';
-                        } else {
-                            $siapBln[$m] = null;
                         }
 
                         continue;

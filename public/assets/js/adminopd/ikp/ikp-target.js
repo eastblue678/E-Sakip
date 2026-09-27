@@ -128,8 +128,9 @@
             } else {
                 payload.tahun = k.tahun;
                 payload.bulanan = {};
-                // Bulan non-ukur dikirim kosong: server membersihkan sisa target lama di bulan itu.
-                inBln.forEach(function (el) { payload.bulanan[el.dataset.bulan] = el.dataset.ukur === '0' ? '' : el.value; });
+                // Bulan non-ukur TIDAK dikirim: isian lama bulan itu tetap tersimpan (hanya tidak dihitung) — pola
+                // bisa masih tebakan; tidak ada angka yang hilang karena menyimpan satu sel.
+                inBln.forEach(function (el) { if (el.dataset.ukur !== '0') payload.bulanan[el.dataset.bulan] = el.value; });
             }
             var tombol = document.getElementById('simpan-' + jenis);
             if (tombol) { tombol.disabled = true; }
@@ -144,7 +145,7 @@
                     segarBulanan();
                 } else if (d.baris) {
                     inBln.forEach(function (el) {
-                        el.value = d.baris.bulan[el.dataset.bulan].target;
+                        if (el.dataset.ukur !== '0') el.value = d.baris.bulan[el.dataset.bulan].target;
                         el.classList.remove('berubah');
                     });
                     for (var q = 1; q <= 4; q++) document.getElementById('tw-' + q).textContent = d.baris.triwulan[q].target;
