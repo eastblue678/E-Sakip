@@ -484,7 +484,7 @@ class EkinController extends BaseController
         if ($indukNodeIds !== []) {
             foreach ($this->db->table('cascading_pemilik')->select('cascading_sasaran_id, pegawai_id')
                 ->whereIn('cascading_sasaran_id', array_values(array_unique($indukNodeIds)))
-                ->where('tahun', $tahun)->orderBy("FIELD(peran, 'penanggung_jawab', 'anggota')", '', false)
+                ->where('tahun', $tahun)->orderBy("FIELD(peran, 'penanggung_jawab', 'anggota', 'penugasan_tambahan')", '', false)
                 ->orderBy('id', 'ASC')->get()->getResultArray() as $r) {
                 $pemilikInduk[(int) $r['cascading_sasaran_id']][] = (int) $r['pegawai_id'];
             }

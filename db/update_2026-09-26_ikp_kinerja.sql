@@ -173,7 +173,7 @@ CREATE TABLE IF NOT EXISTS `cascading_pemilik` (
   `tahun` SMALLINT UNSIGNED NOT NULL,
   `pegawai_id` INT NOT NULL COMMENT 'pegawai.id (INT signed, tanpa FK)',
   `jabatan_teks` VARCHAR(255) NULL COMMENT 'snapshot jabatan saat ditetapkan',
-  `peran` VARCHAR(20) NOT NULL DEFAULT 'penanggung_jawab' COMMENT 'penanggung_jawab|anggota',
+  `peran` VARCHAR(20) NOT NULL DEFAULT 'penanggung_jawab' COMMENT 'penanggung_jawab|anggota|penugasan_tambahan',
   `is_plt` TINYINT(1) NOT NULL DEFAULT 0,
   `sumber` VARCHAR(10) NOT NULL DEFAULT 'manual' COMMENT 'manual|pk|seed',
   `created_at` DATETIME NULL,

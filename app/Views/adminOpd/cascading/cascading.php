@@ -289,7 +289,10 @@
                                 <p>Belum ada data cascading Eselon untuk periode ini.</p>
                             </div>
                         <?php else: ?>
+                            <?php // AKSARA+ — pemilik & pelaksana tiap simpul (hanya bila controller mengirim pemilikPohon). ?>
+                            <?php if (! empty($pemilikPohon)): ?><?= $this->include('adminOpd/cascading/_pohon_pemilik_alat') ?><?php endif; ?>
                             <?= $this->include('adminOpd/cascading/_pohon_opd_tree') ?>
+                            <?php if (! empty($pemilikPohon)): ?><?= $this->include('adminOpd/cascading/_pohon_pemilik_bagian') ?><?php endif; ?>
                         <?php endif; ?>
                     </div>
 

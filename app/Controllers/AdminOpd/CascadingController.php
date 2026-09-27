@@ -6,6 +6,7 @@ use App\Controllers\BaseController;
 use App\Exceptions\CascadingTanpaJangkar;
 use App\Controllers\Concerns\CascadingIzinTrait;
 use App\Controllers\Concerns\CascadingOpdMetaTrait;
+use App\Controllers\Concerns\PohonPemilikTrait;
 use App\Models\CascadingModel;
 
 class CascadingController extends BaseController
@@ -13,6 +14,7 @@ class CascadingController extends BaseController
     /** Rowspan/firstShow/pohon matriks cascading OPD (termasuk jenjang Pelaksana). */
     use CascadingIzinTrait;
     use CascadingOpdMetaTrait;
+    use PohonPemilikTrait;
 
     protected $cascadingModel;
     protected $db;
@@ -350,6 +352,9 @@ class CascadingController extends BaseController
             ]
         ];
         // dd($data['rowspan']);
+
+        // AKSARA+ — pemilik & pelaksana tiap simpul di bagan Pohon Kinerja (hanya layar admin).
+        $data['pemilikPohon'] = $this->dataPemilikPohon($tree, (int) $this->opdId, $start ?? null, $end ?? null, 'adminopd');
 
         return view('adminOpd/cascading/cascading', $data);
     }

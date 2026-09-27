@@ -10,6 +10,7 @@ use App\Models\Ikp\CascadingIndikatorTargetModel;
 use App\Models\Ikp\CascadingPemilikModel;
 use App\Models\Ikp\IkpModel;
 use App\Models\OpdModel;
+use App\Services\PohonPemilikService;
 use CodeIgniter\Exceptions\PageNotFoundException;
 use Throwable;
 
@@ -59,17 +60,17 @@ class PemilikKinerjaController extends BaseController
     /** @var \CodeIgniter\Database\BaseConnection */
     protected $db;
 
+    private ?PohonPemilikService $pemilikSvc = null;
+
     /**
      * OPD yang pegawainya tercatat di id OPD lain (lihat kritik 0.10):
      * BKPSDM (8) → pegawai di 210; Kec. Gadingrejo (32) → 213; DP3AP2KB (211)
      * → sebagian masih di 13. Tanpa peta ini daftar pegawai BKPSDM kosong.
      */
-    public const ALIAS_OPD = [8 => [8, 210], 32 => [32, 213], 211 => [211, 13]];
+    public const ALIAS_OPD = PohonPemilikService::ALIAS_OPD;
 
-    public const PERAN = [
-        'penanggung_jawab' => 'Penanggung Jawab',
-        'anggota'          => 'Anggota',
-    ];
+    /** Tiga peran (PJ, anggota, penugasan tambahan) — lihat PohonPemilikService. */
+    public const PERAN = PohonPemilikService::PERAN;
 
     /** Label singkat metode untuk tampilan (kosakata sama dengan IkpModel::METODE). */
     private const METODE_SINGKAT = [
@@ -565,7 +566,7 @@ class PemilikKinerjaController extends BaseController
     /** @return int[] */
     private function aliasOpd(int $opdId): array
     {
-        return self::ALIAS_OPD[$opdId] ?? [$opdId];
+        return PohonPemilikService::aliasOpd($opdId);
     }
 
     /**
@@ -890,19 +891,12 @@ class PemilikKinerjaController extends BaseController
 
     private function queryPegawai()
     {
-        return $this->db->table('pegawai p')
-            ->select("p.id, p.nama_pegawai, p.nip_pegawai, p.opd_id, p.is_plt, p.status,
-                      j.nama_jabatan, o.nama_opd, o.singkatan,
-                      CASE WHEN j.simpeg_id LIKE 'struktural-%' THEN 'struktural'
-                           WHEN j.simpeg_id LIKE 'fungsional-%' THEN 'fungsional'
-                           WHEN j.simpeg_id LIKE 'pelaksana-%' THEN 'pelaksana'
-                           ELSE NULL END AS kategori,
-                      CASE WHEN j.simpeg_id LIKE 'struktural-%' THEN 1
-                           WHEN j.simpeg_id LIKE 'fungsional-%' THEN 2
-                           WHEN j.simpeg_id LIKE 'pelaksana-%' THEN 3
-                           ELSE 4 END AS urut_kategori", false)
-            ->join('jabatan j', 'j.id = p.jabatan_id', 'left')
-            ->join('opd o', 'o.id = p.opd_id', 'left');
+        return $this->pemilikSvc()->queryPegawai();
+    }
+
+    private function pemilikSvc(): PohonPemilikService
+    {
+        return $this->pemilikSvc ??= new PohonPemilikService($this->db);
     }
 
     private function pegawaiById(int $id): ?array
@@ -939,131 +933,25 @@ class PemilikKinerjaController extends BaseController
     /** @return array<int, array> baris pemilik siap tampil */
     private function pemilikUntukSimpul(array $nodeIds, int $tahun): array
     {
-        return $this->bentukPemilik(
-            $this->dasarPemilik()->where('cp.tahun', $tahun)
-                ->whereIn('cp.cascading_sasaran_id', array_map('intval', $nodeIds))
-                ->get()->getResultArray()
-        );
+        return $this->pemilikSvc()->pemilikUntukSimpul($nodeIds, $tahun);
     }
 
     /** @return array<int, array> */
     private function pemilikByIds(array $ids): array
     {
-        return $this->bentukPemilik(
-            $this->dasarPemilik()->whereIn('cp.id', array_map('intval', $ids))->get()->getResultArray()
-        );
+        return $this->pemilikSvc()->pemilikByIds($ids);
     }
 
-    private function dasarPemilik()
-    {
-        return $this->db->table('cascading_pemilik cp')
-            ->select('cp.id, cp.cascading_sasaran_id, cp.opd_id, cp.pegawai_id, cp.jabatan_teks, cp.peran,
-                      cp.is_plt, cp.sumber, p.nama_pegawai, p.nip_pegawai, p.opd_id AS pegawai_opd,
-                      j.nama_jabatan, o.singkatan, o.nama_opd')
-            ->join('pegawai p', 'p.id = cp.pegawai_id', 'left')
-            ->join('jabatan j', 'j.id = p.jabatan_id', 'left')
-            ->join('opd o', 'o.id = p.opd_id', 'left')
-            ->orderBy("FIELD(cp.peran, 'penanggung_jawab', 'anggota')", '', false)
-            ->orderBy('cp.id', 'ASC');
-    }
-
-    private function bentukPemilik(array $rows): array
-    {
-        $hasil = [];
-        foreach ($rows as $r) {
-            $alias   = $this->aliasOpd((int) $r['opd_id']);
-            $opdLain = $r['pegawai_opd'] !== null && ! in_array((int) $r['pegawai_opd'], $alias, true);
-            $hasil[] = [
-                'id'         => (int) $r['id'],
-                'node_id'    => (int) $r['cascading_sasaran_id'],
-                'pegawai_id' => (int) $r['pegawai_id'],
-                'nama'       => (string) ($r['nama_pegawai'] ?? ('Pegawai #' . $r['pegawai_id'] . ' (tidak ditemukan)')),
-                'jabatan'    => (string) (($r['jabatan_teks'] ?? '') !== '' ? $r['jabatan_teks'] : ($r['nama_jabatan'] ?? '')),
-                'peran'      => (string) $r['peran'],
-                'sumber'     => (string) $r['sumber'],
-                'is_plt'     => (int) $r['is_plt'] === 1,
-                'opd_lain'   => $opdLain ? (string) (($r['singkatan'] ?? '') !== '' ? $r['singkatan'] : ($r['nama_opd'] ?? 'OPD lain')) : '',
-            ];
-        }
-
-        return $hasil;
-    }
-
-    /**
-     * Pemilik Eselon II = pihak_1 PK JPT (atau PK Camat) OPD itu, tahun itu.
-     * Hanya dibaca — sumber resminya tetap menu Perjanjian Kinerja.
-     */
+    /** Pemilik Eselon II = pihak_1 PK JPT/Camat (baca saja; sumbernya menu Perjanjian Kinerja). */
     private function pemilikEs2(int $opdId, int $tahun): array
     {
-        $rows = $this->db->table('pk')
-            ->select('pk.id AS pk_id, pk.jenis, pk.pihak_1, pk.is_plt_pihak_1, pk.is_plh_pihak_1,
-                      pk.jabatan_pihak_1_manual, p.nama_pegawai, j.nama_jabatan')
-            ->join('pegawai p', 'p.id = pk.pihak_1', 'left')
-            ->join('jabatan j', 'j.id = p.jabatan_id', 'left')
-            ->where('pk.opd_id', $opdId)->where('pk.tahun', $tahun)
-            ->whereIn('pk.jenis', ['jpt', 'camat'])
-            ->orderBy('pk.id', 'ASC')->get()->getResultArray();
-
-        $hasil = [];
-        foreach ($rows as $r) {
-            if ((int) $r['pihak_1'] <= 0) {
-                continue;
-            }
-            $jab = (string) (($r['jabatan_pihak_1_manual'] ?? '') !== '' ? $r['jabatan_pihak_1_manual'] : ($r['nama_jabatan'] ?? ''));
-            $hasil[] = [
-                'pk_id'      => (int) $r['pk_id'],
-                'jenis'      => (string) $r['jenis'],
-                'pegawai_id' => (int) $r['pihak_1'],
-                'nama'       => (string) ($r['nama_pegawai'] ?? ('Pegawai #' . $r['pihak_1'])),
-                'jabatan'    => $jab,
-                'plt'        => (int) $r['is_plt_pihak_1'] === 1 ? 'Plt.' : ((int) $r['is_plh_pihak_1'] === 1 ? 'Plh.' : ''),
-            ];
-        }
-
-        return $hasil;
+        return $this->pemilikSvc()->pemilikEs2($opdId, $tahun);
     }
 
-    /**
-     * Roster pegawai OPD (termasuk id alias) + jumlah peran tiap orang tahun
-     * ini — dasar metrik "matriks 0" e-Kinerja: pegawai yang belum punya satu
-     * pun simpul di pohon kinerja.
-     *
-     * Peran dihitung dari SELURUH cascading_pemilik tahun itu (termasuk simpul
-     * di OPD lain), ditambah pemilik Eselon II lewat PK.
-     */
+    /** Roster + jumlah peran utama & penugasan tambahan per pegawai ("matriks 0"). */
     private function rosterOpd(int $opdId, int $tahun, array $es2Pemilik): array
     {
-        $alias = $this->aliasOpd($opdId);
-        $rows  = $this->queryPegawai()->whereIn('p.opd_id', $alias)
-            ->orderBy('urut_kategori', 'ASC')->orderBy('p.nama_pegawai', 'ASC')
-            ->get()->getResultArray();
-
-        $jumlahPeran = [];
-        foreach ($this->db->table('cascading_pemilik cp')
-            ->select('cp.pegawai_id, COUNT(*) AS n')
-            ->join('pegawai p', 'p.id = cp.pegawai_id', 'inner')
-            ->whereIn('p.opd_id', $alias)->where('cp.tahun', $tahun)
-            ->groupBy('cp.pegawai_id')->get()->getResultArray() as $r) {
-            $jumlahPeran[(int) $r['pegawai_id']] = (int) $r['n'];
-        }
-        foreach ($es2Pemilik as $e) {
-            $jumlahPeran[$e['pegawai_id']] = ($jumlahPeran[$e['pegawai_id']] ?? 0) + 1;
-        }
-
-        $pegawai = [];
-        foreach ($rows as $r) {
-            $pegawai[] = [
-                'id'       => (int) $r['id'],
-                'nama'     => (string) $r['nama_pegawai'],
-                'nip'      => (string) ($r['nip_pegawai'] ?? ''),
-                'jabatan'  => (string) ($r['nama_jabatan'] ?? ''),
-                'kategori' => $r['kategori'] ?? 'lainnya',
-                'status'   => (string) ($r['status'] ?? ''),
-                'peran'    => $jumlahPeran[(int) $r['id']] ?? 0,
-            ];
-        }
-
-        return ['pegawai' => $pegawai, 'jumlahPeran' => $jumlahPeran];
+        return $this->pemilikSvc()->rosterOpd($opdId, $tahun, $es2Pemilik);
     }
 
     // =================================================================

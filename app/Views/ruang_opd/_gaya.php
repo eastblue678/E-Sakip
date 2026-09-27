@@ -131,8 +131,9 @@ a.ro-sel small { font-size: .66rem; color: #5d7064; white-space: nowrap; overflo
 }
 
 /* ---------- Hub ---------- */
-.ro-lompat { position: sticky; top: 0; z-index: 5; display: flex; gap: 6px; overflow-x: auto; background: rgba(255,255,255,.96);
-    backdrop-filter: blur(4px); padding: 8px 2px; margin: 0 0 14px; border-bottom: 1px solid #eef2ef; scrollbar-width: thin; }
+/* Navigasi lompat: dulu sticky top:0 — terselip setengah di bawah kepala aplikasi (juga sticky) dan melayang di atas kartu. */
+.ro-lompat { position: static; display: flex; gap: 6px; overflow-x: auto; background: #fff;
+    padding: 8px 2px; margin: 0 0 14px; border-bottom: 1px solid #eef2ef; scrollbar-width: thin; }
 .ro-lompat a { flex: 0 0 auto; display: inline-flex; gap: 7px; align-items: center; padding: .42rem .8rem; border-radius: 10px; border: 1px solid #e1e8e3;
     background: #fff; color: #37493e; font-weight: 700; font-size: .8rem; white-space: nowrap; }
 .ro-lompat a:hover { border-color: #b9d69a; color: #00743e; }

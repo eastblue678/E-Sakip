@@ -22,7 +22,16 @@
     var LEVEL = ['es3', 'es4', 'pelaksana'];
     D.simpul = D.simpul && !Array.isArray(D.simpul) ? D.simpul : {};
     D.indikator = D.indikator && !Array.isArray(D.indikator) ? D.indikator : {};
+    // jumlahPeran = peran UTAMA (PJ/anggota/Eselon II); jumlahTambahan = penugasan tambahan.
     D.jumlahPeran = D.jumlahPeran && !Array.isArray(D.jumlahPeran) ? D.jumlahPeran : {};
+    D.jumlahTambahan = D.jumlahTambahan && !Array.isArray(D.jumlahTambahan) ? D.jumlahTambahan : {};
+    var PERAN_SINGKAT = M.peranSingkat || { penanggung_jawab: 'PJ', anggota: 'Anggota', penugasan_tambahan: 'Tambahan' };
+    var PERAN_LABEL = M.peranLabel || { penanggung_jawab: 'Penanggung Jawab', anggota: 'Anggota', penugasan_tambahan: 'Penugasan Tambahan' };
+    function hitungPeran(pegawaiId, peran, delta) {
+        var peta = peran === 'penugasan_tambahan' ? D.jumlahTambahan : D.jumlahPeran;
+        var n = (+peta[pegawaiId] || 0) + delta;
+        peta[pegawaiId] = n > 0 ? n : 0;
+    }
     D.usulan = Array.isArray(D.usulan) ? D.usulan : [];
     D.ikp = Array.isArray(D.ikp) ? D.ikp : [];
 
@@ -117,23 +126,35 @@
         return (D.simpul[id].pemilik || []).some(function (p) { return p.peran === 'penanggung_jawab'; });
     }
 
+    /** Kelas warna chip per peran: pj (hijau), anggota (abu), tambahan (kuning). */
+    function kelasPeran(peran) {
+        return peran === 'penanggung_jawab' ? 'pj' : (peran === 'penugasan_tambahan' ? 'tambahan' : 'anggota');
+    }
     function htmlChip(p) {
         var pj = p.peran === 'penanggung_jawab';
+        var kls = kelasPeran(p.peran);
+        var singkat = PERAN_SINGKAT[p.peran] || p.peran;
         var jab = [p.jabatan, p.opd_lain ? 'pegawai ' + p.opd_lain : ''].filter(Boolean).join(' · ');
-        var h = '<span class="pmk-chip' + (pj ? ' pmk-chip-pj' : '') + '" data-pemilik-id="' + p.id + '" data-pegawai-id="' + p.pegawai_id + '"'
-            + ' title="' + esc(p.nama + (jab ? ' — ' + jab : '') + (p.sumber === 'pk' ? ' (dari usulan PK)' : '')) + '">'
+        var h = '<span class="pmk-chip' + (pj ? ' pmk-chip-pj' : '') + (kls === 'tambahan' ? ' pmk-chip-tambahan' : '') + '" data-pemilik-id="' + p.id + '" data-pegawai-id="' + p.pegawai_id + '"'
+            + ' title="' + esc(p.nama + (jab ? ' — ' + jab : '') + ' · ' + (PERAN_LABEL[p.peran] || p.peran) + (p.sumber === 'pk' ? ' (dari usulan PK)' : '')) + '">'
             + '<span class="pmk-chip-teks"><span class="pmk-chip-nama">' + (p.is_plt ? 'Plt. ' : '') + esc(p.nama) + '</span>'
             + (jab ? '<span class="pmk-chip-jab">' + esc(jab) + '</span>' : '') + '</span>';
         if (M.bolehUbah) {
-            h += '<button type="button" class="pmk-chip-peran' + (pj ? '' : ' anggota') + '" data-aksi="ganti-peran"'
-                + ' title="' + (pj ? 'Penanggung jawab — klik untuk menjadikan anggota' : 'Anggota — klik untuk menjadikan penanggung jawab') + '">'
-                + (pj ? 'PJ' : 'Anggota') + '</button>'
+            // Tiga peran: tombol peran membuka menu kecil (Bootstrap dropdown) berisi pilihan lainnya.
+            var menu = Object.keys(PERAN_LABEL).map(function (k) {
+                return '<li><button type="button" class="dropdown-item' + (k === p.peran ? ' active' : '') + '" data-aksi="set-peran" data-peran="' + k + '"'
+                    + (k === p.peran ? ' aria-current="true"' : '') + '>' + esc(PERAN_LABEL[k]) + '</button></li>';
+            }).join('');
+            h += '<span class="dropdown pmk-peran-menu">'
+                + '<button type="button" class="pmk-chip-peran ' + kls + '" data-bs-toggle="dropdown" aria-expanded="false"'
+                + ' title="' + esc(PERAN_LABEL[p.peran] || p.peran) + ' — klik untuk mengganti peran">' + esc(singkat) + ' <i class="fas fa-caret-down"></i></button>'
+                + '<ul class="dropdown-menu dropdown-menu-end">' + menu + '</ul></span>'
                 + (M.bolehHapus
                     ? '<button type="button" class="pmk-chip-x" data-aksi="hapus-pemilik" aria-label="Lepas ' + esc(p.nama) + ' dari simpul ini" title="Lepas pemilik">'
                         + '<i class="fas fa-xmark"></i></button>'
                     : '');
         } else {
-            h += '<span class="pmk-chip-peran' + (pj ? '' : ' anggota') + '">' + (pj ? 'PJ' : 'Anggota') + '</span>';
+            h += '<span class="pmk-chip-peran ' + kls + '">' + esc(singkat) + '</span>';
         }
         return h + '</span>';
     }
@@ -245,9 +266,14 @@
         // Roster "matriks 0".
         var tanpa = 0, perKat = {};
         $$('.pmk-roster li[data-roster-id]').forEach(function (li) {
-            var n = +(D.jumlahPeran[li.getAttribute('data-roster-id')] || 0);
+            // Satu orang bisa tercatat di beberapa baris pegawai (NIP kembar): jumlahkan semua id-nya.
+            var ids = (li.getAttribute('data-roster-ids') || li.getAttribute('data-roster-id') || '').split(',');
+            var n = 0, nTambah = 0;
+            ids.forEach(function (i) { n += +(D.jumlahPeran[i] || 0); nTambah += +(D.jumlahTambahan[i] || 0); });
             var k = li.getAttribute('data-kategori');
             li.classList.toggle('pmk-punya-peran', n > 0);
+            var tanda = li.querySelector('.pmk-hanya-tambahan');
+            if (tanda) { tanda.hidden = !(n === 0 && nTambah > 0); }
             if (n === 0) { tanpa++; perKat[k] = (perKat[k] || 0) + 1; }
         });
         setStat('tanpa-peran', tanpa); setStat('tanpa-peran-lencana', tanpa); setStat('mini-tanpa', tanpa);
@@ -512,7 +538,7 @@
             .then(function (j) {
                 (j.data.pemilik || []).forEach(function (p) {
                     tambahPemilikKeState(p);
-                    D.jumlahPeran[p.pegawai_id] = (+D.jumlahPeran[p.pegawai_id] || 0) + 1;
+                    hitungPeran(p.pegawai_id, p.peran, 1);
                 });
                 gambarSimpul(id);
                 hitungUlang();
@@ -534,16 +560,19 @@
         return (D.simpul[simpulId].pemilik || []).filter(function (p) { return String(p.id) === String(pemilikId); })[0];
     }
 
-    function gantiPeran(simpulId, chip, btn) {
+    function gantiPeran(simpulId, chip, btn, baru) {
         var p = cariPemilik(simpulId, chip.getAttribute('data-pemilik-id'));
-        if (!p) { return; }
-        var baru = p.peran === 'penanggung_jawab' ? 'anggota' : 'penanggung_jawab';
+        if (!p || !baru || baru === p.peran) { return; }
+        var lama = p.peran;
         btn.disabled = true;
         kirim(M.url.simpan, { tahun: M.tahun, node_id: +simpulId, pegawai_id: +p.pegawai_id, peran: baru, ganti_peran: true })
             .then(function (j) {
                 (j.data.pemilik || []).forEach(tambahPemilikKeState);
+                hitungPeran(p.pegawai_id, lama, -1);
+                hitungPeran(p.pegawai_id, baru, 1);
                 gambarSimpul(simpulId);
-                toast(p.nama + ' kini ' + (baru === 'anggota' ? 'anggota' : 'penanggung jawab') + '.');
+                hitungUlang();
+                toast(p.nama + ' kini ' + String(PERAN_LABEL[baru] || baru).toLowerCase() + '.');
             })
             .catch(function (e) { toast(e.message, 'galat'); btn.disabled = false; });
     }
@@ -567,8 +596,7 @@
             kirim(M.url.hapus + p.id, {})
                 .then(function (j) {
                     s.pemilik = (s.pemilik || []).filter(function (x) { return x.id !== p.id; });
-                    var n = (+D.jumlahPeran[p.pegawai_id] || 0) - 1;
-                    D.jumlahPeran[p.pegawai_id] = n > 0 ? n : 0;
+                    hitungPeran(p.pegawai_id, p.peran, -1);
                     gambarSimpul(simpulId);
                     hitungUlang();
                     terapkanSaringan();
@@ -614,7 +642,7 @@
                 var tersentuh = {};
                 (j.data.pemilik || []).forEach(function (p) {
                     tambahPemilikKeState(p);
-                    D.jumlahPeran[p.pegawai_id] = (+D.jumlahPeran[p.pegawai_id] || 0) + 1;
+                    hitungPeran(p.pegawai_id, p.peran, 1);
                     tersentuh[p.node_id] = true;
                 });
                 (j.data.dilewati || []).forEach(function (x) {
@@ -775,8 +803,8 @@
             case 'simpan-pemilik':
                 simpanPemilik(btn);
                 break;
-            case 'ganti-peran':
-                gantiPeran(simpulId, btn.closest('.pmk-chip'), btn);
+            case 'set-peran':
+                gantiPeran(simpulId, btn.closest('.pmk-chip'), btn, btn.getAttribute('data-peran'));
                 break;
             case 'hapus-pemilik':
                 lepasPemilik(simpulId, btn.closest('.pmk-chip'));
@@ -898,4 +926,15 @@
     if ((M.jumlahSimpul || 0) > 80) { bukaHingga('es3'); }
     hitungUlang();
     terapkanSaringan();
+
+    // Datang dari bagan Pohon Kinerja (#simpul-123): buka jalurnya lalu sorot simpul itu.
+    (function keSimpulDariAlamat() {
+        var m = /^#simpul-(\d+)$/.exec(window.location.hash || '');
+        var node = m ? akar.querySelector('.pmk-simpul[data-simpul-id="' + m[1] + '"]') : null;
+        if (!node) { return; }
+        for (var n = node; n && n !== akar; n = n.parentElement) {
+            if (n.classList && n.classList.contains('pmk-simpul')) { lipat(n, false); }
+        }
+        setTimeout(function () { node.scrollIntoView({ behavior: 'smooth', block: 'center' }); sorot(node); }, 120);
+    })();
 })();

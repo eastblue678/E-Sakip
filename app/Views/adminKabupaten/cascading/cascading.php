@@ -438,7 +438,10 @@
                         <?php elseif ($mode === 'kabupaten'): ?>
                             <?= $this->include('adminKabupaten/cascading/_pohon_tree') ?>
                         <?php elseif ($mode === 'opd'): ?>
+                            <?php // AKSARA+ — pemilik & pelaksana tiap simpul (hanya bila controller mengirim pemilikPohon). ?>
+                            <?php if (! empty($pemilikPohon)): ?><?= $this->include('adminOpd/cascading/_pohon_pemilik_alat') ?><?php endif; ?>
                             <?= $this->include('adminOpd/cascading/_pohon_opd_tree') ?>
+                            <?php if (! empty($pemilikPohon)): ?><?= $this->include('adminOpd/cascading/_pohon_pemilik_bagian') ?><?php endif; ?>
                         <?php else: ?>
                             <?= $this->include('adminKabupaten/cascading/_pohon_tree_keseluruhan') ?>
                         <?php endif; ?>

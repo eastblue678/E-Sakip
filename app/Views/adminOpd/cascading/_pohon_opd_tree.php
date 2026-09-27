@@ -13,6 +13,45 @@ $showKode = $showKode ?? true;
 // partial ini dipakai bersama halaman PUBLIK, jadi hanya controller admin
 // yang boleh menyalakannya lewat array data (bukan argumen include).
 $showProgramPk = $showProgramPk ?? false;
+
+// AKSARA+ — pemilik & pelaksana tiap simpul (App\Controllers\Concerns\PohonPemilikTrait). Hanya layar admin
+// yang mengirim `pemilikPohon`; tanpa variabel ini (halaman publik, cetak) keluaran partial tidak berubah.
+$pemilikPohon = (isset($pemilikPohon) && is_array($pemilikPohon)) ? $pemilikPohon : null;
+$pp           = $pemilikPohon;
+$kotakPemilik = static function (?array $orang, int $simpulId = 0) use ($pp): string {
+    if ($pp === null || $orang === null) {
+        return '';
+    }
+    $singkat = \App\Services\PohonPemilikService::PERAN_SINGKAT;
+    $label   = \App\Services\PohonPemilikService::PERAN;
+    $tautan  = $simpulId > 0 && ! empty($pp['urlKelola']) ? $pp['urlKelola'] . '#simpul-' . $simpulId : '';
+    $buka    = $tautan !== ''
+        ? '<a class="box-pemilik" href="' . esc($tautan, 'attr') . '" title="' . esc(($pp['bolehUbah'] ?? false) ? 'Kelola pemilik simpul ini di Pemilik Kinerja' : 'Lihat simpul ini di Pemilik Kinerja', 'attr') . '"'
+        : '<div class="box-pemilik"';
+    $tutup   = $tautan !== '' ? '</a>' : '</div>';
+    if ($orang === []) {
+        return str_replace('class="box-pemilik"', 'class="box-pemilik bp-kosong"', $buka) . ' data-bp-kosong="1">'
+            . '<i class="fas fa-user-slash" aria-hidden="true"></i> Belum ada pemilik' . $tutup;
+    }
+    $isi = '';
+    foreach (array_slice($orang, 0, 4) as $o) {
+        $peran = (string) ($o['peran'] ?? 'penanggung_jawab');
+        $kls   = $peran === 'penanggung_jawab' ? 'bp-pj' : ($peran === 'penugasan_tambahan' ? 'bp-tambahan' : 'bp-anggota');
+        $nama  = trim(($o['plt'] ?? (! empty($o['is_plt']) ? 'Plt.' : '')) . ' ' . (string) $o['nama']);
+        $pendek = \App\Services\PohonPemilikService::namaPendek($nama);
+        $pendek = mb_convert_case(mb_strtolower($pendek), MB_CASE_TITLE);
+        $judul = $nama . (($o['jabatan'] ?? '') !== '' ? ' — ' . $o['jabatan'] : '') . (($o['opd_lain'] ?? '') !== '' ? ' (pegawai ' . $o['opd_lain'] . ')' : '') . ' · ' . ($label[$peran] ?? $peran);
+        $isi  .= '<span class="bp-orang ' . $kls . '" title="' . esc($judul, 'attr') . '">'
+            . '<span class="bp-ava" aria-hidden="true">' . esc(\App\Services\PohonPemilikService::inisial($nama)) . '</span>'
+            . '<span class="bp-nama">' . esc($pendek) . '</span>'
+            . '<span class="bp-peran">' . esc($singkat[$peran] ?? $peran) . '</span></span>';
+    }
+    if (count($orang) > 4) {
+        $isi .= '<span class="bp-lagi">+' . (count($orang) - 4) . ' lainnya</span>';
+    }
+
+    return $buka . '>' . $isi . $tutup;
+};
 ?>
 
 <!-- LEGENDA WARNA -->
@@ -22,11 +61,11 @@ $showProgramPk = $showProgramPk ?? false;
     <?php // Jenjang sasaran dinomori 1–5 (RPJMD, ESS II, ESS III, ESS IV/JF, Pelaksana) ?>
     <div class="lg-item"><span class="lg-swatch" style="background:linear-gradient(135deg,#0f766e,#115e59)"></span> Sasaran 1</div>
     <div class="lg-item"><span class="lg-swatch" style="background:linear-gradient(135deg,#2563eb,#1e40af)"></span> Tujuan Renstra</div>
-    <div class="lg-item"><span class="lg-swatch" style="background:linear-gradient(135deg,#c2410c,#9a3412)"></span> Sasaran 2</div>
-    <div class="lg-item"><span class="lg-swatch" style="background:linear-gradient(135deg,#9333ea,#7e22ce)"></span> Sasaran 3</div>
-    <div class="lg-item"><span class="lg-swatch" style="background:linear-gradient(135deg,#e11d48,#be123c)"></span> Sasaran 4</div>
+    <div class="lg-item"><span class="lg-swatch" style="background:linear-gradient(135deg,#c2410c,#9a3412)"></span> Sasaran 2<?= $pp !== null ? ' · ' . esc($pp['label']['es2']) : '' ?></div>
+    <div class="lg-item"><span class="lg-swatch" style="background:linear-gradient(135deg,#9333ea,#7e22ce)"></span> Sasaran 3<?= $pp !== null ? ' · ' . esc($pp['label']['es3']) : '' ?></div>
+    <div class="lg-item"><span class="lg-swatch" style="background:linear-gradient(135deg,#e11d48,#be123c)"></span> Sasaran 4<?= $pp !== null ? ' · ' . esc($pp['label']['es4']) : '' ?></div>
     <?php // Pelaksana: oranye tua — beda jelas dari merah Eselon IV, tetap selaras palet ?>
-    <div class="lg-item"><span class="lg-swatch" style="background:linear-gradient(135deg,#b45309,#92400e)"></span> Sasaran 5</div>
+    <div class="lg-item"><span class="lg-swatch" style="background:linear-gradient(135deg,#b45309,#92400e)"></span> Sasaran 5<?= $pp !== null ? ' · ' . esc($pp['label']['pelaksana']) : '' ?></div>
     <div class="lg-item"><span class="lg-swatch" style="background:#eef2f5;border:1px solid #dbe4de"></span> Indikator Kinerja</div>
     <?php if ($showCsf): ?>
         <div class="lg-item"><span class="lg-swatch" style="background:#faf3e6;border:1px solid #ecdcb8"></span> CSF</div>
@@ -90,20 +129,21 @@ $showProgramPk = $showProgramPk ?? false;
                                                                             </div>
                                                                         <?php endif; ?>
                                                                         <div class="box-es2">
-                                                                            <div class="node-label">Sasaran 2</div>
+                                                                            <div class="node-label">Sasaran 2<?= $pp !== null ? ' · ' . esc($pp['label']['es2']) : '' ?></div>
                                                                             <?= nl2br(esc($es2['nama'])) ?>
                                                                         </div>
                                                                         <?php foreach ($es2['indikators'] as $indikatorEs2): ?>
                                                                             <div class="box-iks"><?php if ($showKode): ?><span class="ind-kode">IK</span><?php endif; ?><?= nl2br(esc($indikatorEs2)) ?></div>
                                                                         <?php endforeach; ?>
+                                                                        <?= $pp !== null ? $kotakPemilik(array_map(static fn ($e) => $e + ['peran' => 'penanggung_jawab'], $pp['es2']), 0) : '' ?>
                                                                     </div>
 
                                                                     <?php if (!empty($es2['es3s'])): ?>
                                                                         <ul>
-                                                                            <?php foreach ($es2['es3s'] as $es3): ?>
+                                                                            <?php foreach ($es2['es3s'] as $es3Id => $es3): ?>
                                                                                 <li>
                                                                                     <!-- L5: Sasaran ESS III -->
-                                                                                    <div class="tree-node">
+                                                                                    <div class="tree-node"<?= $pp !== null ? ' data-simpul="' . (int) $es3Id . '" data-jenjang="es3"' : '' ?>>
                                                                                         <?php if ($showCsf && !empty($es3['csf'])): ?>
                                                                                             <div class="box-csf">
                                                                                                 <div class="node-label" style="opacity:.8">CSF</div>
@@ -111,12 +151,13 @@ $showProgramPk = $showProgramPk ?? false;
                                                                                             </div>
                                                                                         <?php endif; ?>
                                                                                         <div class="box-es3">
-                                                                                            <div class="node-label">Sasaran 3</div>
+                                                                                            <div class="node-label">Sasaran 3<?= $pp !== null ? ' · ' . esc($pp['label']['es3']) : '' ?></div>
                                                                                             <?= nl2br(esc($es3['nama'])) ?>
                                                                                         </div>
                                                                                         <?php foreach ($es3['indikators'] as $indikatorEs3): ?>
                                                                                             <div class="box-iks"><?php if ($showKode): ?><span class="ind-kode">IK</span><?php endif; ?><?= nl2br(esc($indikatorEs3)) ?></div>
                                                                                         <?php endforeach; ?>
+                                                                                        <?= $pp !== null ? $kotakPemilik($pp['simpul'][(int) $es3Id] ?? [], (int) $es3Id) : '' ?>
                                                                                         <?php // Program PK + kegiatan di bawahnya. Program diturunkan DARI kegiatannya,
                                                                                              // jadi pasangan program-kegiatan selalu konsisten. Node yang teksnya tidak
                                                                                              // cocok dengan PK mana pun sengaja dibiarkan kosong. ?>
@@ -132,10 +173,10 @@ $showProgramPk = $showProgramPk ?? false;
 
                                                                                     <?php if (!empty($es3['es4s'])): ?>
                                                                                         <ul>
-                                                                                            <?php foreach ($es3['es4s'] as $es4): ?>
+                                                                                            <?php foreach ($es3['es4s'] as $es4Id => $es4): ?>
                                                                                                 <li>
                                                                                                     <!-- L6: Sasaran ESS IV -->
-                                                                                                    <div class="tree-node">
+                                                                                                    <div class="tree-node"<?= $pp !== null ? ' data-simpul="' . (int) $es4Id . '" data-jenjang="es4"' : '' ?>>
                                                                                                         <?php if ($showCsf && !empty($es4['csf'])): ?>
                                                                                                             <div class="box-csf">
                                                                                                                 <div class="node-label" style="opacity:.8">CSF</div>
@@ -143,20 +184,21 @@ $showProgramPk = $showProgramPk ?? false;
                                                                                                             </div>
                                                                                                         <?php endif; ?>
                                                                                                         <div class="box-es4">
-                                                                                                            <div class="node-label">Sasaran 4</div>
+                                                                                                            <div class="node-label">Sasaran 4<?= $pp !== null ? ' · ' . esc($pp['label']['es4']) : '' ?></div>
                                                                                                             <?= nl2br(esc($es4['nama'])) ?>
                                                                                                         </div>
                                                                                                         <?php foreach ($es4['indikators'] as $indikatorEs4): ?>
                                                                                                             <div class="box-iks"><?php if ($showKode): ?><span class="ind-kode">IK</span><?php endif; ?><?= nl2br(esc($indikatorEs4)) ?></div>
                                                                                                         <?php endforeach; ?>
+                                                                                                        <?= $pp !== null ? $kotakPemilik($pp['simpul'][(int) $es4Id] ?? [], (int) $es4Id) : '' ?>
                                                                                                     </div>
 
                                                                                                     <?php // L7: PELAKSANA — jenjang terakhir, di bawah Eselon IV / JF ?>
                                                                                                     <?php if (!empty($es4['pelaksanas'])): ?>
                                                                                                         <ul>
-                                                                                                            <?php foreach ($es4['pelaksanas'] as $pel): ?>
+                                                                                                            <?php foreach ($es4['pelaksanas'] as $pelId => $pel): ?>
                                                                                                                 <li>
-                                                                                                                    <div class="tree-node">
+                                                                                                                    <div class="tree-node"<?= $pp !== null ? ' data-simpul="' . (int) $pelId . '" data-jenjang="pelaksana"' : '' ?>>
                                                                                                                         <?php if ($showCsf && !empty($pel['csf'])): ?>
                                                                                                                             <div class="box-csf">
                                                                                                                                 <div class="node-label" style="opacity:.8">CSF</div>
@@ -164,12 +206,13 @@ $showProgramPk = $showProgramPk ?? false;
                                                                                                                             </div>
                                                                                                                         <?php endif; ?>
                                                                                                                         <div class="box-pelaksana">
-                                                                                                                            <div class="node-label">Sasaran 5</div>
+                                                                                                                            <div class="node-label">Sasaran 5<?= $pp !== null ? ' · ' . esc($pp['label']['pelaksana']) : '' ?></div>
                                                                                                                             <?= nl2br(esc($pel['nama'])) ?>
                                                                                                                         </div>
                                                                                                                         <?php foreach ($pel['indikators'] as $indikatorPel): ?>
                                                                                                                             <div class="box-iks"><?php if ($showKode): ?><span class="ind-kode">IK</span><?php endif; ?><?= nl2br(esc($indikatorPel)) ?></div>
                                                                                                                         <?php endforeach; ?>
+                                                                                                                        <?= $pp !== null ? $kotakPemilik($pp['simpul'][(int) $pelId] ?? [], (int) $pelId) : '' ?>
                                                                                                                     </div>
                                                                                                                 </li>
                                                                                                             <?php endforeach; ?>

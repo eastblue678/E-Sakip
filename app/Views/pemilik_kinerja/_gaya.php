@@ -6,7 +6,8 @@
  */
 ?>
 .pmk { --pmk-hijau: #00743e; --pmk-lime: #6eab11; --pmk-garis: #e3e9e5; --pmk-teks: #243b2e; --pmk-redup: #6b7a70;
-       --pmk-es2: #00743e; --pmk-es3: #0f766e; --pmk-es4: #4d7c0f; --pmk-pelaksana: #a16207; --pmk-atas: 66px; }
+       /* Warna jenjang = warna kotak bagan Pohon Kinerja (_pohon_opd_styles), supaya dua tampilan ini terbaca sebagai pohon yang sama. */
+       --pmk-es2: #c2410c; --pmk-es3: #9333ea; --pmk-es4: #e11d48; --pmk-pelaksana: #b45309; --pmk-atas: 66px; }
 .pmk-head { display: flex; align-items: center; gap: 16px; padding-bottom: 16px; margin-bottom: 18px; border-bottom: 1px solid #e8ece9; }
 .pmk-head .pmk-ikon { flex: 0 0 auto; width: 54px; height: 54px; display: grid; place-items: center; border-radius: 15px;
     background: linear-gradient(135deg, #0a8f50 0%, #00743e 100%); color: #fff; font-size: 23px; box-shadow: 0 8px 18px rgba(0, 116, 62, .28); }
@@ -62,8 +63,11 @@
 .pmk-roster li .j { color: var(--pmk-redup); font-size: .72rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pmk-roster li.pmk-punya-peran, .pmk-roster li.pmk-tersaring { display: none; }
 
-/* ---------- Bilah lengket ---------- */
-.pmk-bar { position: sticky; top: var(--pmk-atas); z-index: 20; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+/* ---------- Bilah cari & saring ----------
+   AKSARA+: dulu lengket (sticky) di bawah kepala aplikasi. Saat digulir bilah ini melayang di atas
+   kartu simpul — tulisan di baliknya tembus, dan di ponsel menutupi seperempat layar. Kini ikut
+   mengalir bersama halaman; tombol "ke atas" membawa pengguna kembali ke bilah ini. */
+.pmk-bar { position: static; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
     background: rgba(255, 255, 255, .97); border: 1px solid #e3e9e5; border-radius: 12px; padding: 8px 10px; margin-bottom: 12px;
     box-shadow: 0 8px 20px rgba(16, 40, 24, .07); }
 .pmk-bar .pmk-cari { flex: 1 1 220px; min-width: 0; position: relative; }
@@ -118,6 +122,16 @@
 .pmk-chip-jab { font-size: .69rem; color: var(--pmk-redup); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px; }
 .pmk-chip-peran { flex: 0 0 auto; border: 0; border-radius: 99px; padding: 2px 8px; font-size: .64rem; font-weight: 800; letter-spacing: .3px; color: #fff; background: var(--pmk-hijau); }
 .pmk-chip-peran.anggota { background: #8a9a90; }
+.pmk-chip-peran.tambahan { background: #b7791f; }
+.pmk-chip-tambahan { background: #fff8e6; border-color: #f0d58a; }
+.pmk-peran-menu { display: inline-flex; }
+.pmk-peran-menu .dropdown-menu { font-size: .82rem; min-width: 190px; }
+.pmk-peran-menu .dropdown-item.active { background: #eaf6ef; color: #0f5132; font-weight: 700; }
+.pmk-chip-peran .fa-caret-down { font-size: .6rem; margin-left: 1px; opacity: .85; }
+.pmk-hanya-tambahan { display: inline-block; margin-left: 6px; font-size: .62rem; font-weight: 700; color: #7a5300; background: #fff1c2; border-radius: 6px; padding: 1px 5px; vertical-align: 1px; }
+.pmk-opsi-tambahan b { color: #8a5a00; }
+.pmk-ke-pohon { white-space: nowrap; }
+.pmk-ganda { font-size: .64rem; font-weight: 700; color: #8a4b00; }
 button.pmk-chip-peran:hover { filter: brightness(1.12); }
 .pmk-chip-x { flex: 0 0 auto; width: 22px; height: 22px; border: 0; border-radius: 50%; background: transparent; color: #7b8a80; display: grid; place-items: center; padding: 0; }
 .pmk-chip-x:hover { background: #fde8e8; color: #b42318; }

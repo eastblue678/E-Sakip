@@ -189,7 +189,17 @@ $areaOpd   = ($area ?? 'adminopd') === 'adminopd';   // tautan ke menu Cascading
         'usulan'      => $usulan,
         'ikp'         => $ikpOpsi,
         'jumlahPeran' => (object) $roster['jumlahPeran'],
+        // Penugasan tambahan dihitung terpisah: tidak menghapus pegawai dari daftar "belum punya peran".
+        'jumlahTambahan' => (object) ($roster['jumlahTambahan'] ?? []),
     ];
+    $dataJs['meta']['peranLabel']   = \App\Services\PohonPemilikService::PERAN;
+    $dataJs['meta']['peranSingkat'] = \App\Services\PohonPemilikService::PERAN_SINGKAT;
+
+    // Pohon Kinerja (menu Pohon Kinerja & Cascading) menyajikan simpul & pemilik yang sama dalam bentuk bagan.
+    $periodeQs = (int) $periode['awal'] . '-' . (int) $periode['akhir'];
+    $urlPohon  = ($area ?? 'adminopd') === 'adminkab'
+        ? (user_can('cascading_kab.view') ? base_url('adminkab/cascading?' . http_build_query(['mode' => 'opd', 'view' => 'pohon', 'periode' => $periodeQs, 'opd_id' => (int) $opd['id'], 'tahun' => $tahun])) : null)
+        : (user_can('cascading_opd.view') ? base_url('adminopd/cascading?' . http_build_query(['view' => 'pohon', 'periode' => $periodeQs, 'tahun' => $tahun])) : null);
     $jsonAman = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
 ?>
 
@@ -217,11 +227,15 @@ $areaOpd   = ($area ?? 'adminopd') === 'adminopd';   // tautan ke menu Cascading
                 </select>
             </div>
             <noscript><button class="btn btn-success">Tampilkan</button></noscript>
+            <?php if ($urlPohon !== null): ?>
+                <a class="btn btn-outline-success pmk-ke-pohon" href="<?= esc($urlPohon, 'attr') ?>"
+                   title="Simpul dan pemilik yang sama, disajikan sebagai bagan pohon kinerja"><i class="fas fa-sitemap me-1"></i>Lihat sebagai pohon</a>
+            <?php endif; ?>
         </form>
     </div>
 
     <ul class="pmk-cara">
-        <li><span class="no">1</span><span>Tetapkan <b>pemilik</b> tiap simpul: <b>penanggung jawab</b> (simpul menjadi RHK-nya) dan bila perlu <b>anggota</b> tim.</span></li>
+        <li><span class="no">1</span><span>Tetapkan <b>pemilik</b> tiap simpul: <b>penanggung jawab</b> (simpul menjadi RHK-nya), bila perlu <b>anggota</b> tim, dan pegawai yang mendapat <b>penugasan tambahan</b> (menjadi hasil kerja tambahan di SKP-nya).</span></li>
         <li><span class="no">2</span><span>Isi <b>satuan</b> dan <b>target tahun <?= $tahun ?></b> tiap indikator; tautkan ke IKP bila indikator itu turunan langsung IKP.</span></li>
         <li><span class="no">3</span><span>Pegawai menarik simpul miliknya sebagai <b>RHK</b> di eKin &mdash; target bulanan mengikuti IKP atau Rencana Aksi.</span></li>
     </ul>
@@ -290,7 +304,8 @@ $areaOpd   = ($area ?? 'adminopd') === 'adminopd';   // tautan ke menu Cascading
             <span class="badge bg-warning text-dark" data-stat="tanpa-peran-lencana"><?= $st['tanpaPeran'] ?></span></summary>
         <div class="isi">
             <p class="small text-secondary mb-2">Pegawai perangkat daerah ini (<?= $st['pegawai'] ?> orang, termasuk yang tercatat di kode OPD lama)
-                yang belum menjadi pemilik simpul mana pun tahun <?= $tahun ?> &mdash; setara metrik &ldquo;matriks 0&rdquo; di e-Kinerja.
+                yang belum menjadi penanggung jawab atau anggota simpul mana pun tahun <?= $tahun ?> &mdash; setara metrik &ldquo;matriks 0&rdquo; di e-Kinerja.
+                Pegawai yang hanya memegang penugasan tambahan tetap tercantum, karena belum punya hasil kerja utama.
                 Tetapkan mereka lewat tombol <b>Tambah pemilik</b> pada simpul yang sesuai.</p>
             <div class="pmk-roster-alat">
                 <input type="search" class="form-control form-control-sm" placeholder="Cari nama, jabatan, atau NIP…" data-aksi="cari-roster" aria-label="Cari pegawai tanpa peran">
@@ -301,10 +316,11 @@ $areaOpd   = ($area ?? 'adminopd') === 'adminopd';   // tautan ke menu Cascading
             </div>
             <ul class="pmk-roster">
                 <?php foreach ($roster['pegawai'] as $p): $k = isset($namaKat[$p['kategori']]) ? $p['kategori'] : 'lainnya'; ?>
-                    <li data-roster-id="<?= $p['id'] ?>" data-kategori="<?= $k ?>"
+                    <li data-roster-id="<?= $p['id'] ?>" data-roster-ids="<?= esc(implode(',', $p['ids'] ?? [$p['id']]), 'attr') ?>" data-kategori="<?= $k ?>"
                         data-cari="<?= esc(mb_strtolower($p['nama'] . ' ' . $p['jabatan'] . ' ' . $p['nip']), 'attr') ?>"
                         class="<?= $p['peran'] > 0 ? 'pmk-punya-peran' : '' ?>">
-                        <div class="n" title="<?= esc($p['nama'], 'attr') ?>"><?= esc($p['nama']) ?></div>
+                        <div class="n" title="<?= esc($p['nama'], 'attr') ?>"><?= esc($p['nama']) ?><span class="pmk-hanya-tambahan"<?= ($p['tambahan'] ?? 0) > 0 ? '' : ' hidden' ?>>hanya penugasan tambahan</span></div>
+                        <?php if (($p['ganda'] ?? 1) > 1): ?><div class="pmk-ganda" title="NIP yang sama tercatat <?= (int) $p['ganda'] ?> baris di data pegawai AKSARA; peran dari semua baris dijumlahkan.">tercatat <?= (int) $p['ganda'] ?>&times; di data pegawai</div><?php endif; ?>
                         <div class="j" title="<?= esc($p['jabatan'], 'attr') ?>"><?= esc($p['jabatan'] !== '' ? $p['jabatan'] : 'Jabatan belum tercatat') ?> &middot; <?= esc($namaKat[$k]) ?></div>
                     </li>
                 <?php endforeach; ?>
@@ -447,6 +463,8 @@ $areaOpd   = ($area ?? 'adminopd') === 'adminopd';   // tautan ke menu Cascading
                                 <span><b>Penanggung jawab</b><small>Simpul ini menjadi RHK pegawai tersebut di SKP.</small></span></label>
                             <label class="pmk-opsi"><input type="radio" name="pmkPeran" value="anggota">
                                 <span><b>Anggota</b><small>Ikut mengerjakan simpul ini bersama penanggung jawab.</small></span></label>
+                            <label class="pmk-opsi pmk-opsi-tambahan"><input type="radio" name="pmkPeran" value="penugasan_tambahan">
+                                <span><b>Penugasan tambahan</b><small>Ditugaskan pimpinan (atau mengajukan diri) untuk mendukung simpul ini, biasanya dari bidang/unit lain. Di SKP menjadi <i>hasil kerja tambahan</i> dan tidak menggantikan tugas utamanya.</small></span></label>
                         </div>
                     </div>
                 </div>

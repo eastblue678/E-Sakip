@@ -146,6 +146,49 @@ akun panjang di halaman Profil tidak lagi melebarkan halaman di ponsel.
 `app/Views/templates/tab_halaman.php`, `app/Views/ikp/_tab_{opd,kab}.php`, `app/Views/adminOpd/pk_renaksi/_tab_pengukuran.php`,
 `tests/unit/RuangOpdTest.php`. Tidak ada perubahan skema. Uji peramban: `uji/ms/cek_ruang_opd.mjs` (repo demo).
 
+## Pohon Kinerja berpemilik & peran "penugasan tambahan" (27-09-2026)
+
+Menu **Pohon Kinerja** (tab di "Pohon Kinerja & Cascading", adminopd dan adminkab mode OPD) kini menyajikan
+simpul dan pemiliknya dalam satu bagan, dengan bahasa visual yang sama dengan menu **Pemilik Kinerja**:
+
+- **Kotak pemilik di tiap simpul** mulai Eselon II: inisial, nama, dan peran (PJ / Anggota / Tambahan);
+  simpul tanpa pemilik bergaris putus merah "Belum ada pemilik". Eselon II mengikuti pihak pertama PK JPT/Camat.
+  Kotak menaut ke `pemilik-kinerja#simpul-{id}` (halaman itu membuka jalur dan menyorot simpulnya).
+- **Bilah alat**: tampil/sembunyikan pemilik, sorot yang belum berpemilik, *fokus cabang* (bagan digambar ulang
+  hanya jalur akar → satu cabang Eselon III, supaya terbaca tanpa memperkecil semuanya), pilihan tahun,
+  "Paskan layar", dan tautan kelola. Bagan kini terbuka dengan akarnya di tengah.
+- **Bagian di bawah bagan**: cakupan simpul berpemilik per jenjang, daftar simpul belum berpemilik (klik →
+  disorot di bagan), dan **pegawai yang belum punya tugas** di pohon ini (metrik "matriks 0"), bisa dicari
+  dan disaring per struktural/fungsional/pelaksana.
+- **Warna jenjang** di Pemilik Kinerja disamakan dengan kotak bagan (Eselon II oranye, III ungu, IV/JF merah
+  rose, Pelaksana cokelat), dan Pemilik Kinerja punya tombol "Lihat sebagai pohon".
+- Data dan aturan pemilik dipindah dari `PemilikKinerjaController` ke `App\Services\PohonPemilikService`
+  (dipakai kedua layar lewat `Controllers\Concerns\PohonPemilikTrait`). Partial
+  `adminOpd/cascading/_pohon_opd_tree` hanya menggambar pemilik bila menerima `pemilikPohon`; halaman
+  publik dan cetak tidak berubah.
+
+**Peran ketiga: `penugasan_tambahan`** (kolom `cascading_pemilik.peran` sudah VARCHAR(20) — tanpa migrasi).
+Nomenklatur mengikuti PermenPANRB 6/2022 Lampiran BAB II: Tahap 5 menyebut *penugasan* (penunjukan atau
+pengajuan sukarela, termasuk lintas unit kerja), Tahap 6 membagi rencana hasil kerja menjadi *hasil kerja
+utama* dan *hasil kerja tambahan*. "Penugasan khusus" di regulasi hanya dipakai untuk penugasan dari pejabat
+di luar unit/instansi, jadi tidak dipakai sebagai nama peran. Akibatnya:
+- eKin menarik simpul berperan ini sebagai **RHK tambahan** (`TarikSakipService::jenisUntukSimpul`);
+- pegawai yang hanya memegang penugasan tambahan tetap tercantum sebagai "belum punya tugas" (belum ada hasil
+  kerja utama), dengan tanda "hanya penugasan tambahan";
+- di Pemilik Kinerja, tombol peran pada chip membuka menu tiga pilihan (dulu sakelar PJ ↔ Anggota).
+
+**Pegawai kembar.** Data pegawai AKSARA memuat NIP yang sama di dua baris (mis. PK JPT menunjuk baris lama
+tanpa kode jabatan). Daftar "belum punya tugas" di kedua layar kini satu orang per NIP: peran semua barisnya
+dijumlahkan dan orangnya bertanda "tercatat 2× di data pegawai" — sinyal untuk BKPSDM merapikan data.
+
+**Tidak lagi melayang.** Bilah cari Pemilik Kinerja, navigasi lompat Ruang OPD, dan bilah tombol formulir IKP
+dulu `position: sticky` dengan latar setengah tembus: saat digulir, isian di belakangnya terlihat, dan
+navigasi Ruang OPD terselip di bawah kepala aplikasi. Ketiganya kini ikut mengalir bersama halaman.
+Bilah simpan revisi IKU (kode upstream, sengaja lengket) tidak diubah.
+
+Uji: `tests/unit/PohonPemilikTest.php`; peramban `uji/pohon/cek_pohon_pemilik.mjs` (repo demo, 36 pemeriksaan,
+mengembalikan data pemilik seperti semula).
+
 ## Keputusan desain penting
 
 - IKP melekat ke **OPD × periode RPJMD** (bukan per dokumen PK). Hapus IKP = *soft delete* (`dihapus_pada`) karena aplikasi

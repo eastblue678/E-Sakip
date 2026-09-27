@@ -5,6 +5,7 @@ namespace App\Controllers\AdminKab;
 use App\Controllers\BaseController;
 use App\Controllers\Concerns\CascadingIzinTrait;
 use App\Controllers\Concerns\CascadingOpdMetaTrait;
+use App\Controllers\Concerns\PohonPemilikTrait;
 use App\Models\CascadingModel;
 
 class CascadingController extends BaseController
@@ -17,6 +18,7 @@ class CascadingController extends BaseController
      */
     use CascadingIzinTrait;
     use CascadingOpdMetaTrait;
+    use PohonPemilikTrait;
 
     /**
      * Penjaga izin untuk seluruh aksi Cascading Kabupaten.
@@ -267,6 +269,11 @@ class CascadingController extends BaseController
                 'periode' => $periode,
             ],
         ];
+
+        // AKSARA+ — pemilik & pelaksana tiap simpul di bagan Pohon Kinerja OPD.
+        $data['pemilikPohon'] = $mode === 'opd'
+            ? $this->dataPemilikPohon($tree, (int) $opdId, $tahunMulai, $tahunAkhir, 'adminkab')
+            : null;
 
         return view('adminKabupaten/cascading/cascading', $data);
     }
