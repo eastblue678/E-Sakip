@@ -780,6 +780,7 @@ OPD tak dikenal → `404`. Angka dihitung oleh `IkpRekapService::rekapOpd` — s
 - `metode`: `sum` (bulanan = tambahan; triwulan = jumlah) atau `trend_naik|trend_turun|trend_flat` (bulanan = posisi; triwulan = bulan terisi terakhir). `null` bila OPD belum memilih metode — rekap triwulannya kosong.
 - `berjalan: true` = triwulan belum lengkap terisi (mis. TW III per Agustus): `target` tetap target triwulan penuh, sedangkan `capaian` dihitung dari bulan yang sudah terisi saja.
 - `capaian` hanya menghitung bulan yang **sudah ada realisasinya**; `status` memakai ambang warna Pengaturan Dashboard (`critical|attention|near_target|achieved|exceeded`, atau `belum_ada_data|belum_dinilai|belum_valid|tidak_diukur|menunggu_rilis`).
+- IKP turun sampai pelaksana: setiap butir membawa `turun` = `{baris, es3, es4, pelaksana, sampai_pelaksana, periksa: {kode, warna, pesan} | null}` — jumlah baris pendelegasian tahun itu, jenjang yang sudah memikul (angka atau pendukung; di kecamatan es4 = "Pelaksana / JF" sudah dihitung sampai pelaksana), dan hasil pemeriksa per jenjang terburuk (`habis|kurang|lebih|satu|ganda|tanpa_angka|terputus|…`).
 - Pola ukur: `bulan[m].diukur = false` → bulan non-ukur (`target`/`realisasi` selalu `null`); `triwulan[q].diukur = false` → triwulan tanpa bulan ukur (capaian tidak dihitung). Contoh indeks resmi: `"pola_ukur": "rilis", "bulan_ukur": [12], "penerbit": "Komisi Informasi Provinsi Lampung"`, `bulan["1".."11"]` = `null`, `capaian_tahun_berjalan.status = "menunggu_rilis"` sampai nilai resmi Desember diisi.
 
 ### Kode status eKin

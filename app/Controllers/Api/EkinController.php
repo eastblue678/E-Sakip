@@ -275,6 +275,15 @@ class EkinController extends BaseController
             $svc   = new IkpRekapService($this->db);
             $rekap = $svc->siap() ? $svc->rekapOpd($id, $tahun) : [];
 
+            // IKP turun sampai pelaksana: ringkasan pendelegasian per IKP (jumlah baris, cakupan jenjang, pemeriksa).
+            $turunSvc = new IkpTurunService($this->db);
+            $info     = [];
+            foreach ($rekap as $r) {
+                $info[(int) $r['ikp']['id']] = ['pola' => $r['pola']['pola'], 'target' => $r['target_tahunan']];
+            }
+            $kec     = $turunSvc->kecamatan($id);
+            $turun   = $turunSvc->ringkasIkp($info, $tahun, $kec, \App\Services\RuangOpdService::labelJenjang($kec));
+
             $data = [];
             foreach ($rekap as $r) {
                 $i     = $r['ikp'];
@@ -328,6 +337,16 @@ class EkinController extends BaseController
                     'pj_pegawai_id'          => $i['pj_pegawai_id'] !== null ? (int) $i['pj_pegawai_id'] : null,
                     'cascading_sasaran_id'   => $i['cascading_sasaran_id'] !== null ? (int) $i['cascading_sasaran_id'] : null,
                     'cascading_indikator_id' => $i['cascading_indikator_id'] !== null ? (int) $i['cascading_indikator_id'] : null,
+                    'turun'                  => [
+                        'baris'            => $turun[(int) $i['id']]['baris'] ?? 0,
+                        'es3'              => $turun[(int) $i['id']]['cakupan']['es3'] ?? false,
+                        'es4'              => $turun[(int) $i['id']]['cakupan']['es4'] ?? false,
+                        'pelaksana'        => $turun[(int) $i['id']]['cakupan']['pelaksana'] ?? false,
+                        'sampai_pelaksana' => $turun[(int) $i['id']]['cakupan']['sampai_pelaksana'] ?? false,
+                        'periksa'          => isset($turun[(int) $i['id']]['periksa']) && ($turun[(int) $i['id']]['baris'] ?? 0) > 0
+                            ? ['kode' => $turun[(int) $i['id']]['periksa']['kode'], 'warna' => $turun[(int) $i['id']]['periksa']['warna'],
+                               'pesan' => $turun[(int) $i['id']]['periksa']['pesan']] : null,
+                    ],
                 ];
             }
 

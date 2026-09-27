@@ -2325,6 +2325,18 @@
           "cascading_indikator_id": {
             "type": "integer",
             "nullable": true
+          },
+          "turun": {
+            "type": "object",
+            "description": "Ringkasan IKP turun sampai pelaksana tahun itu.",
+            "properties": {
+              "baris": { "type": "integer" },
+              "es3": { "type": "boolean" },
+              "es4": { "type": "boolean" },
+              "pelaksana": { "type": "boolean" },
+              "sampai_pelaksana": { "type": "boolean" },
+              "periksa": { "type": "object", "nullable": true, "properties": { "kode": { "type": "string" }, "warna": { "type": "string", "enum": ["ok", "peringatan", "netral"] }, "pesan": { "type": "string" } } }
+            }
           }
         }
       },
