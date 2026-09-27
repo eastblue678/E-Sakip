@@ -198,7 +198,7 @@ $render = function (int $id) use (&$render, $urut, $simpul, $ind, $label, $keada
                                     <input type="text" inputmode="decimal" class="form-control form-control-sm isian" id="tgt-<?= $id . $sfx ?>"
                                            name="<?= $nm ?>[target<?= $sfx ?>]" value="<?= esc($st['target' . $sfx], 'attr') ?>" data-nol="sah"
                                            <?= $peran === 'angka' ? 'data-porsi' : '' ?> placeholder="0">
-                                    <span class="tr-porsi-persen" data-persen></span>
+                                    <?php if ($peran === 'angka'): ?><span class="tr-porsi-persen" data-persen></span><?php endif; ?>
                                 </div>
                             <?php endif; ?>
                         </div>
