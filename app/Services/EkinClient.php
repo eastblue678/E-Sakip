@@ -146,6 +146,38 @@ class EkinClient
         return $j;
     }
 
+    /**
+     * Rencana aksi bulanan semua pegawai satu OPD (eKin api/aksara/opd/{id}/rencana-aksi).
+     *
+     * @return array<string,mixed>|null {"opd_id","tahun","bulan","pegawai":[{pegawai_id,nama,jabatan,jenis_jabatan,
+     *                                  fiktif,atasan_pegawai_id,ppk_pegawai_id,skp:{id,status}|null,ra:{jumlah,tercapai,
+     *                                  selesai,berjalan,belum_ada_kegiatan,capaian}}]}
+     */
+    public function rencanaAksiOpd(int $opdId, int $tahun, int $bulan): ?array
+    {
+        $j = $this->ambil('opd/' . $opdId . '/rencana-aksi', $tahun, ['bulan' => max(1, min(12, $bulan))]);
+        if ($j !== null && ! is_array($j['pegawai'] ?? null)) {
+            return $this->gagal('format', 'opd/rencana-aksi');
+        }
+
+        return $j;
+    }
+
+    /**
+     * Rencana aksi setahun satu pegawai: SKP → RHK → IKI → rencana aksi bulan 1–12 + kemajuan.
+     *
+     * @return array<string,mixed>|null {"tahun","pegawai","skp","rhk":[{id,jenis,rumusan,rhk_atasan,iki[],rencana_aksi[]}]}
+     */
+    public function rencanaAksiPegawai(int $pegawaiId, int $tahun): ?array
+    {
+        $j = $this->ambil('pegawai/' . $pegawaiId . '/rencana-aksi', $tahun);
+        if ($j !== null && (! is_array($j['pegawai'] ?? null) || ! is_array($j['rhk'] ?? null))) {
+            return $this->gagal('format', 'pegawai/rencana-aksi');
+        }
+
+        return $j;
+    }
+
     // =================================================================
     // BENTUK DATA (murni — diuji tanpa jaringan)
     // =================================================================
@@ -258,6 +290,72 @@ class EkinClient
     }
 
     /** Jenjang jabatan untuk urutan (kecil = lebih tinggi). */
+    /**
+     * Pegawai (jawaban rencanaAksiOpd) disusun per atasan langsung (atasan_pegawai_id), untuk daftar bertingkat:
+     * pimpinan lebih dulu, bawahan di bawahnya. Atasan yang tidak ada di daftar (mis. Bupati) = akar. Aman dari
+     * lingkaran (setiap pegawai hanya dikunjungi sekali; sisa yang tak terjangkau ditaruh sebagai akar).
+     *
+     * @param list<array<string,mixed>> $pegawai
+     *
+     * @return list<array{p: array<string,mixed>, tingkat: int, bawahan: int}>
+     */
+    public static function susunPerAtasan(array $pegawai): array
+    {
+        $per = [];
+        foreach ($pegawai as $p) {
+            if (isset($p['pegawai_id'])) {
+                $per[(int) $p['pegawai_id']] = $p;
+            }
+        }
+        $anak = [];
+        $akar = [];
+        foreach ($per as $id => $p) {
+            $a = (int) ($p['atasan_pegawai_id'] ?? 0);
+            if ($a > 0 && $a !== $id && isset($per[$a])) {
+                $anak[$a][] = $id;
+            } else {
+                $akar[] = $id;
+            }
+        }
+        $urut = static fn (int $x, int $y) => [self::peringkatJabatan((string) ($per[$x]['jenis_jabatan'] ?? '')), (string) ($per[$x]['nama'] ?? '')]
+            <=> [self::peringkatJabatan((string) ($per[$y]['jenis_jabatan'] ?? '')), (string) ($per[$y]['nama'] ?? '')];
+
+        $hasil   = [];
+        $dilihat = [];
+        $hitung  = static function (int $id, array $jejak = []) use (&$hitung, $anak): int {
+            $n = 0;
+            $jejak[$id] = true;
+            foreach ($anak[$id] ?? [] as $a) {
+                if (! isset($jejak[$a])) {
+                    $n += 1 + $hitung($a, $jejak);
+                }
+            }
+
+            return $n;
+        };
+        $jalan = static function (int $id, int $tingkat) use (&$jalan, &$hasil, &$dilihat, $anak, $per, $urut, $hitung): void {
+            if (isset($dilihat[$id])) {
+                return;
+            }
+            $dilihat[$id] = true;
+            $hasil[]      = ['p' => $per[$id], 'tingkat' => $tingkat, 'bawahan' => $hitung($id)];
+            $daftar       = $anak[$id] ?? [];
+            usort($daftar, $urut);
+            foreach ($daftar as $a) {
+                $jalan($a, $tingkat + 1);
+            }
+        };
+        usort($akar, $urut);
+        foreach ($akar as $id) {
+            $jalan($id, 0);
+        }
+        foreach (array_keys($per) as $id) {   // sisa lingkaran
+            $jalan($id, 0);
+        }
+
+        return $hasil;
+    }
+
     public static function peringkatJabatan(string $jenis): int
     {
         $j = strtolower($jenis);
@@ -289,7 +387,7 @@ class EkinClient
     // =================================================================
 
     /** @return array<string,mixed>|null */
-    private function ambil(string $jalur, int $tahun): ?array
+    private function ambil(string $jalur, int $tahun, array $param = []): ?array
     {
         $this->alasan = null;
 
@@ -299,7 +397,7 @@ class EkinClient
             return null;
         }
 
-        $url   = rtrim($this->base, '/') . '/api/aksara/' . $jalur . '?' . http_build_query(['tahun' => $tahun]);
+        $url   = rtrim($this->base, '/') . '/api/aksara/' . $jalur . '?' . http_build_query(['tahun' => $tahun] + $param);
         $kunci = 'ekin_aksara_' . md5($url);
 
         if ($this->cache !== null) {

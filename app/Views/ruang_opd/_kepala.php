@@ -1,7 +1,7 @@
 <?php
 /**
  * Kepala bersama halaman satu OPD di Ruang OPD: remah, nama, jenis, kepala menurut PK,
- * pemilih tahun, skor, dan tab (Ringkasan · Cascading Pegawai · PK Pegawai).
+ * pemilih tahun, skor, dan tab (Ringkasan · Cascading Pegawai · PK Pegawai · Rencana Aksi Pegawai).
  *
  * Dipanggil dengan $this->include('ruang_opd/_kepala') — hanya melihat DATA view:
  * $opd, $tahun, $tahunList, $kepala, $lintas, $masukSebagai, $buka, opsional $aktifTab, $skor.
@@ -68,4 +68,5 @@ $skorNil  = $skor ?? null;
     <a href="<?= $hubUrl . '?tahun=' . (int) $tahun ?>" class="<?= $aktifTab === 'hub' ? 'aktif' : '' ?>"><i class="fas fa-layer-group"></i>Dokumen SAKIP</a>
     <a href="<?= $hubUrl . '/cascading-pegawai?tahun=' . (int) $tahun ?>" class="<?= $aktifTab === 'cascading' ? 'aktif' : '' ?>"><i class="fas fa-diagram-project"></i>Cascading Pegawai</a>
     <a href="<?= $hubUrl . '/pk-pegawai?tahun=' . (int) $tahun ?>" class="<?= $aktifTab === 'pk' ? 'aktif' : '' ?>"><i class="fas fa-file-signature"></i>PK Pegawai</a>
+    <a href="<?= $hubUrl . '/rencana-aksi-pegawai?tahun=' . (int) $tahun ?>" class="<?= $aktifTab === 'ra' ? 'aktif' : '' ?>"><i class="fas fa-list-check"></i>Rencana Aksi Pegawai</a>
   </nav>

@@ -16,6 +16,8 @@ if ($base === 'adminopd') {
     $tabs = [
         ['url' => 'adminopd/target_renaksi' . $qTahun, 'label' => 'Target & Rencana Aksi', 'ikon' => 'fa-list-check', 'aktif' => $halaman === 'renaksi'],
         ['url' => 'adminopd/monev' . $qTahun, 'label' => 'Monitoring (MONEV)', 'ikon' => 'fa-chart-line', 'aktif' => $halaman === 'monev'],
+        // AKSARA+ — rencana aksi bulanan sampai pelaksana (eKin), di Ruang OPD perangkat daerah sesi.
+        ['url' => 'rencana-aksi-pegawai' . $qTahun, 'label' => 'Rencana Aksi Pegawai (eKin)', 'ikon' => 'fa-users', 'aktif' => false],
     ];
 } else {
     $bupati = $jenis === 'bupati';
@@ -24,6 +26,8 @@ if ($base === 'adminopd') {
         ['grup' => 'Dokumen', 'url' => ($bupati ? $base . '/monev' : $base . '/monev_pk/es3') . $qTahun, 'label' => 'Monitoring (MONEV)', 'ikon' => 'fa-chart-line', 'aktif' => $halaman === 'monev'],
         ['grup' => 'Lingkup', 'url' => ($halaman === 'monev' ? $base . '/monev' : $base . '/target_renaksi') . $qTahun, 'label' => 'PK Bupati', 'ikon' => 'fa-landmark', 'aktif' => $bupati],
         ['grup' => 'Lingkup', 'url' => ($halaman === 'monev' ? $base . '/monev_pk/es3' : $base . '/renaksi_pk/es3') . $qTahun, 'label' => 'PK Perangkat Daerah / Kecamatan', 'ikon' => 'fa-building', 'aktif' => ! $bupati],
+        // AKSARA+ — di bawah PK: rencana aksi bulanan pegawai sampai pelaksana (eKin), per perangkat daerah.
+        ['grup' => 'Lingkup', 'url' => 'rencana-aksi-pegawai' . $qTahun, 'label' => 'Pegawai s.d. Pelaksana (eKin)', 'ikon' => 'fa-users', 'aktif' => false],
     ];
 }
 ?>

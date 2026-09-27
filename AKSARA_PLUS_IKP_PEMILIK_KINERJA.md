@@ -189,6 +189,30 @@ Bilah simpan revisi IKU (kode upstream, sengaja lengket) tidak diubah.
 Uji: `tests/unit/PohonPemilikTest.php`; peramban `uji/pohon/cek_pohon_pemilik.mjs` (repo demo, 36 pemeriksaan,
 mengembalikan data pemilik seperti semula).
 
+## PK Pegawai & Rencana Aksi sampai pelaksana dari eKin (27-09-2026)
+
+Jenjang di bawah Pengawas hidup di eKin; AKSARA+ kini menampilkannya di tiga pintu yang biasa dipakai, tanpa
+menyalin data (semua dibaca lewat `EkinClient`, tembolok 5 menit):
+
+- **Perjanjian Kinerja** (menu terpadu): pil **PK Pegawai · eKin** di samping JPT/Administrator/Pengawas —
+  daftar PK pegawai (draf, diajukan, dikembalikan, ditandatangani) dengan saringan status, 50 baris per
+  halaman, tombol *Dokumen* dan *Rencana aksi*. Pejabat yang PK-nya dokumen AKSARA tidak diulang.
+- **Target & Rencana Aksi**: tab "Rencana Aksi Pegawai (eKin)" (admin OPD) / "Pegawai s.d. Pelaksana (eKin)"
+  (kabupaten) → `rencana-aksi-pegawai`: peran OPD langsung ke OPD-nya; peran lintas OPD melihat ringkasan per
+  OPD (pegawai ber-SKP, rencana aksi bulan terpilih, tercapai, capaian rata-rata, RA tanpa kegiatan).
+- **Ruang OPD**: tab & tombol **Rencana Aksi Pegawai** → `ruang-opd/{id}/rencana-aksi-pegawai?bulan=`: pegawai
+  disusun per atasan langsung (Kadis → Sekdis/Kabid → Kasubag/Kasi → staf), status SKP & PK, jumlah rencana
+  aksi bulan itu, tercapai, capaian, dan peringatan "belum ada kegiatan harian"; saringan & pencarian
+  mempertahankan atasan sebagai konteks. Rincian `…/rencana-aksi-pegawai/{pegawai}`: kartu per RHK
+  (utama/tambahan, RHK pimpinan yang diintervensi, IKI tiga aspek) dengan kisi Jan–Des target/realisasi
+  berwarna (tercapai, bulan berjalan, bulan lalu belum tercapai, direncanakan).
+- Lingkup: sama dengan dokumen PK Pegawai — pegawai harus tercantum di daftar OPD itu (admin OPD tidak bisa
+  membuka pegawai OPD lain dengan mengganti angka di alamat → 404).
+- API eKin baru: `api/aksara/opd/{id}/rencana-aksi` dan `api/aksara/pegawai/{id}/rencana-aksi` (README eKin §17).
+
+Uji: `tests/unit/RencanaAksiPegawaiTest.php`; peramban `uji/pohon/cek_ra_pegawai.mjs` (angka = API eKin,
+lingkup, 390 px).
+
 ## Keputusan desain penting
 
 - IKP melekat ke **OPD × periode RPJMD** (bukan per dokumen PK). Hapus IKP = *soft delete* (`dihapus_pada`) karena aplikasi

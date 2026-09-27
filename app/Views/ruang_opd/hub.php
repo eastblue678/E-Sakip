@@ -444,6 +444,7 @@ $lompat = [
     <div class="ro-aksi">
       <a class="btn btn-sm" style="background:#5b4a8a;color:#fff;" href="<?= base_url('ruang-opd/' . (int) $opd['id'] . '/cascading-pegawai?tahun=' . (int) $tahun) ?>" data-ro-tautan><i class="fas fa-diagram-project me-1"></i>Cascading Pegawai</a>
       <a class="btn btn-sm btn-outline-secondary" href="<?= base_url('ruang-opd/' . (int) $opd['id'] . '/pk-pegawai?tahun=' . (int) $tahun) ?>" data-ro-tautan><i class="fas fa-file-signature me-1"></i>PK Pegawai</a>
+      <a class="btn btn-sm btn-outline-secondary" href="<?= base_url('ruang-opd/' . (int) $opd['id'] . '/rencana-aksi-pegawai?tahun=' . (int) $tahun) ?>" data-ro-tautan><i class="fas fa-list-check me-1"></i>Rencana Aksi Pegawai</a>
     </div>
   </article>
 </section>

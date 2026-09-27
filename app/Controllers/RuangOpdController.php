@@ -205,6 +205,200 @@ class RuangOpdController extends BaseController
         ]);
     }
 
+    /**
+     * GET rencana-aksi-pegawai?tahun=&bulan= — pintu dari menu Target & Rencana Aksi.
+     * Peran OPD langsung ke OPD-nya; peran lintas OPD melihat ringkasan per OPD yang pegawainya sudah dimuat di eKin.
+     */
+    public function rencanaAksiPegawaiIndex()
+    {
+        $akses = $this->akses();
+        if ($akses instanceof RedirectResponse) {
+            return $akses;
+        }
+        $tahun = $this->svc()->tahunDari($this->request->getGet('tahun'));
+        $bulan = self::bulanDari($this->request->getGet('bulan'), $tahun);
+        if ($akses['opd'] !== null) {
+            return redirect()->to(base_url('ruang-opd/' . $akses['opd'] . '/rencana-aksi-pegawai?tahun=' . $tahun . '&bulan=' . $bulan));
+        }
+
+        $ekin    = new EkinClient();
+        $ringkas = $ekin->ringkasSemua($tahun);
+        $nama    = [];
+        foreach ($this->svc()->daftarOpd() as $o) {
+            $nama[(int) $o['id']] = $o['nama_tampil'];
+        }
+        $baris = [];
+        foreach (array_keys($ringkas['opd'] ?? []) as $id) {
+            $id = (int) $id;
+            if (! isset($nama[$id])) {
+                continue;
+            }
+            $d = $ekin->rencanaAksiOpd($id, $tahun, $bulan);
+            $r = ['opd_id' => $id, 'nama' => $nama[$id], 'ada' => $d !== null, 'pegawai' => 0, 'ber_skp' => 0, 'ra' => 0, 'tercapai' => 0, 'belum' => 0, 'capaian' => null];
+            $cap = [];
+            foreach ($d['pegawai'] ?? [] as $p) {
+                $r['pegawai']++;
+                $r['ber_skp'] += $p['skp'] !== null ? 1 : 0;
+                $r['ra'] += (int) ($p['ra']['jumlah'] ?? 0);
+                $r['tercapai'] += (int) ($p['ra']['tercapai'] ?? 0);
+                $r['belum'] += (int) ($p['ra']['belum_ada_kegiatan'] ?? 0);
+                if (($p['ra']['capaian'] ?? null) !== null) {
+                    $cap[] = (float) $p['ra']['capaian'];
+                }
+            }
+            $r['capaian'] = $cap === [] ? null : round(array_sum($cap) / count($cap), 1);
+            $baris[] = $r;
+        }
+        usort($baris, static fn ($a, $b) => strcmp($a['nama'], $b['nama']));
+
+        return view('ruang_opd/rencana_aksi_pegawai_index', [
+            'title'     => 'Rencana Aksi Pegawai · AKSARA+',
+            'tahun'     => $tahun,
+            'tahunList' => $this->svc()->daftarTahun(),
+            'bulan'     => $bulan,
+            'baris'     => $baris,
+            'ekinAda'   => $ringkas !== null,
+            'ekinPesan' => $ringkas === null ? $ekin->pesanTerakhir() : '',
+            'peran'     => (string) session('role'),
+            'shellCss'  => view('ruang_opd/_gaya', [], ['saveData' => false, 'debug' => false]),
+        ]);
+    }
+
+    /**
+     * GET ruang-opd/(:num)/rencana-aksi-pegawai?tahun=&bulan=&status=&q=
+     *
+     * Rencana aksi BULANAN semua pegawai OPD sampai pelaksana, dari eKin (sumber realisasi yang sama dengan halaman
+     * Rencana Aksi eKin). Disusun per atasan langsung supaya terbaca sebagai rantai: pimpinan → bawahan.
+     */
+    public function rencanaAksiPegawai($id = null)
+    {
+        $opd = $this->opdBoleh((int) $id);
+        if ($opd instanceof RedirectResponse) {
+            return $opd;
+        }
+        $tahun  = $this->svc()->tahunDari($this->request->getGet('tahun'));
+        $bulan  = self::bulanDari($this->request->getGet('bulan'), $tahun);
+        $status = (string) $this->request->getGet('status');
+        $status = in_array($status, ['belum', 'berjalan', 'tercapai', 'tanpa_skp'], true) ? $status : '';
+        $q      = mb_substr(trim((string) $this->request->getGet('q')), 0, 60);
+        $ekin   = new EkinClient();
+        $data   = $ekin->rencanaAksiOpd($opd['id'], $tahun, $bulan);
+        $pk     = $data === null ? null : $ekin->pkPegawaiOpd($opd['id'], $tahun);
+
+        $pkStatus = [];
+        foreach ($pk['pk'] ?? [] as $r) {
+            $pkStatus[(int) ($r['pegawai']['id'] ?? 0)] = (string) ($r['status'] ?? '');
+        }
+
+        $susun = $data === null ? [] : EkinClient::susunPerAtasan($data['pegawai']);
+        $ringkas = ['pegawai' => count($susun), 'ber_skp' => 0, 'ra' => 0, 'tercapai' => 0, 'belum' => 0, 'capaian' => []];
+        foreach ($susun as $b) {
+            $ra = $b['p']['ra'] ?? [];
+            $ringkas['ber_skp'] += $b['p']['skp'] !== null ? 1 : 0;
+            $ringkas['ra'] += (int) ($ra['jumlah'] ?? 0);
+            $ringkas['tercapai'] += (int) ($ra['tercapai'] ?? 0);
+            $ringkas['belum'] += (int) ($ra['belum_ada_kegiatan'] ?? 0);
+            if (($ra['capaian'] ?? null) !== null) {
+                $ringkas['capaian'][] = (float) $ra['capaian'];
+            }
+        }
+        $ringkas['capaian'] = $ringkas['capaian'] === [] ? null : round(array_sum($ringkas['capaian']) / count($ringkas['capaian']), 1);
+
+        // Saringan: baris yang tidak cocok disembunyikan, tetapi atasannya tetap tampil sebagai konteks (redup).
+        $cocok = static function (array $p) use ($status, $q): bool {
+            $ra = $p['ra'] ?? [];
+            $ok = match ($status) {
+                'belum'     => $p['skp'] !== null && (int) ($ra['belum_ada_kegiatan'] ?? 0) > 0,
+                'berjalan'  => $p['skp'] !== null && (int) ($ra['jumlah'] ?? 0) > 0 && (int) ($ra['tercapai'] ?? 0) < (int) ($ra['jumlah'] ?? 0),
+                'tercapai'  => (int) ($ra['jumlah'] ?? 0) > 0 && (int) ($ra['tercapai'] ?? 0) === (int) ($ra['jumlah'] ?? 0),
+                'tanpa_skp' => $p['skp'] === null,
+                default     => true,
+            };
+
+            return $ok && ($q === '' || str_contains(mb_strtolower(($p['nama'] ?? '') . ' ' . ($p['jabatan'] ?? '')), mb_strtolower($q)));
+        };
+        $baris = [];
+        foreach ($susun as $b) {
+            $b['cocok'] = $cocok($b['p']);
+            $baris[] = $b;
+        }
+        if ($status !== '' || $q !== '') {
+            // Pertahankan hanya baris yang cocok + atasan-atasannya (supaya konteks rantai tetap terbaca).
+            $simpan = [];
+            $tumpuk = [];
+            foreach ($baris as $i => $b) {
+                $tumpuk = array_slice($tumpuk, 0, $b['tingkat']);
+                $tumpuk[$b['tingkat']] = $i;
+                if ($b['cocok']) {
+                    foreach ($tumpuk as $j) {
+                        $simpan[$j] = true;
+                    }
+                }
+            }
+            $baris = array_values(array_intersect_key($baris, $simpan));
+        }
+
+        return view('ruang_opd/rencana_aksi_pegawai', $this->dataDasar($opd, $tahun) + [
+            'title'     => 'Rencana Aksi Pegawai · ' . $opd['nama_tampil'],
+            'ada'       => $data !== null,
+            'bulan'     => $bulan,
+            'status'    => $status,
+            'q'         => $q,
+            'baris'     => $baris,
+            'ringkas'   => $ringkas,
+            'pkStatus'  => $pkStatus,
+            'ekinPesan' => $data === null ? $this->pesanEkin($ekin, $opd['id'], $tahun) : '',
+        ]);
+    }
+
+    /** GET ruang-opd/(:num)/rencana-aksi-pegawai/(:num)?tahun= — rencana aksi setahun satu pegawai. */
+    public function rencanaAksiPegawaiDetail($id = null, $pegawaiId = null)
+    {
+        $opd = $this->opdBoleh((int) $id);
+        if ($opd instanceof RedirectResponse) {
+            return $opd;
+        }
+        $tahun     = $this->svc()->tahunDari($this->request->getGet('tahun'));
+        $pegawaiId = (int) $pegawaiId;
+        $ekin      = new EkinClient();
+
+        // Sama dengan dokumen PK: pegawai harus tercantum di daftar OPD ini, supaya admin OPD tidak bisa membaca
+        // rencana aksi pegawai OPD lain dengan mengganti angka di alamat.
+        $daftar = $ekin->rencanaAksiOpd($opd['id'], $tahun, self::bulanDari(null, $tahun));
+        if ($daftar !== null && ! in_array($pegawaiId, array_map(static fn ($p) => (int) ($p['pegawai_id'] ?? 0), $daftar['pegawai']), true)) {
+            throw PageNotFoundException::forPageNotFound('Pegawai tidak ditemukan di perangkat daerah ini.');
+        }
+        $data = $daftar === null ? null : $ekin->rencanaAksiPegawai($pegawaiId, $tahun);
+        $pk   = $data === null ? null : $ekin->pkPegawaiOpd($opd['id'], $tahun);
+        $pkIni = null;
+        foreach ($pk['pk'] ?? [] as $r) {
+            if ((int) ($r['pegawai']['id'] ?? 0) === $pegawaiId) {
+                $pkIni = $r;
+            }
+        }
+
+        return view('ruang_opd/rencana_aksi_pegawai_detail', $this->dataDasar($opd, $tahun) + [
+            'title'     => 'Rencana Aksi Pegawai · ' . $opd['nama_tampil'],
+            'data'      => $data,
+            'pk'        => $pkIni,
+            'bulanKini' => self::bulanDari(null, $tahun),
+            'ekinPesan' => $data === null ? $this->pesanEkin($ekin, $opd['id'], $tahun) : '',
+        ]);
+    }
+
+    /** Bulan dari ?bulan= (1–12); bawaan bulan berjalan untuk tahun berjalan, Desember untuk tahun lampau, Januari untuk tahun depan. */
+    public static function bulanDari($isian, int $tahun, ?int $tahunIni = null, ?int $bulanIni = null): int
+    {
+        $b = is_numeric($isian) ? (int) $isian : 0;
+        if ($b >= 1 && $b <= 12) {
+            return $b;
+        }
+        $tahunIni ??= (int) date('Y');
+        $bulanIni ??= (int) date('n');
+
+        return $tahun === $tahunIni ? $bulanIni : ($tahun < $tahunIni ? 12 : 1);
+    }
+
     // =================================================================
     // AKSES & DATA BERSAMA
     // =================================================================

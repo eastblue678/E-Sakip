@@ -113,9 +113,14 @@ $jumlahSemua = array_sum($hitung);
     <?php foreach ($jenisBoleh as $k => $lbl): ?>
       <a href="<?= base_url('perjanjian-kinerja') . $qs(['jenis' => $k, 'hal' => null]) ?>" class="<?= $jenis === $k ? 'aktif' : '' ?>"><?= esc($lbl) ?><span class="n"><?= (int) $hitung[$k] ?></span></a>
     <?php endforeach; ?>
+    <?php // AKSARA+ — jenjang di bawah Pengawas: PK Pegawai (pelaksana & JF) dari eKin. ?>
+    <a href="<?= base_url('perjanjian-kinerja') . $qs(['jenis' => 'pegawai', 'hal' => null]) ?>" class="<?= $jenis === 'pegawai' ? 'aktif' : '' ?>"
+       title="PK Pegawai sampai pelaksana, disusun di eKin dari SKP & rencana aksi"><i class="fas fa-users me-1"></i>PK Pegawai · eKin<span class="n"><?= ($pkPegawai['ada'] ?? false) ? (int) $pkPegawai['jumlah'] : '–' ?></span></a>
   </div>
 
-  <?php if ($baris === []): ?>
+  <?php if ($jenis === 'pegawai'): ?>
+    <?php include __DIR__ . '/_pk_pegawai.php'; // berbagi $qs, $kel, $tahun ?>
+  <?php elseif ($baris === []): ?>
     <div class="ro-kosong"><div class="ic"><i class="fas fa-file-circle-question"></i></div>
       <h5>Tidak ada Perjanjian Kinerja</h5><p class="small mb-0">Tidak ada PK untuk saringan ini pada tahun <?= (int) $tahun ?>.</p></div>
   <?php else: ?>
