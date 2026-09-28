@@ -589,8 +589,9 @@ pendelegasian ber-peran angka, 10 kini dihitung pendukung: 364 & 365 (percobaan 
 dan data simulasi Kecamatan Pringsewu — 212, 328 (IKP 238: Usulan ≠ Dokumen), 329–332 (IKP 241: Usulan ≠ Dokumen), 334,
 335 (IKP 240: Paket ≠ KM). Satuan frasa (IKP 380/385/386 "Indeks …" ↔ "Indeks", 327 "permohonan informasi" ↔
 "Permohonan", 382 "aduan SP4N-LAPOR!" ↔ "Aduan", 242 "Pekon/kelurahan" ↔ "Kelurahan") tetap pemikul angka. **Baris
-363/364/365 adalah percobaan pengguna sendiri** untuk kebutuhan simulasi followers; tahap simulasi D5 (belum dijalankan
-di bagian ini) akan menghapusnya dan menggantinya dengan rantai IKP pengikut media sosial.
+363/364/365 adalah percobaan pengguna sendiri** untuk kebutuhan simulasi followers; tahap simulasi D5 menghapusnya dan
+menggantinya dengan rantai IKP pengikut media sosial (lihat "Simulasi D5" di bawah) — sesudah D5 tinggal 8 baris Kecamatan
+yang dihitung pendukung.
 
 **Uji.** Unit `tests/unit/IkpTurunSatuanTerbagiTest.php` (16 kasus, 130 asersi: satuan & sinonim & frasa, peran efektif,
 kasus Diskominfo 363/364/365, rantai pendukung, posisi terbagi — pemeriksa, profil, saran, usulan —, amplop, POST
@@ -626,6 +627,81 @@ Posisi terbagi di layar diperiksa dengan bendera sementara pada IKP 323 (dikemba
 10. **"Target di eKin berbeda"** hanya ditandai di AKSARA+; penyelarasannya (penugasan baru/ubah SKP) diputuskan eKin.
 11. **Chip status per pemilik simpul tahun itu**: pegawai yang sudah tidak menjadi pemilik tetapi masih punya RHK IKP
     turunan di eKin tidak tampil di AKSARA+ (eKin yang menandai RHK "tidak lagi didelegasikan").
+
+## Simulasi D5: IKP pengikut akun media sosial resmi Diskominfo, Es II → pelaksana per akun (28-09-2026)
+
+**Permintaan pengguna.** *"Intinya saya ingin simulasi di Kominfo, bahwa perlu ada IKP yang indikatornya adalah jumlah
+followers akun media sosial. Jika ini belum masuk, dimasukkan aja. Terus buat dari IKP Es 2-nya sampai itu di-breakdown ke
+pelaksana-pelaksana."* IKP itu belum ada di Diskominfo. Simulasi ini memakai D3 (satuan sama dari atas sampai bawah) dan D4
+(posisi terbagi) di atas; pasangan eKin di README eKin §23.16.
+
+**Yang dibangun (tahap pipa simulasi, di luar git: `/root/demo-kinerja/simulasi/`, idempoten, env `AKSARA_DB`).**
+
+| Tahap | Isi |
+|---|---|
+| `ikp_pengikut.json` (600) | SATU berkas data untuk AKSARA+ dan eKin: IKP, rantai, porsi, dan posisi akhir bulan tiap akun (hanya id pegawai; ANGKA REKAAN yang masuk akal, bukan statistik akun Pemkab) |
+| `02d_ikp_pengikut.php` (baru) | IKP "Jumlah pengikut (followers) akun media sosial resmi Pemerintah Kabupaten Pringsewu" (Program Prioritas, Pringsewu Melayani, satuan teks Pengikut, pola posisi, **posisi terbagi**, bulanan, arah naik; id ≥ 476) + target tahunan 2025–2029 (40.000 baseline · 50.000 · 58.000 · 66.000 · 75.000) + target posisi bulanan 2026 (40.850 → 50.000) + realisasi Jan–Agu = **Σ posisi akhir bulan empat akun** (keterangan merinci per akun, bukti tautan contoh, disahkan Admin OPD awal bulan berikutnya) |
+| `03b_ikp_turun.php` (diperluas) | rantai pendelegasian dari berkas yang sama; mencabut baris uji coba pengguna IKP 381; memeriksa "terbagi habis" di setiap jenjang (GAGAL bila tidak) |
+| `jalankan.sh` | 02d disisipkan sesudah 02c; catatan D5 di 03b & tahap 05 (generator eKin) |
+
+**Rantai (aksara_uji).** Es II Kepala Dinas (pemilik IKP lewat PK JPT) → Es III simpul 619 (Kabid Informasi Komunikasi
+Publik) porsi **50.000** (satu-satunya pemikul Es III) → Es IV simpul 1723 "Jumlah Followers Media Sosial" porsi **50.000**
+→ pelaksana, satu akun satu pemegang: Instagram simpul 1727 (indikator uji coba pengguna "Jumlah followers Instagram",
+dipakai ulang) **22.000**; Facebook **15.000**, TikTok **9.000**, YouTube **4.000** di tiga simpul pelaksana BARU di bawah
+1723 ("Terkelolanya akun Facebook/TikTok resmi …", "Terkelolanya kanal YouTube resmi …", konteks IKU/Renstra = induknya,
+`es3_indikator_id` = indikator followers Es IV) dengan indikator "Jumlah pengikut akun <platform> resmi Pemkab Pringsewu".
+Semua baris peran angka, satuan Pengikut (= satuan IKP, jadi tetap pemikul angka menurut D3), metode `trend_naik`. Pemeriksa:
+IKP 50.000 = 50.000 · Es III 50.000 = 50.000 · Es IV 50.000 = 22.000 + 15.000 + 9.000 + 4.000 — **terbagi habis** di setiap
+jenjang. API `ekin/pegawai/{id}/kinerja`: `posisi_terbagi` true, target posisi bulanan per pemegang = posisi IKP × porsi ÷
+50.000 (IG Jan 17.974 … Des 22.000).
+
+**Posisi akun (rekaan).** Akhir 2025: IG 17.612 · FB 11.948 · TikTok 7.236 · YouTube 3.204 = 40.000. Agustus 2026: 20.854 ·
+14.093 · 8.750 · 3.773 = **47.470** (target Agustus 46.650). Realisasi IKP Jan–Agu: 41.234 · 42.142 · 42.939 · 43.845 · 44.681
+· 45.653 · 46.514 · 47.470. Di eKin setiap pemegang akun melaporkan posisi akunnya (berbukti insight) dengan laporan terakhir
+bulan itu = angka di berkas, sehingga saran **"Dari eKin"** di halaman Realisasi = realisasi AKSARA+ (✓ sama) Jan–Agu.
+
+**Baris uji coba pengguna.** Baris 363/364/365 (IKP 381 → 619 porsi 50.000 "Media" → 1723 → 1727, dibuat akun Admin OPD
+pengguna pagi 28-09-2026) adalah percobaan untuk kebutuhan yang sama; tahap 03b mencabutnya (menurut IKP 381 + simpul + teks
+indikator, bukan id): indikator Media di 619 dihapus (tidak dirujuk), indikator followers 1723 & 1727 dipertahankan dan
+dipakai rantai baru dengan tanda "indikator dibuat pendelegasian" yang dibawa. IKP 381 kembali "belum diturunkan".
+
+**Keputusan & MENGAPA.**
+
+| Keputusan | MENGAPA |
+|---|---|
+| Satu berkas data bersama untuk tahap AKSARA+ dan generator eKin | Realisasi IKP AKSARA+ harus sama dengan Σ posisi di eKin; dua generator yang menaksir sendiri-sendiri pasti berselisih. |
+| Teks indikator di kolom `output_prioritas` ("Jumlah pengikut (followers) …"); nama keluaran "Pengelolaan Media Sosial Resmi …" menjadi sasaran simpul pelaksana ("Terkelolanya akun … resmi …") | Formulir IKP hanya punya satu isian "Indikator IKP (output prioritas)", dan API mengirimnya ke eKin sebagai `indikator` (RHK Kepala Dinas "Tercapainya target jumlah pengikut …"). Pengguna meminta IKP yang *indikatornya* followers. |
+| Satuan teks "Pengikut" (bukan `satuan_id`) | Tabel satuan belum punya Pengikut; menambah data induk di luar lingkup simulasi; D3 membandingkan teks. |
+| IKP baru ber-id eksplisit ≥ 476 | 02c menghapus IKP arsip 473–475; penghitung AUTO_INCREMENT salinan DB akan memberi id itu lagi, dan 02c yang dijalankan ulang menolak IKP aktif ber-id di daftar hapusnya. |
+| Satu akun satu pemegang; tiga akun di simpul pelaksana baru, pemiliknya pelaksana bidang yang sudah memegang simpul pelaksana di bawah 1723 | Simpul 1729 & 2193 dimiliki 2–3 orang; posisi terbagi tidak membagi lagi simpul bersama (semua pemiliknya melaporkan akun yang sama). |
+| Pemilik simpul baru bersumber `sim_ikp` | 03_pohon.php membuang pemilik `simulasi` OPD 20 yang tidak ada di rencananya — sumber tersendiri mencegah dua tahap saling menghapus/menambah di setiap lari pipa. |
+| Es III & Es IV memikul porsi utuh 50.000 | Satu Kabid & satu pemegang simpul Es IV untuk media sosial; bagian baru muncul di jenjang pelaksana (per akun). |
+| Posisi akhir 2025 sebanding porsi (44/30/18/8 %) | Target bulanan bagian = posisi IKP × porsi ÷ target (D4) mengandaikan kurva yang sama; tanpa itu target Januari TikTok melonjak ±1.000. |
+
+**Uji.** Pipa pada `aksara_uji`: 02d lalu 03b (6 baris baru, 3 simpul & 3 pemilik baru, 3 baris uji coba dicabut); lari kedua
+0 perubahan; urutan 02 → 02b → 02c → 02d dijalankan ulang lalu 03b → ceksum isi tabel IKP & pohon identik. Peramban
+`/root/demo-kinerja/uji/turunan/d5_cek_pengikut.mjs` 105/105 (1366 & 390 px): daftar & pohon Turunkan IKP (Es II → 619 →
+1723 → 4 pelaksana, porsi, "Terbagi habis" ×3, satuan Pengikut, chip "Masuk RHK ✓" setiap pemilik, tanpa baris dihitung
+pendukung, IKP 381 tanpa baris uji coba), Realisasi (saran eKin ✓ Jan–Agu), sisi eKin, tanpa gulir samping & tanpa elemen
+melayang. Unit AKSARA+ tidak berubah (182 tes, 2 gagal lama `CapaianTotalTest`). `aksara_cek_turunan.mjs` (D1–D4) menguji
+keadaan pra-D5 dan kini DILEWATI dengan pesan bila baris 363–365 tidak ada (salinan pra-D5:
+`simulasi/cadangan_uji_pra_d5_20260928/`, 600).
+
+### Terbuka untuk dibahas (D5)
+
+1. **Nama keluaran tanpa kolom**: perlu isian "Nama output" terpisah dari "Indikator IKP" di formulir IKP? Tanpa itu rumusan RHK
+   pemikul menjadi panjang ("… (IKP Jumlah pengikut (followers) akun media sosial resmi Pemerintah Kabupaten Pringsewu)").
+2. **Satuan "Pengikut" di tabel satuan**: tambahkan ke data induk supaya dipilih dari daftar (sinonim D3 sudah ada)?
+3. **Instagram di simpul "Terlaksananya Relasi Media"** (pilihan pengguna saat uji coba): pindahkan ke simpul "Terkelolanya
+   akun Instagram resmi …" seperti tiga akun lain?
+4. **Profil bulanan per bagian**: aturan D4 memakai kurva IKP untuk semua bagian; akun yang tumbuh lebih cepat (TikTok) atau
+   lebih lambat (Facebook) belum bisa punya kurva sendiri.
+5. **Tahap 03 dijalankan ulang sesudah 03b GAGAL — masalah lama, bukan D5**: pemeriksaan 03 "tautan indikator #2417 → IKP 242:
+   target/metode berbeda" (porsi pendelegasian Kecamatan 14 ≠ target IKP 15). Terbukti sama pada salinan `aksara_uji` pra-D5;
+   `03_pohon.php` membatalkan (ROLLBACK) sehingga data tidak rusak, tetapi `jalankan.sh` (set -e) berhenti di tahap 03 pada lari
+   kedua di `aksara_demo`. Usul: pemeriksaan 03 melewati baris ber-`sumber = 'delegasi'`.
+6. **Migrasi AKSARA+ `posisi_terbagi`** harus terpasang di `aksara_demo` sebelum 02d (jalankan.sh tidak menjalankan migrasi
+   AKSARA+; 02d berhenti dengan pesan jelas bila kolomnya belum ada).
 
 ## Keputusan desain penting
 
