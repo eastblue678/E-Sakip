@@ -19,7 +19,7 @@ menilai kinerja Kepala OPD setiap bulan, dan penilaian SKP bulanan menjadi prose
 | Lingkungan | Langkah |
 |---|---|
 | Dengan CLI | `php spark migrate` lalu `php spark db:seed IkpReferensiSeeder` |
-| Tanpa CLI (phpMyAdmin) | jalankan `db/update_2026-09-26_ikp_kinerja.sql`, lalu `db/update_2026-09-26_ikp_referensi.sql`, `db/update_2026-09-28_ikp_pola_ukur.sql`, `db/update_2026-09-28_ikp_turun.sql` |
+| Tanpa CLI (phpMyAdmin) | jalankan `db/update_2026-09-26_ikp_kinerja.sql`, lalu `db/update_2026-09-26_ikp_referensi.sql`, `db/update_2026-09-28_ikp_pola_ukur.sql`, `db/update_2026-09-28_ikp_turun.sql`, `db/update_2026-09-29_ikp_posisi_terbagi.sql` |
 
 Keduanya idempoten. Untuk API eKin tambahkan `EKIN_API_TOKEN` di `.env` (token terpisah dari `API_TOKEN`).
 Untuk Ruang OPD membaca eKin: `EKIN_INTERNAL_URL` dan `EKIN_AKSARA_TOKEN` (tanpa keduanya bagian eKin tampil "belum tersedia").
@@ -347,6 +347,9 @@ porsi per orang lewat Cascading "Bagi ke bawahan" yang sudah ada.
 | **Pemikul angka** — posisi/rilis | **target utuh** (= target IKP, terkunci, tidak dibagi) | tepat **satu** pemikul angka per jenjang di satu cabang (> 1 = peringatan; 0 di bawah Kabid dengan pendukung = netral "angka tetap dipikul jenjang ini"; 0 di akar = peringatan) |
 | **Pendukung** (`ikp_peran = pendukung`) | target **indikator proses** miliknya sendiri (pola hitungan) | tidak menambah angka IKP; pemikul angka DI BAWAH pendukung = "rantai angka terputus" |
 
+Sejak 29-09-2026 (bagian berikut): pemikul angka harus **bersatuan sama** dengan IKP (selain itu dihitung pendukung), dan
+IKP posisi yang **dapat dipecah per bagian** (`posisi_terbagi`) dibagi porsi seperti hitungan.
+
 Contoh IKIP (rilis Des, target 99): Kabid IKP = pemikul angka (indikator "Indeks Keterbukaan Informasi Publik", 99,
 hanya Desember); Pranata Humas (Es IV/JF) pendukung "Jumlah laporan layanan informasi publik PPID yang disusun";
 PPID pelaksana pendukung **"Jumlah bukti dukung SAQ Keterbukaan Informasi yang dilengkapi"** (40, dicicil 12 bulan) —
@@ -516,6 +519,113 @@ elemen melayang.
 20. **PJ yang juga memikul baris pendelegasian** kini tetap beralasan `pj` dengan lampiran `delegasi[]` (satu RHK di
     eKin). Bila porsi barisnya lebih kecil dari target IKP (PJ hanya memikul sebagian), target RHK PJ tetap target IKP
     utuh — perlu diselaraskan ke porsi?
+
+## IKP turunan sampai ke eKin: kirim otomatis, status per pemilik, aturan satuan, posisi terbagi (29-09-2026)
+
+**Keluhan pengguna.** Uji coba Turunkan IKP di Diskominfo (OPD 20): IKP 381 "Pengelolaan Media Komunikasi Publik"
+(hitungan, satuan Media, target 2026 = 48) → Es III simpul 619 porsi 50.000 → Es IV simpul 1723 "Jumlah Followers Media
+Sosial" (satuan Pengikut) porsi 50.000 → pelaksana simpul 1727 "Jumlah followers Instagram" (Pengikut) porsi 10.000
+(baris `cascading_indikator_target` 363/364/365). (1) "tersimpan di AKSARA, tapi di eKin ybs ga reflected" — SKP 2026
+pelaksana sudah DISETUJUI, dan eKin baru membuat penugasan "IKP turunan" bila pegawai sendiri menekan "Periksa IKP
+turunan". (2) "intinya saya ingin simulasi di Kominfo, bahwa perlu ada IKP yang indikatornya adalah jumlah followers akun
+media sosial … buat dari IKP Es 2-nya sampai itu di-breakdown ke pelaksana-pelaksana." Percobaan itu juga memperlihatkan
+dua celah aturan: pemeriksa menjumlahkan 50.000 **pengikut** ke IKP bersatuan **Media**, dan IKP posisi hanya boleh punya
+satu pemikul angka padahal pengikut semua akun resmi = jumlah pengikut setiap akun.
+
+**Keputusan (final; sisi AKSARA+ di bagian ini, sisi eKin di README eKin §23; simulasi D5 menyusul).**
+
+| # | Keputusan | MENGAPA |
+|---|---|---|
+| D1 | **Kirim otomatis.** Sesudah Simpan berhasil, AKSARA+ memanggil eKin `POST api/aksara/ikp-turunan/segarkan` untuk setiap OPD terkait (OPD IKP, OPD simpul yang memikul sebelum & sesudah simpan, OPD pegawai pemiliknya; maks. 6). SKP draf/dikembalikan → RHK langsung masuk; SKP diajukan/disetujui → penugasan "IKP turunan" untuk diterima. Simpan tanpa perubahan juga mengirim (= kirim ulang). eKin mati/lambat (batas 20 detik) **tidak** menggagalkan Simpan; flash "Pengiriman ke eKin" merangkum jawaban, atau menulis bahwa pengiriman tetap terjadi saat pegawai membuka eKin dan setiap malam (eKin memeriksa sendiri, `spark ekin:ikp-turunan`). | Pendelegasian yang sudah diputuskan pimpinan tidak boleh tertahan karena pegawai tidak tahu ada tombol. AKSARA+ pemilik struktur, eKin pemilik SKP: AKSARA+ cukup *meminta*, eKin yang menulis RHK/penugasan (satu jalur tulis). Kegagalan jaringan bukan kegagalan simpan — tiga jalur (Simpan, buka eKin, malam) idempoten. |
+| D2 | **Status per pemilik** di pohon Turunkan IKP (chip di samping setiap pemilik simpul) dan ringkasan per IKP di daftar: "Masuk RHK ✓", "SKP masih draf — sudah dimasukkan", "Menunggu diterima", "Ditolak pegawai", "Belum punya SKP 2026", "Belum terkirim", + "Target di eKin berbeda". Dibaca dari `GET api/aksara/opd/{id}/ikp-turunan-status`, tembolok ≤ 60 detik, dihapus setiap Simpan (juga bila eKin gagal). eKin lama/mati = "Status belum dapat dibaca — alasan", halaman tetap jalan. | Admin OPD perlu tahu *siapa* yang belum menerima tanpa membuka eKin satu per satu; 60 detik cukup segar sesudah Simpan tanpa membebani eKin. |
+| D3 | **Aturan satuan.** Baris boleh memikul ANGKA IKP hanya bila satuan indikatornya sama dengan satuan IKP di puncak rantai angka. Selain itu **peran efektif = pendukung** (target sendiri, tidak ikut aritmetika IKP), dihitung saat dibaca — data tersimpan tidak diubah — dan tampil "Dihitung sebagai pendukung: satuan Pengikut ≠ Media". Rantai pendukung bersatuan sama diperiksa porsinya sendiri ("Rantai pendukung (Pengikut): Kurang 40.000 …"). Satuan tampil di samping kotak porsi. Perbandingan: besar/kecil huruf & spasi diabaikan + tabel sinonim di SATU tempat (`app/Config/IkpSatuan.php`). API alasan `delegasi` mengirim `peran` efektif + `peran_tersimpan` + `alasan_peran`; eKin memakai `peran` (pendukung → lencana "Mendukung IKP"). | 50.000 pengikut bukan 50.000 media: menjumlahkan satuan berbeda memalsukan capaian IKP. Dihitung saat dibaca supaya Admin OPD tidak kehilangan isian dan cukup menyamakan satuan (atau memang sengaja memakainya sebagai pendukung). |
+| D4 | **Posisi terbagi.** Bendera IKP pola posisi "Dapat dipecah per bagian — total = jumlah posisi setiap bagian pada bulan yang sama" (`ikp.posisi_terbagi`). Dengan bendera: beberapa pemikul angka per jenjang dengan porsi (pemeriksa seperti hitungan: Σ porsi anak = target induk); target bulanan pemikul = target **posisi** bulanan induk × porsi ÷ target induk (posisi, bukan cicilan — nilai Desember = porsi); realisasi bulan m = Σ posisi terbaru setiap bagian pada bulan m (saran "Dari eKin" = Σ `realisasi_baris` per bulan, cara `jumlah_posisi`), tidak pernah dijumlah antarbulan; capaian tetap posisi terakhir ÷ target bulan itu. Tanpa bendera posisi tetap "satu pemikul angka, target utuh". | Persentase tidak bisa dibagi, tetapi jumlah pengikut semua akun resmi, nasabah aktif per unit, dsb. memang jumlah bagian-bagiannya pada satu tanggal. Tanpa bendera, satu-satunya pilihan adalah satu pemegang target utuh — pemegang akun Instagram tidak bisa dimintai 50.000 pengikut Pemkab. |
+
+**Rumus "posisi bulanan induk × porsi ÷ target induk" berantai = target posisi bulanan IKP × porsi ÷ target IKP** (porsi
+setiap jenjang tengah saling meniadakan), jadi `IkpTurunService::profilBulanan(..., $targetIkp)` cukup memakai target
+IKP; dibulatkan per bulan (bilangan bulat bila porsi & target bulanan bulat), tanpa pembulatan kumulatif.
+
+**Aturan satuan sepadan** (`ikp_satuan_sama()` di `app/Helpers/ikp_helper.php`, cerminan `satuanSama()` di
+`ikp-turun.js`, peta sinonim dikirim ke peramban lewat `data-sinonim` — tidak ada salinan kedua): (1) bentuk rapi sama
+("Media" = " media ", "Followers" = "Pengikut", "Persentase (%)" = "%"); (2) satuan bergaris miring cukup berbagi satu
+bagian ("Pekon/kelurahan" ~ "Kelurahan"); (3) satuan **frasa** sama dengan satuan **satu kata** bila kata pertamanya sama
+("Indeks Keterbukaan Informasi Publik" ~ "Indeks", "permohonan informasi" ~ "Permohonan", "aduan SP4N-LAPOR!" ~ "Aduan");
+dua frasa harus sama utuh. Satuan kosong di salah satu sisi = tidak dapat dinilai → peran tersimpan dipakai.
+
+**Skema** (migrasi `2026-09-29-000001_AddPosisiTerbagiToIkp`, kembaran `db/update_2026-09-29_ikp_posisi_terbagi.sql`,
+idempoten, bawaan 0 — tidak ada IKP lama yang berubah perilaku): `ikp.posisi_terbagi` TINYINT(1). Tidak ada kolom baru
+untuk D1–D3 (peran efektif dihitung saat dibaca; status dibaca dari eKin).
+
+**Kode.**
+- `IkpTurunService`: `peranEfektif()`/`efektifkan()` (D3), `periksa()`/`periksaSemua()` dengan opsi `satuan_ikp`,
+  `terbagi`, `satuan_induk` (rantai pendukung) dan hasil `efektif[]`; `profilBulanan(..., $targetIkp)` (D4);
+  `saranRealisasi()` posisi terbagi; `usulkan()` posisi terbagi seperti hitungan; `simpan()` porsi posisi terbagi
+  (metode = arah posisi); `ringkasIkp()` (+ `beda_satuan`), `perSimpul()` (chip ★/☆ Pohon & Pemilik Kinerja),
+  `saranUntukOpd()`, `untukPegawai()`, `rantaiInduk()` memakai peran efektif; D1/D2: `opdTerkait()`, `kirimKeEkin()`,
+  `ringkasKirim()`, `statusEkin()`, `indeksStatusEkin()`, `chipStatusEkin()`, `hitungStatusEkin()`, konstanta
+  `STATUS_EKIN` & `RINGKAS_KIRIM`.
+- `EkinClient`: `segarkanIkpTurunan()` (POST + JSON, tanpa tembolok, alasan baru `aksara_tak_terjangkau` untuk 503 dan
+  `isian_ditolak` untuk 400), `ikpTurunanStatus()` (tembolok `UMUR_STATUS` = 60 detik), `lupakanStatusIkpTurunan()`,
+  `bukaAmplop()` — amplop `{"status","data"}` hanya dibuka untuk dua kontrak baru (PKRINGKAS lama juga punya kunci
+  `status`). Pengambil tiruan lama `fn($url, $header)` tetap berlaku.
+- `IkpTurunController::save()` memanggil `kirimKeEkin()` dan meneruskan ringkasan lewat flash `kirim_ekin`;
+  `detail()`/`index()` membaca status. `IkpController` (form IKP) menyimpan `posisi_terbagi` (hanya pola posisi, hanya
+  bila kolomnya ada) dan memberi pesan bila bendera berubah. `ikp_pola()` membawa `posisi_terbagi`; `ikp_pola_ringkas()`
+  menambah "· terbagi per bagian"; `ikp_capaian_pola()` menjelaskan capaian posisi terbagi.
+- `PemilikKinerjaController::indikatorTerkini()` — tag indikator Pemilik Kinerja memakai peran efektif (+ alasan di
+  judul). API: `polaApi()` + `posisi_terbagi`; `simpulMilik()` + `ikp_peran_tersimpan`, `ikp_alasan_peran`.
+
+**Layar.** *Turunkan IKP* (pohon): chip status eKin di samping setiap pemilik; baris "Di eKin: n × Masuk RHK ✓ · …";
+panel "Pengiriman ke eKin" sesudah Simpan (rincian: n penugasan dikirim — menunggu diterima; n RHK dimasukkan ke SKP
+draf; n sudah ada; n pegawai belum punya SKP 2026 …); catatan biru "Dihitung sebagai pendukung: satuan X ≠ Y" di kartu
+simpul (server untuk yang tersimpan, `ikp-turun.js` seketika saat indikator/satuan/peran diubah); satuan di samping kotak
+porsi; posisi terbagi: "Porsi posisi akhir 2026" + penjelasan target posisi bulanan. *Daftar Turunkan IKP*: "n pemikul
+angka bersatuan lain … dihitung sebagai pendukung" dan "Di eKin: …" per IKP. *Form IKP*: kotak "Dapat dipecah per
+bagian" hanya untuk pola Posisi. *Realisasi*: judul saran "jumlah posisi n pemegang bagian pada bulan ini". Tanpa elemen
+melayang; 390 px tanpa gulir samping.
+
+**Dampak pada data uji (`aksara_uji`, dihitung ulang saat dibaca, tidak ada baris yang diubah).** Dari 81 baris
+pendelegasian ber-peran angka, 10 kini dihitung pendukung: 364 & 365 (percobaan pengguna di IKP 381: Pengikut ≠ Media),
+dan data simulasi Kecamatan Pringsewu — 212, 328 (IKP 238: Usulan ≠ Dokumen), 329–332 (IKP 241: Usulan ≠ Dokumen), 334,
+335 (IKP 240: Paket ≠ KM). Satuan frasa (IKP 380/385/386 "Indeks …" ↔ "Indeks", 327 "permohonan informasi" ↔
+"Permohonan", 382 "aduan SP4N-LAPOR!" ↔ "Aduan", 242 "Pekon/kelurahan" ↔ "Kelurahan") tetap pemikul angka. **Baris
+363/364/365 adalah percobaan pengguna sendiri** untuk kebutuhan simulasi followers; tahap simulasi D5 (belum dijalankan
+di bagian ini) akan menghapusnya dan menggantinya dengan rantai IKP pengikut media sosial.
+
+**Uji.** Unit `tests/unit/IkpTurunSatuanTerbagiTest.php` (16 kasus, 130 asersi: satuan & sinonim & frasa, peran efektif,
+kasus Diskominfo 363/364/365, rantai pendukung, posisi terbagi — pemeriksa, profil, saran, usulan —, amplop, POST
+segarkan & alasan gagal, tembolok status 60 detik & penghapusannya, ringkasan flash, chip status). Seluruh unit: 182 tes,
+2 gagal lama `CapaianTotalTest`. Peramban `/root/demo-kinerja/uji/turunan/aksara_cek_turunan.mjs` (repo demo; 80
+pemeriksaan pada 1366 & 390 px): server utama :8196 BACA SAJA (catatan satuan, pemeriksa "Lebih 49.952" dan "Rantai
+pendukung (Pengikut) … 40.000", satuan di samping porsi, perubahan seketika, frasa satuan IKP 380/327 tidak turun,
+daftar, bendera form); server tiruan :8197 dengan tiruan eKin `aksara_mock_ekin.php` :8198 (chip Masuk RHK/Target
+berbeda/Belum terkirim; eKin mati → Simpan tetap berhasil + flash jalur cadangan + "Status belum dapat dibaca"; eKin
+hidup → "1 penugasan dikirim" lalu chip "Menunggu diterima" dibaca ulang; Simpan kedua idempoten "3 sudah ada").
+Posisi terbagi di layar diperiksa dengan bendera sementara pada IKP 323 (dikembalikan).
+
+### Terbuka untuk dibahas
+
+1. **Aturan kata pertama & garis miring** (satuan frasa ~ satuan satu kata) melampaui rumusan D3 (besar/kecil huruf,
+   spasi, sinonim). Tanpa itu pemikul angka indeks resmi (satuan IKP "Indeks Keterbukaan Informasi Publik", indikator
+   "Indeks") ikut dihitung pendukung. Diterima, atau satuan IKP dirapikan jadi satu kata?
+2. **Satuan kosong** = peran tersimpan (tidak diturunkan). Wajibkan satuan pada indikator pemikul angka?
+3. **Pendukung karena satuan** memakai profil pendukung (target dicicil 12 bulan). Untuk indikator posisi seperti
+   followers itu keliru — indikator pendukung belum punya pola ukur sendiri. Usul: pola ukur per indikator pendukung.
+4. **Rantai pendukung bersatuan sama diperiksa seperti porsi.** Indikator proses yang bukan pembagian (Kabid 12 laporan,
+   dua staf masing-masing 12 laporan) akan tampil "Lebih 12". Perlu pilihan "bukan pembagian"?
+5. **Pembulatan posisi terbagi per bulan**: Σ target bulanan bagian bisa selisih ±1 dari target bulan induk (angka
+   bulat). Perlu sisa terbesar per bulan antarsaudara?
+6. **Mematikan bendera** sesudah porsi tersimpan: baris tetap berporsi → pemeriksa "berbeda dari target utuh"; admin
+   harus simpan ulang. Perlu penyelarasan otomatis?
+7. **Kecamatan (IKP 238/240/241)** kini tampil pendukung karena satuan IKP dan indikator simpul memang berbeda (Dokumen
+   vs Usulan, KM vs Paket). Perbaiki satuan di data simulasi (`03b_ikp_turun.php`) atau di IKP-nya? Belum diubah. Sisi
+   eKin akan melihat baris itu sebagai "Mendukung IKP" setelah tarikan berikutnya.
+8. **Kirim ulang** = Simpan tanpa perubahan. Perlu tombol "Kirim ulang ke eKin" tersendiri (mis. untuk pembaca yang
+   tidak berhak mengubah)?
+9. **OPD terkait dibatasi 6 per Simpan** (menahan waktu tunggu); sisanya sampai lewat pemeriksaan eKin sendiri.
+10. **"Target di eKin berbeda"** hanya ditandai di AKSARA+; penyelarasannya (penugasan baru/ubah SKP) diputuskan eKin.
+11. **Chip status per pemilik simpul tahun itu**: pegawai yang sudah tidak menjadi pemilik tetapi masih punya RHK IKP
+    turunan di eKin tidak tampil di AKSARA+ (eKin yang menandai RHK "tidak lagi didelegasikan").
 
 ## Keputusan desain penting
 

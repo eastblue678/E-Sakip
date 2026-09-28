@@ -707,14 +707,16 @@ Rincian `ikp[]`:
 
 | Kunci `delegasi[]` | Arti |
 | --- | --- |
-| `peran` | `angka` = pemikul angka: targetnya dihitung ke IKP. `pendukung` = bekerja untuk IKP lewat indikator **proses** miliknya sendiri; tidak menambah angka IKP. `peran` di tingkat butir = `angka` bila minimal satu baris memikul angka. |
-| `porsi_target_tahunan` | angka + hitungan: **porsi** (Σ porsi anak = target induk); angka + posisi/rilis: **target utuh** (= target IKP, tidak dibagi); pendukung: target indikator proses. `porsi_persen` = porsi ÷ target IKP (hanya angka + hitungan). |
-| `target_bulanan` | profil untuk rencana aksi: angka + hitungan = cicilan IKP × porsi/target (pembulatan kumulatif, Σ = porsi); angka + posisi/rilis = target IKP **hanya di bulan ukur** (bulan lain `null`, tidak pernah dicicil); pendukung = target proses dicicil 12 bulan. |
+| `peran` | Peran **EFEKTIF** (29-09-2026). `angka` = pemikul angka: targetnya dihitung ke IKP. `pendukung` = bekerja untuk IKP lewat indikator miliknya sendiri; tidak menambah angka IKP. Baris yang disimpan sebagai pemikul angka tetapi **satuan indikatornya berbeda dari satuan IKP** dikirim `pendukung` (eKin: lencana "Mendukung IKP"). `peran` di tingkat butir = `angka` bila minimal satu baris memikul angka (efektif). |
+| `peran_tersimpan` | peran yang dipilih Admin OPD di Turunkan IKP (`angka|pendukung`), apa adanya. |
+| `alasan_peran`, `alasan_peran_kode` | `null`, atau kalimat "Dihitung sebagai pendukung: satuan Pengikut ≠ Media." + kode `satuan_beda` bila `peran` ≠ `peran_tersimpan`. Satuan dibandingkan tanpa beda huruf besar/kecil & spasi, dengan tabel sinonim `app/Config/IkpSatuan.php` (satuan frasa ≈ kata pertamanya: "Indeks Keterbukaan Informasi Publik" ≈ "Indeks"). |
+| `porsi_target_tahunan` | angka + hitungan: **porsi** (Σ porsi anak = target induk); angka + posisi **terbagi** (`posisi_terbagi = true`): **porsi posisi** akhir tahun (Σ porsi anak = target induk); angka + posisi/rilis lain: **target utuh** (= target IKP, tidak dibagi); pendukung: target indikatornya sendiri. `porsi_persen` = porsi ÷ target IKP (angka + hitungan / posisi terbagi). |
+| `target_bulanan` | profil untuk rencana aksi: angka + hitungan = cicilan IKP × porsi/target (pembulatan kumulatif, Σ = porsi); angka + posisi **terbagi** = target **posisi** bulanan IKP × porsi ÷ target IKP, dibulatkan per bulan (posisi, bukan cicilan — nilai Desember = porsi); angka + posisi/rilis lain = target IKP **hanya di bulan ukur** (bulan lain `null`, tidak pernah dicicil); pendukung = target dicicil 12 bulan. |
 | `pola_indikator`, `bulan_ukur_indikator` | pola indikator baris ini: angka mengikuti IKP; pendukung = `hitungan` bulanan. |
 | `rantai_induk` | jenjang di atasnya yang memikul IKP yang sama sampai Kepala OPD (`peran: "pemilik_ikp"`) — dasar "RHK pimpinan yang diintervensi" (RHK IKP milik pemilik simpul induk). Jenjang yang tidak ikut dilompati. |
 | `pemilik_pegawai_ids` | pemilik simpul baris ini tahun itu (penanggung jawab lebih dulu). eKin membagi porsi **hitungan** simpul yang dimiliki beberapa orang menjadi porsi per orang (Σ = porsi simpul); posisi/rilis tidak dibagi. |
 
-Pada `cascading[].indikator[]`, indikator yang memikul IKP kini juga membawa `ikp_peran` (`angka|pendukung`), `ikp_sumber` (`delegasi|lama`), `ikp_delegasi_id`, dan `ikp_didukung_id`. **Indikator proses pendukung dikirim dengan `ikp_id = null`** (IKP-nya di `ikp_didukung_id`) supaya konsumen lama tidak mengiranya indikator IKP; `target_bulanan` baris `delegasi` = profil di atas, baris `lama` = target bulanan IKP seperti sebelumnya.
+Pada `cascading[].indikator[]`, indikator yang memikul IKP kini juga membawa `ikp_peran` (`angka|pendukung`; baris `delegasi` = peran **efektif**), `ikp_peran_tersimpan`, `ikp_alasan_peran` (kalimat bila satuan berbeda dari satuan IKP), `ikp_sumber` (`delegasi|lama`), `ikp_delegasi_id`, dan `ikp_didukung_id`. Butir `rantai_induk[]` juga membawa `satuan`, `peran` (efektif) dan `peran_tersimpan`. **Indikator proses pendukung dikirim dengan `ikp_id = null`** (IKP-nya di `ikp_didukung_id`) supaya konsumen lama tidak mengiranya indikator IKP; `target_bulanan` baris `delegasi` = profil di atas, baris `lama` = target bulanan IKP seperti sebelumnya.
 
 **Pola ukur (28-09-2026).** Setiap butir `ikp[]` (dan `data[]` endpoint 11) juga membawa:
 
@@ -726,6 +728,7 @@ Pada `cascading[].indikator[]`, indikator yang memikul IKP kini juga membawa `ik
 | `penerbit` | pihak yang merilis nilai (pola `rilis`), selain itu `null` |
 | `rilis_tahun_berikut` | `true` = nilai tahun N baru dirilis tahun N+1 (bulan_ukur = bulan rilis di N+1) |
 | `pola_ditebak` | `true` = pola hasil klasifikasi otomatis yang belum dikonfirmasi Admin OPD |
+| `posisi_terbagi` | (29-09-2026) `true` hanya untuk pola `posisi` yang **dapat dipecah per bagian**: total bulan m = Σ posisi setiap bagian pada bulan m (mis. pengikut semua akun resmi = IG + FB + TikTok + YouTube). Beberapa pemikul angka per jenjang dengan porsi; tidak pernah dijumlah lintas bulan. `false` = posisi biasa (satu pemikul angka, target utuh). |
 
 `target_bulanan`/`realisasi_bulanan` hanya bernilai di **bulan ukur**; bulan lain selalu `null` (isian lama di bulan non-ukur tidak dikirim). `metode` = metode efektif pola (`sum` untuk hitungan; `trend_*` untuk posisi/rilis). eKin menurunkan rencana aksi IKI mengikuti pola ini (rilis: rencana aksi bertarget hanya di bulan rilis).
 
@@ -783,6 +786,19 @@ OPD tak dikenal → `404`. Angka dihitung oleh `IkpRekapService::rekapOpd` — s
 - `capaian` hanya menghitung bulan yang **sudah ada realisasinya**; `status` memakai ambang warna Pengaturan Dashboard (`critical|attention|near_target|achieved|exceeded`, atau `belum_ada_data|belum_dinilai|belum_valid|tidak_diukur|menunggu_rilis`).
 - IKP turun sampai pelaksana: setiap butir membawa `turun` = `{baris, es3, es4, pelaksana, sampai_pelaksana, periksa: {kode, warna, pesan} | null}` — jumlah baris pendelegasian tahun itu, jenjang yang sudah memikul (angka atau pendukung; di kecamatan es4 = "Pelaksana / JF" sudah dihitung sampai pelaksana), dan hasil pemeriksa per jenjang terburuk (`habis|kurang|lebih|satu|ganda|tanpa_angka|terputus|…`).
 - Pola ukur: `bulan[m].diukur = false` → bulan non-ukur (`target`/`realisasi` selalu `null`); `triwulan[q].diukur = false` → triwulan tanpa bulan ukur (capaian tidak dihitung). Contoh indeks resmi: `"pola_ukur": "rilis", "bulan_ukur": [12], "penerbit": "Komisi Informasi Provinsi Lampung"`, `bulan["1".."11"]` = `null`, `capaian_tahun_berjalan.status = "menunggu_rilis"` sampai nilai resmi Desember diisi.
+
+- `turun.periksa` memakai peran efektif (satuan) dan posisi terbagi: baris bersatuan lain dihitung pendukung; rantai pendukung bersatuan sama diperiksa porsinya sendiri (`pesan` diawali "Rantai pendukung (satuan): …").
+
+### Arah sebaliknya: AKSARA+ memanggil eKin (IKP turunan, 29-09-2026)
+
+Sesudah **Simpan** di Kinerja Prioritas › Turunkan IKP, AKSARA+ memanggil eKin (`EKIN_INTERNAL_URL`, header `Authorization: Bearer <EKIN_AKSARA_TOKEN>`; kontrak lengkap di README eKin §23):
+
+| Metode & jalur | Isi | Jawaban |
+| --- | --- | --- |
+| `POST api/aksara/ikp-turunan/segarkan` | JSON `{"opd_id": int, "tahun": int}` untuk setiap OPD terkait (OPD IKP, OPD simpul yang memikul sebelum & sesudah simpan, OPD pegawai pemiliknya; maks. 6) | `{"status":"success","data":{"opd_id","tahun","pegawai":[{"pegawai_id","dibuat","dimasukkan_skp_draf","sudah","ditolak","tanpa_skp","ditautkan"}],"ringkas":{…sama, dijumlah}}}`; `400` isian salah, `401` token salah, `503` eKin tidak dapat membaca AKSARA+ |
+| `GET api/aksara/opd/{id}/ikp-turunan-status?tahun=` | — | `{"status":"success","data":{"opd_id","tahun","baris":[{"delegasi_id","pegawai_id","status":"rhk\|menunggu\|ditolak\|skp_draf\|tanpa_skp\|belum","penugasan_id","iki_id","target_ekin","target_aksara","beda_target"}]}}` — chip per pemilik di halaman Turunkan IKP (tembolok ≤ 60 detik, dihapus setiap Simpan) |
+
+eKin yang mati, lambat (batas 20 detik untuk POST), atau belum menyediakan jalur ini **tidak** menggagalkan Simpan: layar menulis "Belum terkirim ke eKin sekarang … eKin memeriksanya sendiri saat pegawai membuka Beranda, SKP, atau Penugasan, dan setiap malam".
 
 ### Kode status eKin
 
