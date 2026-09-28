@@ -877,14 +877,22 @@ class PemilikKinerjaController extends BaseController
         $rows = $this->db->table('cascading_indikator_opd ci')
             ->select('ci.id, ci.indikator, ci.satuan, cit.target, cit.target_teks, cit.metode, cit.ikp_id,
                       ' . ($this->db->fieldExists('ikp_peran', 'cascading_indikator_target') ? 'cit.ikp_peran, cit.sumber AS ikp_sumber,' : "NULL AS ikp_peran, NULL AS ikp_sumber,") . '
-                      ikp.output_prioritas AS ikp_nama, ikp.dihapus_pada AS ikp_dihapus', false)
+                      ikp.output_prioritas AS ikp_nama, ikp.dihapus_pada AS ikp_dihapus, ikp.satuan_teks AS ikp_satuan_teks, sti.satuan AS ikp_satuan_nama', false)
             ->join('cascading_indikator_target cit', 'cit.cascading_indikator_id = ci.id AND cit.tahun = ' . (int) $tahun, 'left', false)
             ->join('ikp', 'ikp.id = cit.ikp_id', 'left')
+            ->join('satuan sti', 'sti.id = ikp.satuan_id', 'left')
             ->whereIn('ci.id', array_map('intval', $indIds))
             ->get()->getResultArray();
 
+        helper('ikp');
+        $peta  = ikp_satuan_peta();
         $hasil = [];
         foreach ($rows as $r) {
+            // Pendelegasian: tag mengikuti peran EFEKTIF (satuan lain dari satuan IKP = pendukung, D3 29-09-2026).
+            $ef = $r['ikp_id'] !== null && ($r['ikp_sumber'] ?? null) === 'delegasi'
+                ? \App\Services\IkpTurunService::peranEfektif((string) $r['ikp_peran'], $r['satuan'] ?? null,
+                    \App\Services\IkpTurunService::labelSatuan(['satuan_nama' => $r['ikp_satuan_nama'] ?? null, 'satuan_teks' => $r['ikp_satuan_teks'] ?? null]), $peta)
+                : null;
             $target = $r['target'] !== null ? (float) $r['target'] : null;
             $teks   = (string) ($r['target_teks'] ?? '');
             if ($teks === '' && $target !== null) {
@@ -901,7 +909,8 @@ class PemilikKinerjaController extends BaseController
                 'ikp_nama'    => (string) ($r['ikp_nama'] ?? ''),
                 'ikp_dihapus' => $r['ikp_dihapus'] !== null,
                 // IKP turun sampai pelaksana: peran (angka|pendukung) & sumber (delegasi = diatur di Turunkan IKP).
-                'ikp_peran'   => $r['ikp_id'] !== null ? ($r['ikp_peran'] === 'pendukung' ? 'pendukung' : 'angka') : null,
+                'ikp_peran'   => $r['ikp_id'] !== null ? ($ef['peran'] ?? ($r['ikp_peran'] === 'pendukung' ? 'pendukung' : 'angka')) : null,
+                'ikp_alasan_peran' => $ef['alasan_peran'] ?? null,
                 'ikp_sumber'  => $r['ikp_id'] !== null ? ($r['ikp_sumber'] ?? null) : null,
             ];
         }

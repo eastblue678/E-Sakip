@@ -35,6 +35,22 @@ use App\Models\OpdModel;
  *              pendukung "Jumlah bukti dukung SAQ Keterbukaan Informasi yang
  *              dilengkapi" — di sinilah kerja sepanjang tahun diukur.
  *
+ * PERAN EFEKTIF (29-09-2026, "D3"): baris berperan angka hanya memikul angka
+ * IKP bila satuan indikatornya SAMA dengan satuan IKP (Config\IkpSatuan);
+ * selain itu DIHITUNG SEBAGAI PENDUKUNG saat dibaca (data tersimpan tidak
+ * diubah) — tampil "Dihitung sebagai pendukung: satuan Pengikut ≠ Media".
+ * Rantai pendukung bersatuan sama diperiksa porsinya sendiri.
+ *
+ * POSISI TERBAGI (29-09-2026, "D4"): IKP posisi berbendera posisi_terbagi
+ * boleh dipikul beberapa pemikul angka per jenjang dengan porsi (pemeriksa
+ * seperti hitungan); target bulanan pemikul = target POSISI bulanan IKP ×
+ * porsi/target IKP (posisi, bukan cicilan); realisasi bulan m = Σ posisi
+ * setiap bagian pada bulan m.
+ *
+ * PENGIRIMAN KE eKin (29-09-2026, "D1"/"D2"): sesudah Simpan, AKSARA+ meminta
+ * eKin mengirim IKP turunan (EkinClient::segarkanIkpTurunan) dan menampilkan
+ * keadaan setiap pemilik (EkinClient::ikpTurunanStatus → STATUS_EKIN).
+ *
  * Bagian ATURAN MURNI (statis, tanpa DB) diuji tests/unit/IkpTurunTest.php.
  * Bagian DB dipakai halaman Turunkan IKP, chip "★ IKP" di Pohon/Pemilik
  * Kinerja, rekap Kabupaten, saran "Dari eKin" di realisasi IKP, dan API eKin.
@@ -49,11 +65,40 @@ class IkpTurunService
     ];
 
     public const PERAN_JELAS = [
-        'angka'     => 'Targetnya dihitung ke IKP: porsi bila pola ukurnya Hitungan, target utuh bila Posisi atau Rilis resmi.',
+        'angka'     => 'Targetnya dihitung ke IKP (satuannya harus sama dengan satuan IKP): porsi bila Hitungan atau Posisi yang dapat dipecah per bagian, target utuh bila Posisi atau Rilis resmi.',
         'pendukung' => 'Bekerja untuk IKP lewat indikator proses miliknya sendiri; tidak menambah angka IKP.',
     ];
 
     public const LEVEL = ['es3', 'es4', 'pelaksana'];
+
+    /**
+     * Keadaan IKP turunan per pemilik di eKin (kontrak api/aksara/opd/{id}/ikp-turunan-status). {tahun} diganti tahun.
+     * kelas: ok (hijau) | tunggu (kuning) | tolak (merah) | abu.
+     */
+    public const STATUS_EKIN = [
+        'rhk'       => ['label' => 'Masuk RHK ✓', 'kelas' => 'ok',
+            'judul' => 'Sudah menjadi RHK di SKP {tahun} pegawai ini di eKin.'],
+        'skp_draf'  => ['label' => 'SKP masih draf — sudah dimasukkan', 'kelas' => 'ok',
+            'judul' => 'RHK IKP turunan langsung dimasukkan ke SKP {tahun} yang masih draf/dikembalikan; ikut saat SKP diajukan.'],
+        'menunggu'  => ['label' => 'Menunggu diterima', 'kelas' => 'tunggu',
+            'judul' => 'SKP {tahun} pegawai ini sudah diajukan/disetujui, jadi eKin mengirim penugasan "IKP turunan". Pegawai perlu menerimanya di menu Penugasan eKin.'],
+        'ditolak'   => ['label' => 'Ditolak pegawai', 'kelas' => 'tolak',
+            'judul' => 'Pegawai menolak penugasan IKP turunan di eKin. Bicarakan dengan pegawai/atasannya; bila pendelegasiannya diubah, simpan ulang.'],
+        'tanpa_skp' => ['label' => 'Belum punya SKP {tahun}', 'kelas' => 'abu',
+            'judul' => 'Pegawai belum membuat SKP {tahun} di eKin. IKP turunan ikut masuk saat SKP dibuat (Tarik dari SAKIP).'],
+        'belum'     => ['label' => 'Belum terkirim', 'kelas' => 'abu',
+            'judul' => 'eKin belum memproses baris ini. Dikirim saat Simpan, saat pegawai membuka eKin, atau pada pemeriksaan malam.'],
+    ];
+
+    /** Kunci ringkasan segarkan (kontrak eKin) → kalimat flash. {n} = jumlah, {tahun} = tahun. */
+    public const RINGKAS_KIRIM = [
+        'dibuat'              => '{n} penugasan "IKP turunan" dikirim — menunggu diterima pegawai (SKP-nya sudah diajukan/disetujui)',
+        'dimasukkan_skp_draf' => '{n} RHK langsung dimasukkan ke SKP draf',
+        'ditautkan'           => '{n} ditautkan ke RHK IKP yang sudah ada',
+        'sudah'               => '{n} sudah ada di eKin (tidak berubah)',
+        'ditolak'             => '{n} pernah ditolak pegawai',
+        'tanpa_skp'           => '{n} pegawai belum punya SKP {tahun} — ikut masuk saat SKP dibuat',
+    ];
 
     /** Toleransi selisih pembagian porsi (sama dengan ikp_cek). */
     public const TOL = 0.005;
@@ -93,30 +138,55 @@ class IkpTurunService
 
     /**
      * Pemeriksa SATU jenjang: anak langsung dari satu induk (akar = IKP itu
-     * sendiri, dipegang Kepala OPD).
+     * sendiri, dipegang Kepala OPD). Peran anak & induk = peran EFEKTIF
+     * (peranEfektif(): angka bersatuan lain sudah dihitung sebagai pendukung).
      *
      * @param string     $pola        hitungan|posisi|rilis
      * @param float|null $targetInduk target induk (akar: target tahunan IKP; anak: porsi/target baris induk)
-     * @param list<array{peran:string, target:?float}> $anak
+     * @param list<array{peran:string, target:?float, satuan?:?string}> $anak
      * @param bool       $akar        true = jenjang pertama di bawah IKP
      * @param string     $peranInduk  angka|pendukung (akar dianggap angka)
+     * @param array      $opsi        terbagi (bool: posisi terbagi → porsi seperti hitungan),
+     *                                satuan_induk (?string: satuan baris induk — rantai pendukung bersatuan
+     *                                sama diperiksa porsinya), satuan (?string: satuan untuk kalimat),
+     *                                peta (?array: peta sinonim satuan, bawaan Config\IkpSatuan)
      *
-     * @return array{kode:string, warna:string, pesan:string, jumlah:?float, selisih:?float, n_angka:int, n_pendukung:int}
-     *   warna: ok | peringatan | netral
+     * @return array{kode:string, warna:string, pesan:string, jumlah:?float, selisih:?float, n_angka:int, n_pendukung:int, lingkup:string}
+     *   warna: ok | peringatan | netral; lingkup: angka | pendukung (porsi rantai pendukung)
      */
-    public static function periksa(string $pola, ?float $targetInduk, array $anak, bool $akar = false, string $peranInduk = 'angka'): array
+    public static function periksa(string $pola, ?float $targetInduk, array $anak, bool $akar = false, string $peranInduk = 'angka', array $opsi = []): array
     {
-        $angka = array_values(array_filter($anak, static fn ($a) => ($a['peran'] ?? 'angka') === 'angka'));
-        $nA    = count($angka);
-        $nP    = count($anak) - $nA;
-        $hasil = static fn (string $kode, string $warna, string $pesan, ?float $jumlah = null, ?float $selisih = null): array
-            => ['kode' => $kode, 'warna' => $warna, 'pesan' => $pesan, 'jumlah' => $jumlah, 'selisih' => $selisih,
-                'n_angka' => $nA, 'n_pendukung' => $nP];
+        $angka   = array_values(array_filter($anak, static fn ($a) => ($a['peran'] ?? 'angka') === 'angka'));
+        $nA      = count($angka);
+        $nP      = count($anak) - $nA;
+        $terbagi = ! empty($opsi['terbagi']) && $pola === 'posisi';
+        $lingkup = 'angka';
+        $hasil   = static function (string $kode, string $warna, string $pesan, ?float $jumlah = null, ?float $selisih = null) use ($nA, $nP, &$lingkup): array {
+            return ['kode' => $kode, 'warna' => $warna, 'pesan' => $pesan, 'jumlah' => $jumlah, 'selisih' => $selisih,
+                'n_angka' => $nA, 'n_pendukung' => $nP, 'lingkup' => $lingkup];
+        };
 
         if ($peranInduk === 'pendukung' && ! $akar) {
-            return $nA > 0
-                ? $hasil('terputus', 'peringatan', 'Pemikul angka di bawah pendukung: rantai angka terputus. Jadikan simpul di atasnya pemikul angka, atau jadikan simpul ini pendukung.')
-                : $hasil($nP > 0 ? 'pendukung' : 'belum', 'netral', $nP > 0 ? $nP . ' pendukung.' : 'Tidak diturunkan lagi.');
+            if ($nA > 0) {
+                return $hasil('terputus', 'peringatan', 'Pemikul angka di bawah pendukung: rantai angka terputus. Jadikan simpul di atasnya pemikul angka, atau jadikan simpul ini pendukung.');
+            }
+            // Rantai pendukung bersatuan SAMA dengan induknya: porsinya diperiksa sendiri (mis. "Jumlah followers
+            // media sosial" 50.000 Pengikut → "followers Instagram" 10.000 Pengikut = kurang 40.000).
+            $satInduk = $opsi['satuan_induk'] ?? null;
+            $sama     = [];
+            if ($satInduk !== null && trim((string) $satInduk) !== '') {
+                $peta = $opsi['peta'] ?? ikp_satuan_peta();
+                $sama = array_values(array_filter($anak, static fn ($a) => ikp_satuan_sama($a['satuan'] ?? null, $satInduk, $peta) === true));
+            }
+            if ($sama !== [] && $targetInduk !== null) {
+                $lingkup = 'pendukung';
+                [$kode, $warna, $pesan, $jumlah, $selisih] = self::cekPorsi($targetInduk, $sama, (string) $satInduk);
+
+                return $hasil($kode, $warna, 'Rantai pendukung (' . $satInduk . '): ' . $pesan
+                    . (count($sama) < $nP ? ' ' . ($nP - count($sama)) . ' pendukung bersatuan lain tidak ikut dijumlah.' : ''), $jumlah, $selisih);
+            }
+
+            return $hasil($nP > 0 ? 'pendukung' : 'belum', 'netral', $nP > 0 ? $nP . ' pendukung.' : 'Tidak diturunkan lagi.');
         }
 
         if ($nA === 0) {
@@ -131,37 +201,23 @@ class IkpTurunService
                 : $hasil('belum', 'netral', 'Tidak diturunkan lagi (dipikul jenjang ini).');
         }
 
-        if ($pola === 'hitungan') {
+        if ($pola === 'hitungan' || $terbagi) {
             if ($targetInduk === null) {
                 return $hasil('tanpa_target', 'peringatan', 'Target ' . ($akar ? 'tahunan IKP' : 'induk') . ' belum berupa angka; porsi tidak dapat diperiksa.');
             }
-            $kosong = 0;
-            $jumlah = 0.0;
-            foreach ($angka as $a) {
-                if (($a['target'] ?? null) === null) {
-                    $kosong++;
-                } else {
-                    $jumlah += (float) $a['target'];
-                }
-            }
-            $selisih = round($jumlah - $targetInduk, 4);
-            $tambah  = $kosong > 0 ? ' ' . $kosong . ' porsi belum diisi.' : '';
-            if (abs($selisih) <= self::TOL && $kosong === 0) {
-                return $hasil('habis', 'ok', 'Terbagi habis: ' . ikp_fmt($jumlah, 4) . ' = ' . ikp_fmt($targetInduk, 4) . '.', $jumlah, 0.0);
-            }
-            if ($selisih < -self::TOL || ($kosong > 0 && abs($selisih) <= self::TOL)) {
-                return $hasil('kurang', 'peringatan', 'Kurang ' . ikp_fmt(abs($selisih), 4) . ': porsi ' . ikp_fmt($jumlah, 4)
-                    . ' dari ' . ikp_fmt($targetInduk, 4) . ' (sisanya belum diturunkan).' . $tambah, $jumlah, $selisih);
+            [$kode, $warna, $pesan, $jumlah, $selisih] = self::cekPorsi($targetInduk, $angka, (string) ($opsi['satuan'] ?? ''));
+            if ($terbagi) {
+                $pesan .= $kode === 'habis' ? ' Posisi terbagi: jumlah posisi setiap bagian = posisi induk.' : '';
             }
 
-            return $hasil('lebih', 'peringatan', 'Lebih ' . ikp_fmt($selisih, 4) . ': porsi ' . ikp_fmt($jumlah, 4)
-                . ' melebihi ' . ikp_fmt($targetInduk, 4) . '.' . $tambah, $jumlah, $selisih);
+            return $hasil($kode, $warna, $pesan, $jumlah, $selisih);
         }
 
         // posisi / rilis — target UTUH, tepat satu pemikul angka per jenjang.
         if ($nA > 1) {
             return $hasil('ganda', 'peringatan', $nA . ' pemikul angka. Nilai ' . ($pola === 'rilis' ? 'rilis' : 'posisi')
-                . ' tidak dibagi: pilih SATU pemikul angka di jenjang ini, yang lain jadikan pendukung.');
+                . ' tidak dibagi: pilih SATU pemikul angka di jenjang ini, yang lain jadikan pendukung'
+                . ($pola === 'posisi' ? ' — atau, bila posisinya jumlah dari beberapa bagian (mis. pengikut beberapa akun), centang "Dapat dipecah per bagian" di form IKP.' : '.'));
         }
         $t = $angka[0]['target'] ?? null;
         if ($targetInduk !== null && $t !== null && abs((float) $t - $targetInduk) > self::TOL) {
@@ -170,6 +226,78 @@ class IkpTurunService
         }
 
         return $hasil('satu', 'ok', 'Satu pemikul angka' . ($nP > 0 ? ' + ' . $nP . ' pendukung' : '') . '.');
+    }
+
+    /**
+     * Pemeriksa porsi: Σ target $anak terhadap $targetInduk (toleransi TOL).
+     *
+     * @param list<array{target:?float}> $anak
+     *
+     * @return array{0:string, 1:string, 2:string, 3:float, 4:float} [kode habis|kurang|lebih, warna, pesan, jumlah, selisih]
+     */
+    private static function cekPorsi(float $targetInduk, array $anak, string $satuan = ''): array
+    {
+        $kosong = 0;
+        $jumlah = 0.0;
+        foreach ($anak as $a) {
+            if (($a['target'] ?? null) === null) {
+                $kosong++;
+            } else {
+                $jumlah += (float) $a['target'];
+            }
+        }
+        $sat     = trim($satuan) !== '' ? ' ' . trim($satuan) : '';
+        $selisih = round($jumlah - $targetInduk, 4);
+        $tambah  = $kosong > 0 ? ' ' . $kosong . ' porsi belum diisi.' : '';
+        if (abs($selisih) <= self::TOL && $kosong === 0) {
+            return ['habis', 'ok', 'Terbagi habis: ' . ikp_fmt($jumlah, 4) . ' = ' . ikp_fmt($targetInduk, 4) . $sat . '.', $jumlah, 0.0];
+        }
+        if ($selisih < -self::TOL || ($kosong > 0 && abs($selisih) <= self::TOL)) {
+            return ['kurang', 'peringatan', 'Kurang ' . ikp_fmt(abs($selisih), 4) . ': porsi ' . ikp_fmt($jumlah, 4)
+                . ' dari ' . ikp_fmt($targetInduk, 4) . $sat . ' (sisanya belum diturunkan).' . $tambah, $jumlah, $selisih];
+        }
+
+        return ['lebih', 'peringatan', 'Lebih ' . ikp_fmt($selisih, 4) . ': porsi ' . ikp_fmt($jumlah, 4)
+            . ' melebihi ' . ikp_fmt($targetInduk, 4) . $sat . '.' . $tambah, $jumlah, $selisih];
+    }
+
+    /**
+     * PERAN EFEKTIF satu baris (keputusan 29-09-2026 "D3", murni): baris tersimpan sebagai pemikul angka hanya memikul
+     * angka IKP bila satuan indikatornya SAMA dengan satuan IKP (ikp_satuan_sama; sinonim di Config\IkpSatuan).
+     * Satuan berbeda → dihitung sebagai pendukung (target sendiri, tidak ikut aritmetika IKP). Satuan kosong di salah
+     * satu sisi = tidak dapat dinilai → peran tersimpan dipakai (tidak menurunkan peran karena ketidaktahuan).
+     *
+     * MENGAPA dihitung saat dibaca, tidak diubah di data: Admin OPD bisa menyamakan satuan (atau memang sengaja
+     * memakai indikator lain sebagai pendukung) tanpa kehilangan isian; baris lama tetap utuh untuk ditelusuri.
+     *
+     * @return array{peran:string, peran_tersimpan:string, alasan_peran_kode:?string, alasan_peran:?string}
+     */
+    public static function peranEfektif(string $peranTersimpan, ?string $satuanBaris, ?string $satuanIkp, ?array $peta = null): array
+    {
+        $simpan = $peranTersimpan === 'pendukung' ? 'pendukung' : 'angka';
+        $out    = ['peran' => $simpan, 'peran_tersimpan' => $simpan, 'alasan_peran_kode' => null, 'alasan_peran' => null];
+        if ($simpan === 'angka' && ikp_satuan_sama($satuanBaris, $satuanIkp, $peta) === false) {
+            $out['peran']             = 'pendukung';
+            $out['alasan_peran_kode'] = 'satuan_beda';
+            $out['alasan_peran']      = 'Dihitung sebagai pendukung: satuan ' . trim((string) $satuanBaris) . ' ≠ ' . trim((string) $satuanIkp) . '.';
+        }
+
+        return $out;
+    }
+
+    /**
+     * peranEfektif() untuk sekumpulan baris (kunci `ikp_peran` = peran tersimpan, `satuan` = satuan indikator).
+     * Menambah kunci peran, peran_tersimpan, alasan_peran_kode, alasan_peran; kunci lain utuh.
+     *
+     * @param list<array> $baris
+     *
+     * @return list<array>
+     */
+    public static function efektifkan(array $baris, ?string $satuanIkp, ?array $peta = null): array
+    {
+        $peta ??= ikp_satuan_peta();
+
+        return array_map(static fn (array $b): array => self::peranEfektif((string) ($b['ikp_peran'] ?? 'angka'), $b['satuan'] ?? null, $satuanIkp, $peta) + $b, $baris);
     }
 
     /**
@@ -262,14 +390,21 @@ class IkpTurunService
      *                          bulanan IKP; tanpa breakdown → cicilan rata ke bulan ukur)
      *   angka + posisi/rilis   target IKP di bulan ukur (bukan cicilan); tanpa
      *                          breakdown → target utuh di setiap bulan ukur
+     *   angka + posisi TERBAGI target POSISI bulanan IKP × porsi/target IKP, dibulatkan per
+     *                          bulan (posisi, bukan cicilan — tidak ada pembulatan kumulatif);
+     *                          tanpa breakdown → porsi di setiap bulan ukur. Rumus "posisi
+     *                          bulanan induk × porsi/target induk" di setiap jenjang berantai
+     *                          menjadi rumus ini (porsi induk saling meniadakan), jadi cukup
+     *                          target IKP.
      *   pendukung              target proses sendiri dicicil rata 12 bulan
-     * Bulan non-ukur selalu null untuk pemikul angka.
+     * Bulan non-ukur selalu null untuk pemikul angka. $peran = peran EFEKTIF.
      *
      * @param array<int, float|null> $bulananIkp target bulanan IKP [1..12] (sudah atau belum disaring)
+     * @param float|null             $targetIkp  target tahunan IKP (hanya dipakai posisi terbagi)
      *
      * @return array<int, float|null> [1..12]
      */
-    public static function profilBulanan(array $pola, array $bulananIkp, ?float $target, string $peran): array
+    public static function profilBulanan(array $pola, array $bulananIkp, ?float $target, string $peran, ?float $targetIkp = null): array
     {
         $kosong = array_fill(1, 12, null);
         if ($target === null) {
@@ -300,6 +435,22 @@ class IkpTurunService
             $out  = $kosong;
             foreach (array_values($pola['bulan_ukur'] ?? []) as $i => $m) {
                 $out[(int) $m] = $bagi[$i + 1] ?? null;
+            }
+
+            return $out;
+        }
+
+        if (($pola['pola'] ?? '') === 'posisi' && ! empty($pola['posisi_terbagi'])) {
+            $skala = $targetIkp !== null && abs($targetIkp) > 1e-12 ? $target / $targetIkp : null;
+            foreach ($ada as $v) {
+                $bulat = $bulat && abs((float) $v - round((float) $v)) < 1e-9;
+            }
+            $out = $kosong;
+            foreach ($pola['bulan_ukur'] ?? [] as $m) {
+                $v = $ikp[(int) $m] ?? null;
+                $out[(int) $m] = $ada === [] || $skala === null
+                    ? $target
+                    : ($v === null ? null : round((float) $v * $skala, $bulat ? 0 : 2));
             }
 
             return $out;
@@ -466,9 +617,11 @@ class IkpTurunService
      *                 pemikul terbawah bagi lewat Cascading "Bagi ke bawahan".
      *                 eKin lama (tanpa realisasi_baris): Σ realisasi pemikul angka
      *                 TERBAWAH (baris angka tanpa anak angka); atasan tidak dijumlah.
+     *   posisi terbagi  seperti hitungan tetapi per bulan: Σ posisi setiap bagian
+     *                 pada bulan m (cara `jumlah_posisi`); tidak dijumlah lintas bulan.
      *   posisi/rilis  nilai yang dilaporkan pemikul angka jenjang TERDEKAT ke
      *                 IKP (Eselon III dulu; bila belum melapor, turun satu jenjang).
-     * Hanya bulan ukur.
+     * Hanya bulan ukur. `peran` baris = peran EFEKTIF (bersatuan lain = pendukung, tidak dijumlah).
      *
      * @param list<array{id:int, induk:?int, peran:string, level:string}> $baris
      * @param array<int, array<int, list<array{pegawai_id:int, realisasi:float|int|null, pada?:?string}>>> $lapor
@@ -491,10 +644,13 @@ class IkpTurunService
         $urutLevel = array_flip(self::LEVEL);
         usort($angka, static fn ($x, $y) => [$urutLevel[$x['level']] ?? 9, $x['id']] <=> [$urutLevel[$y['level']] ?? 9, $y['id']]);
 
+        // Posisi terbagi: bulan m = Σ posisi setiap bagian PADA BULAN m (bagian = baris pemikul angka) — cara
+        // menjumlahnya sama dengan hitungan per bulan, tetapi tidak pernah dijumlah lintas bulan (capaian = posisi).
+        $terbagi = ($pola['pola'] ?? '') === 'posisi' && ! empty($pola['posisi_terbagi']);
         $out = [];
         foreach ($pola['bulan_ukur'] ?? [] as $m) {
             $m = (int) $m;
-            if (($pola['pola'] ?? '') === 'hitungan') {
+            if (($pola['pola'] ?? '') === 'hitungan' || $terbagi) {
                 $daun   = array_values(array_filter($angka, static fn ($b) => empty($punyaAnakAngka[(int) $b['id']])));
                 $jumlah = 0.0;
                 $ada    = false;
@@ -526,7 +682,7 @@ class IkpTurunService
                     }
                 }
                 if ($ada) {
-                    $out[$m] = ['nilai' => round($jumlah, 4), 'cara' => 'jumlah_porsi', 'baris' => $ids,
+                    $out[$m] = ['nilai' => round($jumlah, 4), 'cara' => $terbagi ? 'jumlah_posisi' : 'jumlah_porsi', 'baris' => $ids,
                         'pegawai' => array_values(array_unique($peg)), 'lengkap' => $lengkap, 'level' => null];
                 }
 
@@ -553,12 +709,13 @@ class IkpTurunService
      *   hitungan      semua daun yang cocok memikul angka; porsi dibagi
      *                 proporsional target indikator simpul (satuan sepadan),
      *                 selain itu rata; leluhur = Σ porsi turunannya (terbagi habis).
-     *   posisi        satu rantai angka ke simpul paling cocok (seri → paling dalam).
+     *   posisi        satu rantai angka ke simpul paling cocok (seri → paling dalam);
+     *                 posisi TERBAGI (`terbagi` = true) seperti hitungan.
      *   rilis         satu rantai angka ke simpul paling cocok (seri → paling
      *                 DANGKAL: nilai resmi dipegang pejabat, bukan staf) +
      *                 maks. 2 cabang pendukung di bawahnya dengan indikator proses.
      *
-     * @param array $ikp   ['nama','satuan','pola'(hitungan|posisi|rilis),'target'(?float),'id']
+     * @param array $ikp   ['nama','satuan','pola'(hitungan|posisi|rilis),'target'(?float),'id', 'terbagi'(?bool)]
      * @param array $pohon ['simpul' => [id => ['id','level','induk'(?id),'nama','indikator'=>[ind ids]]],
      *                      'indikator' => [id => ['id','nama','satuan','target'(?float),'ikp_id'(?int)]]]
      *
@@ -573,6 +730,9 @@ class IkpTurunService
         $simpul = $pohon['simpul'] ?? [];
         $ind    = $pohon['indikator'] ?? [];
         $pola   = (string) ($ikp['pola'] ?? 'hitungan');
+        if ($pola === 'posisi' && ! empty($ikp['terbagi'])) {
+            $pola = 'hitungan';   // posisi terbagi: setiap bagian yang cocok memikul porsi, leluhur = Σ porsi turunannya
+        }
 
         // 1) Skor & indikator terbaik per simpul.
         $skor  = [];
@@ -913,20 +1073,21 @@ class IkpTurunService
      * Ringkasan pendelegasian untuk sekumpulan IKP: cakupan jenjang + pemeriksa
      * terburuk. [ikp_id => ['baris' => n, 'cakupan' => …, 'periksa' => [kode, warna, pesan], 'teks' => …]]
      *
-     * @param array<int, array{pola:string, target:?float}> $ikpInfo [ikp_id => pola & target tahunan]
+     * @param array<int, array{pola:string, target:?float, satuan?:?string, terbagi?:bool}> $ikpInfo [ikp_id => pola,
+     *        target tahunan, satuan IKP (peran efektif), posisi terbagi]
      */
     public function ringkasIkp(array $ikpInfo, int $tahun, bool $kecamatan, array $label): array
     {
         $ids = array_map('intval', array_keys($ikpInfo));
         $out = [];
         foreach ($ids as $id) {
-            $out[$id] = ['baris' => 0, 'lama' => 0, 'cakupan' => self::cakupan([], $kecamatan), 'periksa' => null, 'teks' => ''];
+            $out[$id] = ['baris' => 0, 'lama' => 0, 'cakupan' => self::cakupan([], $kecamatan), 'periksa' => null, 'teks' => '', 'beda_satuan' => 0];
         }
         if ($ids === [] || ! $this->siap()) {
             return $out;
         }
         $semua = $this->db->table('cascading_indikator_target cit')
-            ->select('cit.id, cit.ikp_id, cit.ikp_peran, cit.ikp_induk_id, cit.target, cit.sumber, cs.level')
+            ->select('cit.id, cit.ikp_id, cit.ikp_peran, cit.ikp_induk_id, cit.target, cit.sumber, cs.level, ci.satuan')
             ->join('cascading_indikator_opd ci', 'ci.id = cit.cascading_indikator_id', 'inner')
             ->join('cascading_sasaran_opd cs', 'cs.id = ci.cascading_sasaran_id', 'inner')
             ->whereIn('cit.ikp_id', $ids)->where('cit.tahun', $tahun)->get()->getResultArray();
@@ -944,17 +1105,25 @@ class IkpTurunService
                 'id' => (int) $r['id'], 'induk' => $r['ikp_induk_id'] !== null ? (int) $r['ikp_induk_id'] : null,
                 'peran' => $r['ikp_peran'] === 'pendukung' ? 'pendukung' : 'angka',
                 'target' => $r['target'] !== null ? (float) $r['target'] : null, 'level' => (string) $r['level'],
+                'satuan' => $r['satuan'] ?? null,
             ];
         }
         foreach ($ids as $id) {
             $b = $per[$id] ?? [];
             $c = self::cakupan(array_column($b, 'level'), $kecamatan);
+            $opsi = ['terbagi' => ! empty($ikpInfo[$id]['terbagi'])];
+            if (array_key_exists('satuan', $ikpInfo[$id])) {
+                $opsi['satuan_ikp'] = $ikpInfo[$id]['satuan'];   // peran efektif menurut satuan (D3)
+            }
+            $periksa  = self::periksaSemua((string) ($ikpInfo[$id]['pola'] ?? 'hitungan'), $ikpInfo[$id]['target'] ?? null, $b, $opsi);
             $out[$id] = [
                 'baris'   => count($b),
                 'lama'    => $lama[$id] ?? 0,
                 'cakupan' => $c,
-                'periksa' => self::periksaSemua((string) ($ikpInfo[$id]['pola'] ?? 'hitungan'), $ikpInfo[$id]['target'] ?? null, $b),
+                'periksa' => $periksa,
                 'teks'    => self::cakupanTeks($c, $label),
+                // Baris angka yang dihitung sebagai pendukung karena satuannya berbeda dari satuan IKP.
+                'beda_satuan' => count(array_filter($periksa['efektif'], static fn ($e) => $e['alasan_peran_kode'] === 'satuan_beda')),
             ];
         }
 
@@ -965,29 +1134,42 @@ class IkpTurunService
      * Pemeriksa seluruh pohon pendelegasian satu IKP: per induk (akar = IKP).
      * Hasil: daftar per induk + ringkasan terburuk.
      *
-     * @param list<array{id:int, induk:?int, peran:string, target:?float, level?:string}> $baris
+     * $opsi: terbagi (bool, posisi terbagi), satuan_ikp (?string — bila kunci ini ADA, peran setiap baris dihitung
+     * ulang dengan peranEfektif(): `peran` baris = peran TERSIMPAN; tanpa kunci ini `peran` dipakai apa adanya).
      *
-     * @return array{per_induk: array<string, array>, warna: string, kode: string, pesan: string, n_peringatan: int}
+     * @param list<array{id:int, induk:?int, peran:string, target:?float, level?:string, satuan?:?string}> $baris
+     *
+     * @return array{per_induk: array<string, array>, warna: string, kode: string, pesan: string, n_peringatan: int,
+     *               efektif: array<int, array>}
      */
-    public static function periksaSemua(string $pola, ?float $targetIkp, array $baris): array
+    public static function periksaSemua(string $pola, ?float $targetIkp, array $baris, array $opsi = []): array
     {
-        $byId = [];
-        $anak = ['akar' => []];
+        $peta    = array_key_exists('satuan_ikp', $opsi) ? ikp_satuan_peta() : null;
+        $efektif = [];
+        $byId    = [];
+        $anak    = ['akar' => []];
         foreach ($baris as $b) {
+            if ($peta !== null) {
+                $e = self::peranEfektif((string) ($b['peran'] ?? 'angka'), $b['satuan'] ?? null, $opsi['satuan_ikp'], $peta);
+                $efektif[(int) $b['id']] = $e;
+                $b['peran'] = $e['peran'];
+            }
             $byId[$b['id']] = $b;
         }
-        foreach ($baris as $b) {
+        foreach ($byId as $b) {
             $k = ($b['induk'] !== null && isset($byId[$b['induk']])) ? (string) $b['induk'] : 'akar';
             $anak[$k][] = $b;
         }
-        $per = [];
-        $per['akar'] = self::periksa($pola, $targetIkp, $anak['akar'], true);
+        $dasar = ['terbagi' => ! empty($opsi['terbagi']), 'peta' => $peta];
+        $per   = [];
+        $per['akar'] = self::periksa($pola, $targetIkp, $anak['akar'], true, 'angka', $dasar + ['satuan' => $opsi['satuan_ikp'] ?? '']);
         foreach ($anak as $k => $list) {
             if ($k === 'akar') {
                 continue;
             }
             $ind = $byId[(int) $k];
-            $per[$k] = self::periksa($pola, $ind['peran'] === 'angka' ? $ind['target'] : null, $list, false, $ind['peran']);
+            $per[$k] = self::periksa($pola, $ind['target'], $list, false, $ind['peran'],
+                $dasar + ['satuan_induk' => $ind['satuan'] ?? null, 'satuan' => $ind['satuan'] ?? '']);
         }
         $nPer = 0;
         foreach ($per as $p) {
@@ -1004,7 +1186,7 @@ class IkpTurunService
         }
 
         return ['per_induk' => $per, 'warna' => $nPer > 0 ? 'peringatan' : $per['akar']['warna'], 'kode' => $utama['kode'],
-            'pesan' => $utama['pesan'], 'n_peringatan' => $nPer];
+            'pesan' => $utama['pesan'], 'n_peringatan' => $nPer, 'efektif' => $efektif];
     }
 
     /**
@@ -1017,18 +1199,23 @@ class IkpTurunService
         if (! $this->siap()) {
             return [];
         }
-        $out = [];
+        $out  = [];
+        $peta = ikp_satuan_peta();
         foreach ($this->db->table('cascading_indikator_target cit')
-            ->select('ci.cascading_sasaran_id AS node_id, cit.ikp_id, cit.ikp_peran, i.output_prioritas')
+            ->select('ci.cascading_sasaran_id AS node_id, cit.ikp_id, cit.ikp_peran, ci.satuan, i.output_prioritas, i.satuan_teks, s.satuan AS satuan_nama')
             ->join('cascading_indikator_opd ci', 'ci.id = cit.cascading_indikator_id', 'inner')
             ->join('cascading_sasaran_opd cs', 'cs.id = ci.cascading_sasaran_id', 'inner')
             ->join('ikp i', 'i.id = cit.ikp_id AND i.dihapus_pada IS NULL', 'inner', false)
+            ->join('satuan s', 's.id = i.satuan_id', 'left')
             ->where('cs.opd_id', $opdId)->where('cit.tahun', $tahun)
             ->orderBy('cit.ikp_id', 'ASC')->get()->getResultArray() as $r) {
+            // Chip ★ IKP / ☆ Mendukung IKP mengikuti peran EFEKTIF (satuan lain = pendukung).
+            $e = self::peranEfektif((string) $r['ikp_peran'], $r['satuan'] ?? null, self::labelSatuan($r), $peta);
             $out[(int) $r['node_id']][] = [
                 'ikp_id' => (int) $r['ikp_id'],
                 'nama'   => (string) $r['output_prioritas'],
-                'peran'  => $r['ikp_peran'] === 'pendukung' ? 'pendukung' : 'angka',
+                'peran'  => $e['peran'],
+                'alasan_peran' => $e['alasan_peran'],
             ];
         }
 
@@ -1150,8 +1337,9 @@ class IkpTurunService
                 }
             }
 
-            // Target baris.
-            if ($peran === 'angka' && $pola['pola'] !== 'hitungan') {
+            // Target baris. Posisi terbagi: pemikul angka memikul PORSI posisi (seperti hitungan), metode = arah posisi.
+            $terbagi = $pola['pola'] === 'posisi' && ! empty($pola['posisi_terbagi']);
+            if ($peran === 'angka' && $pola['pola'] !== 'hitungan' && ! $terbagi) {
                 if ($ikp['target'] === null) {
                     $galat[] = 'Isi target tahunan IKP tahun ' . $tahun . ' lebih dulu: pemikul angka pola ' . (ikp_pola_meta()[$pola['pola']]['singkat'] ?? $pola['pola']) . ' memakai target utuh.';
 
@@ -1172,7 +1360,9 @@ class IkpTurunService
 
                     continue;
                 }
-                $metode = 'sum';
+                $metode = $peran === 'angka' && $terbagi
+                    ? (in_array($pola['metode'], ['trend_naik', 'trend_turun', 'trend_flat'], true) ? $pola['metode'] : 'trend_naik')
+                    : 'sum';
             }
             $siap[$node] = compact('peran', 'indId', 'teks', 'sat', 'target', 'metode');
         }
@@ -1404,8 +1594,10 @@ class IkpTurunService
         $out = [];
         foreach ($rekap as $r) {
             $id    = (int) $r['ikp']['id'];
-            $baris = array_map(static fn ($b) => ['id' => $b['id'], 'induk' => $b['ikp_induk_id'], 'peran' => $b['ikp_peran'], 'level' => $b['level']],
-                array_values(array_filter($this->baris($id, $tahun), static fn ($b) => ($b['sumber'] ?? '') === 'delegasi')));
+            // Peran EFEKTIF: baris bersatuan lain dihitung sebagai pendukung — laporannya tidak ikut dijumlah ke IKP.
+            $baris = array_map(static fn ($b) => ['id' => $b['id'], 'induk' => $b['ikp_induk_id'], 'peran' => $b['peran'], 'level' => $b['level']],
+                self::efektifkan(array_values(array_filter($this->baris($id, $tahun), static fn ($b) => ($b['sumber'] ?? '') === 'delegasi')),
+                    (string) ($r['ikp']['satuan_label'] ?? '')));
             if ($baris === []) {
                 continue;
             }
@@ -1442,10 +1634,12 @@ class IkpTurunService
             return [];
         }
         $rows = $this->db->table('cascading_indikator_target cit')
-            ->select('cit.*, ci.cascading_sasaran_id AS node_id, ci.indikator, ci.satuan, cs.level, cs.nama_sasaran, cs.opd_id')
+            ->select('cit.*, ci.cascading_sasaran_id AS node_id, ci.indikator, ci.satuan, cs.level, cs.nama_sasaran, cs.opd_id,
+                      i.satuan_teks AS ikp_satuan_teks, s.satuan AS ikp_satuan_nama')
             ->join('cascading_indikator_opd ci', 'ci.id = cit.cascading_indikator_id', 'inner')
             ->join('cascading_sasaran_opd cs', 'cs.id = ci.cascading_sasaran_id', 'inner')
             ->join('ikp i', 'i.id = cit.ikp_id AND i.dihapus_pada IS NULL', 'inner', false)
+            ->join('satuan s', 's.id = i.satuan_id', 'left')
             ->whereIn('ci.cascading_sasaran_id', $simpulMilik)->where('cit.tahun', $tahun)
             ->where('cit.sumber', 'delegasi')->orderBy('cit.ikp_id', 'ASC')->orderBy('cit.id', 'ASC')
             ->get()->getResultArray();
@@ -1461,15 +1655,21 @@ class IkpTurunService
             $pemilikSimpul[(int) $p['node_id']][] = (int) $p['pegawai_id'];
         }
         $out    = [];
+        $peta   = ikp_satuan_peta();
         foreach ($rows as $r) {
             $ikpId  = (int) $r['ikp_id'];
             $pola   = $polaPerIkp[$ikpId] ?? null;
             if ($pola === null) {
                 continue;
             }
-            $peran  = $r['ikp_peran'] === 'pendukung' ? 'pendukung' : 'angka';
+            // Peran EFEKTIF (D3): angka bersatuan lain dari satuan IKP dikirim sebagai pendukung; eKin memakai `peran`
+            // (lencana "Mendukung IKP"), `peran_tersimpan` & `alasan_peran` untuk penjelasan.
+            $ef     = self::peranEfektif((string) $r['ikp_peran'], $r['satuan'] ?? null,
+                self::labelSatuan(['satuan_nama' => $r['ikp_satuan_nama'] ?? null, 'satuan_teks' => $r['ikp_satuan_teks'] ?? null]), $peta);
+            $peran  = $ef['peran'];
             $target = $r['target'] !== null ? (float) $r['target'] : null;
-            $profil = self::profilBulanan($pola, $bulananIkp[$ikpId] ?? [], $target, $peran);
+            $bagi   = $pola['pola'] === 'hitungan' || ! empty($pola['posisi_terbagi']);
+            $profil = self::profilBulanan($pola, $bulananIkp[$ikpId] ?? [], $target, $peran, $targetIkp[$ikpId] ?? null);
             $out[$ikpId][] = [
                 'delegasi_id'     => (int) $r['id'],
                 'node_id'         => (int) $r['node_id'],
@@ -1477,13 +1677,16 @@ class IkpTurunService
                 'level_label'     => $label[(int) $r['opd_id']][$r['level']] ?? (string) $r['level'],
                 'sasaran'         => (string) $r['nama_sasaran'],
                 'peran'           => $peran,
+                'peran_tersimpan' => $ef['peran_tersimpan'],
+                'alasan_peran'    => $ef['alasan_peran'],
+                'alasan_peran_kode' => $ef['alasan_peran_kode'],
                 'indikator_id'    => (int) $r['cascading_indikator_id'],
                 'indikator'       => (string) $r['indikator'],
                 'satuan'          => ($r['satuan'] ?? '') !== '' ? (string) $r['satuan'] : null,
-                // angka: porsi (hitungan) atau target utuh (posisi/rilis); pendukung: target indikator proses.
+                // angka: porsi (hitungan, posisi terbagi) atau target utuh (posisi/rilis); pendukung: target sendiri.
                 'porsi_target_tahunan' => $target,
                 'target_teks'     => $r['target_teks'] ?? null,
-                'porsi_persen'    => $peran === 'angka' && $pola['pola'] === 'hitungan' && ($targetIkp[$ikpId] ?? 0) > 0 && $target !== null
+                'porsi_persen'    => $peran === 'angka' && $bagi && ($targetIkp[$ikpId] ?? 0) > 0 && $target !== null
                     ? round($target / (float) $targetIkp[$ikpId] * 100, 2) : null,
                 'metode'          => (string) $r['metode'],
                 // pola indikator baris ini: angka mengikuti IKP; pendukung = indikator proses (hitungan bulanan).
@@ -1516,7 +1719,7 @@ class IkpTurunService
             ->whereIn('id', $ids)->get()->getResultArray(), 'ikp_id'));
         $semua = $this->db->table('cascading_indikator_target cit')
             ->select('cit.id, cit.ikp_id, cit.ikp_induk_id, cit.ikp_peran, cit.target, cit.cascading_indikator_id,
-                      ci.indikator, ci.cascading_sasaran_id AS node_id, cs.level, cs.nama_sasaran, cs.opd_id')
+                      ci.indikator, ci.satuan, ci.cascading_sasaran_id AS node_id, cs.level, cs.nama_sasaran, cs.opd_id')
             ->join('cascading_indikator_opd ci', 'ci.id = cit.cascading_indikator_id', 'inner')
             ->join('cascading_sasaran_opd cs', 'cs.id = ci.cascading_sasaran_id', 'inner')
             ->whereIn('cit.ikp_id', array_values(array_unique($ikpIds)))->where('cit.tahun', $tahun)
@@ -1535,6 +1738,8 @@ class IkpTurunService
         foreach ($this->db->table('ikp')->select('id, opd_id')->whereIn('id', array_values(array_unique($ikpIds)))->get()->getResultArray() as $i) {
             $opdIkp[(int) $i['id']] = (int) $i['opd_id'];
         }
+        $satIkp = $this->satuanIkpPerId($ikpIds);
+        $peta   = ikp_satuan_peta();
         $pps = new PohonPemilikService($this->db);
         foreach (array_unique($opdIkp) as $o) {
             $es2 = $pps->pemilikEs2($o, $tahun);
@@ -1551,7 +1756,8 @@ class IkpTurunService
             $cari = $r['ikp_induk_id'] !== null ? (int) $r['ikp_induk_id'] : null;
             $jaga = 0;
             while ($cari !== null && isset($byId[$cari]) && $jaga++ < 10) {
-                $p = $byId[$cari];
+                $p  = $byId[$cari];
+                $ef = self::peranEfektif((string) $p['ikp_peran'], $p['satuan'] ?? null, $satIkp[(int) $p['ikp_id']] ?? null, $peta);
                 $list[] = [
                     'delegasi_id'         => (int) $p['id'],
                     'node_id'             => (int) $p['node_id'],
@@ -1560,7 +1766,9 @@ class IkpTurunService
                     'sasaran'             => (string) $p['nama_sasaran'],
                     'indikator_id'        => (int) $p['cascading_indikator_id'],
                     'indikator'           => (string) $p['indikator'],
-                    'peran'               => $p['ikp_peran'] === 'pendukung' ? 'pendukung' : 'angka',
+                    'satuan'              => ($p['satuan'] ?? '') !== '' ? (string) $p['satuan'] : null,
+                    'peran'               => $ef['peran'],
+                    'peran_tersimpan'     => $ef['peran_tersimpan'],
                     'target'              => $p['target'] !== null ? (float) $p['target'] : null,
                     'pemilik_pegawai_ids' => $pemilik[(int) $p['node_id']] ?? [],
                 ];
@@ -1575,11 +1783,290 @@ class IkpTurunService
                 'sasaran'             => null,
                 'indikator_id'        => null,
                 'indikator'           => null,
+                'satuan'              => null,
                 'peran'               => 'pemilik_ikp',
+                'peran_tersimpan'     => 'pemilik_ikp',
                 'target'              => null,
                 'pemilik_pegawai_ids' => $kepala[$opd] ?? [],
             ];
             $out[$id] = $list;
+        }
+
+        return $out;
+    }
+
+    // =================================================================
+    // SATUAN IKP
+    // =================================================================
+
+    /** Label satuan IKP dari baris ber-kolom satuan_nama (master satuan) / satuan_teks (teks bebas). */
+    public static function labelSatuan(array $r): string
+    {
+        $nama = trim((string) ($r['satuan_nama'] ?? ''));
+
+        return $nama !== '' ? $nama : trim((string) ($r['satuan_teks'] ?? ''));
+    }
+
+    /**
+     * Satuan sekumpulan IKP: [ikp_id => label satuan] (sama dengan satuan_label IkpRekapService).
+     *
+     * @param int[] $ikpIds
+     *
+     * @return array<int, string>
+     */
+    public function satuanIkpPerId(array $ikpIds): array
+    {
+        $ikpIds = array_values(array_unique(array_filter(array_map('intval', $ikpIds))));
+        if ($ikpIds === []) {
+            return [];
+        }
+        $out = [];
+        foreach ($this->db->table('ikp i')->select('i.id, i.satuan_teks, s.satuan AS satuan_nama')
+            ->join('satuan s', 's.id = i.satuan_id', 'left')->whereIn('i.id', $ikpIds)->get()->getResultArray() as $r) {
+            $out[(int) $r['id']] = self::labelSatuan($r);
+        }
+
+        return $out;
+    }
+
+    // =================================================================
+    // PENGIRIMAN & STATUS DI eKin (keputusan 29-09-2026 "D1" & "D2")
+    // =================================================================
+
+    /**
+     * Perangkat daerah yang perlu dimintai eKin sesudah pendelegasian satu IKP berubah: OPD IKP, OPD setiap simpul yang
+     * memikul (sebelum & sesudah simpan — baris yang dicabut juga perlu dirapikan eKin), dan OPD pegawai pemiliknya
+     * (pemilik dari OPD lain ditarik eKin menurut OPD pegawainya). Dibatasi 6 agar Simpan tidak menunggu terlalu lama.
+     *
+     * @param int[] $nodeIds simpul baris lama + baru
+     *
+     * @return int[]
+     */
+    public function opdTerkait(int $opdIkp, array $nodeIds, int $tahun): array
+    {
+        $opd     = [$opdIkp => true];
+        $nodeIds = array_values(array_unique(array_filter(array_map('intval', $nodeIds))));
+        if ($nodeIds !== []) {
+            foreach ($this->db->table('cascading_sasaran_opd')->select('opd_id')->whereIn('id', $nodeIds)->get()->getResultArray() as $r) {
+                $opd[(int) $r['opd_id']] = true;
+            }
+            foreach ($this->db->table('cascading_pemilik cp')->select('p.opd_id')
+                ->join('pegawai p', 'p.id = cp.pegawai_id', 'inner')
+                ->whereIn('cp.cascading_sasaran_id', $nodeIds)->where('cp.tahun', $tahun)->get()->getResultArray() as $r) {
+                if ($r['opd_id'] !== null) {
+                    $opd[(int) $r['opd_id']] = true;
+                }
+            }
+        }
+        unset($opd[0]);
+
+        return array_slice(array_keys($opd), 0, 6);
+    }
+
+    /**
+     * Minta eKin mengirim IKP turunan untuk setiap OPD, lalu hapus tembolok status OPD itu (layar membaca keadaan
+     * baru). Tidak pernah melempar: kegagalan menjadi ringkasan "belum terkirim sekarang".
+     *
+     * @param int[] $opdIds
+     *
+     * @return array{jenis:string, pesan:string, rincian:list<string>, alasan:?string, ringkas:array<string,int>, pegawai:int}
+     */
+    public function kirimKeEkin(EkinClient $klien, array $opdIds, int $tahun): array
+    {
+        $hasil = [];
+        $alasan = null;
+        foreach ($opdIds as $o) {
+            try {
+                $j = $klien->segarkanIkpTurunan((int) $o, $tahun);
+            } catch (\Throwable $e) {
+                log_message('warning', '[ikp.turun] segarkan eKin OPD ' . (int) $o . ': ' . get_class($e));
+                $j = null;
+            }
+            if ($j === null) {
+                $alasan ??= $klien->alasanTerakhir() ?? 'tidak_terjangkau';
+                if (in_array($alasan, ['belum_dikonfigurasi', 'tidak_terjangkau', 'ditolak', 'belum_tersedia'], true)) {
+                    break;   // OPD berikutnya pasti gagal dengan alasan yang sama — jangan menunggu batas waktu lagi
+                }
+            } else {
+                $hasil[] = $j;
+            }
+        }
+        // Status dibaca ulang sesudah Simpan — juga bila eKin gagal (jangan memajang status lama sebagai status kini).
+        foreach ($opdIds as $o) {
+            $klien->lupakanStatusIkpTurunan((int) $o, $tahun);
+        }
+
+        return self::ringkasKirim($hasil, $alasan, $tahun, $alasan !== null ? (EkinClient::ALASAN[$alasan] ?? null) : null);
+    }
+
+    /**
+     * Ringkasan pengiriman untuk flash sesudah Simpan (murni, diuji).
+     *   jenis ok      eKin menjawab (semua OPD) — rincian per kunci RINGKAS_KIRIM yang > 0
+     *         sebagian  sebagian OPD terjawab, sebagian gagal
+     *         gagal   tidak ada jawaban: pesan menjelaskan bahwa pengiriman tetap terjadi (eKin memeriksa saat pegawai
+     *                 membuka Beranda/SKP/Penugasan dan setiap malam)
+     *
+     * @param list<array> $jawaban isi segarkanIkpTurunan() per OPD yang berhasil
+     *
+     * @return array{jenis:string, pesan:string, rincian:list<string>, alasan:?string, ringkas:array<string,int>, pegawai:int}
+     */
+    public static function ringkasKirim(array $jawaban, ?string $alasan, int $tahun, ?string $pesanAlasan = null): array
+    {
+        $jumlah  = array_fill_keys(array_keys(self::RINGKAS_KIRIM), 0);
+        $pegawai = [];
+        foreach ($jawaban as $j) {
+            foreach (array_keys($jumlah) as $k) {
+                $jumlah[$k] += max(0, (int) ($j['ringkas'][$k] ?? 0));
+            }
+            foreach ((array) ($j['pegawai'] ?? []) as $p) {
+                if (is_array($p) && isset($p['pegawai_id'])) {
+                    $pegawai[(int) $p['pegawai_id']] = true;
+                }
+            }
+        }
+        $rincian = [];
+        foreach (self::RINGKAS_KIRIM as $k => $teks) {
+            if ($jumlah[$k] > 0) {
+                $rincian[] = strtr($teks, ['{n}' => (string) $jumlah[$k], '{tahun}' => (string) $tahun]);
+            }
+        }
+        $tetap = 'IKP turunan tetap sampai: eKin memeriksanya sendiri saat pegawai membuka Beranda, SKP, atau Penugasan, dan setiap malam.';
+        if ($jawaban === []) {
+            return ['jenis' => 'gagal', 'pesan' => 'Belum terkirim ke eKin sekarang' . ($pesanAlasan !== null ? ' — ' . rtrim($pesanAlasan, '.') : '') . '. ' . $tetap,
+                'rincian' => [], 'alasan' => $alasan, 'ringkas' => $jumlah, 'pegawai' => 0];
+        }
+        $pesan = $rincian === []
+            ? 'Dikirim ke eKin: tidak ada yang perlu diubah (' . count($pegawai) . ' pegawai diperiksa).'
+            : 'Dikirim ke eKin (' . count($pegawai) . ' pegawai diperiksa).';
+        if ($alasan !== null) {
+            return ['jenis' => 'sebagian', 'pesan' => $pesan . ' Sebagian perangkat daerah belum terjangkau' . ($pesanAlasan !== null ? ' (' . rtrim($pesanAlasan, '.') . ')' : '') . '. ' . $tetap,
+                'rincian' => $rincian, 'alasan' => $alasan, 'ringkas' => $jumlah, 'pegawai' => count($pegawai)];
+        }
+
+        return ['jenis' => 'ok', 'pesan' => $pesan, 'rincian' => $rincian, 'alasan' => null, 'ringkas' => $jumlah, 'pegawai' => count($pegawai)];
+    }
+
+    /**
+     * Status IKP turunan dari eKin untuk sekumpulan OPD: [delegasi_id => [pegawai_id => baris status]] + alasan
+     * kegagalan (null = semua terbaca). Tembolok ≤ 60 detik di EkinClient.
+     *
+     * @param int[] $opdIds
+     *
+     * @return array{indeks: array<int, array<int, array>>, alasan: ?string, pesan: ?string, terbaca: bool}
+     */
+    public function statusEkin(EkinClient $klien, array $opdIds, int $tahun): array
+    {
+        $baris  = [];
+        $alasan = null;
+        $terbaca = false;
+        foreach ($opdIds as $o) {
+            try {
+                $j = $klien->ikpTurunanStatus((int) $o, $tahun);
+            } catch (\Throwable $e) {
+                $j = null;
+            }
+            if ($j === null) {
+                $alasan ??= $klien->alasanTerakhir() ?? 'tidak_terjangkau';
+                if (in_array($alasan, ['belum_dikonfigurasi', 'tidak_terjangkau', 'ditolak', 'belum_tersedia'], true)) {
+                    break;
+                }
+
+                continue;
+            }
+            $terbaca = true;
+            foreach ((array) ($j['baris'] ?? []) as $b) {
+                $baris[] = $b;
+            }
+        }
+
+        return ['indeks' => self::indeksStatusEkin($baris), 'alasan' => $alasan,
+            'pesan' => $alasan !== null ? (EkinClient::ALASAN[$alasan] ?? 'Data eKin belum tersedia.') : null, 'terbaca' => $terbaca];
+    }
+
+    /**
+     * Baris status eKin → [delegasi_id => [pegawai_id => baris]] (murni). Status tak dikenal → "belum".
+     *
+     * @param list<mixed> $baris
+     *
+     * @return array<int, array<int, array{status:string, penugasan_id:?int, iki_id:?int, target_ekin:?float, target_aksara:?float, beda_target:bool}>>
+     */
+    public static function indeksStatusEkin(array $baris): array
+    {
+        $out = [];
+        foreach ($baris as $b) {
+            if (! is_array($b) || ! isset($b['delegasi_id'], $b['pegawai_id']) || ! is_numeric($b['delegasi_id']) || ! is_numeric($b['pegawai_id'])) {
+                continue;
+            }
+            $st = (string) ($b['status'] ?? '');
+            $out[(int) $b['delegasi_id']][(int) $b['pegawai_id']] = [
+                'status'        => isset(self::STATUS_EKIN[$st]) ? $st : 'belum',
+                'penugasan_id'  => isset($b['penugasan_id']) && is_numeric($b['penugasan_id']) ? (int) $b['penugasan_id'] : null,
+                'iki_id'        => isset($b['iki_id']) && is_numeric($b['iki_id']) ? (int) $b['iki_id'] : null,
+                'target_ekin'   => isset($b['target_ekin']) && is_numeric($b['target_ekin']) ? (float) $b['target_ekin'] : null,
+                'target_aksara' => isset($b['target_aksara']) && is_numeric($b['target_aksara']) ? (float) $b['target_aksara'] : null,
+                'beda_target'   => ! empty($b['beda_target']),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Chip status satu pemilik untuk satu baris pendelegasian (murni). Pemilik yang tidak dikenal eKin = "Belum
+     * terkirim". `beda` = chip tambahan "Target di eKin berbeda" (eKin x · AKSARA y).
+     *
+     * @return array{kode:string, label:string, kelas:string, judul:string, beda:?array{label:string, judul:string}}
+     */
+    public static function chipStatusEkin(array $indeks, int $delegasiId, int $pegawaiId, int $tahun): array
+    {
+        $b    = $indeks[$delegasiId][$pegawaiId] ?? null;
+        $kode = $b['status'] ?? 'belum';
+        $m    = self::STATUS_EKIN[$kode];
+        $isi  = ['{tahun}' => (string) $tahun];
+        $beda = null;
+        if ($b !== null && $b['beda_target']) {
+            $beda = ['label' => 'Target di eKin berbeda',
+                'judul' => 'Target RHK/IKI di eKin ' . ($b['target_ekin'] !== null ? ikp_fmt($b['target_ekin'], 4) : '—')
+                    . ', di AKSARA+ ' . ($b['target_aksara'] !== null ? ikp_fmt($b['target_aksara'], 4) : '—')
+                    . '. Terjadi bila porsi diubah sesudah pegawai menerima IKP turunan; eKin menyelaraskannya lewat penugasan baru atau pegawai menyesuaikan SKP-nya.'];
+        }
+
+        return ['kode' => $kode, 'label' => strtr($m['label'], $isi), 'kelas' => $m['kelas'], 'judul' => strtr($m['judul'], $isi), 'beda' => $beda];
+    }
+
+    /**
+     * Hitungan status eKin per IKP untuk daftar Turunkan IKP: setiap (baris pendelegasian × pemilik simpul) satu
+     * status. [ikp_id => [kode status => n]] — simpul tanpa pemilik tidak dihitung (tidak ada yang bisa menerima).
+     *
+     * @param int[] $ikpIds
+     * @param array<int, array<int, array>> $indeks indeksStatusEkin()
+     *
+     * @return array<int, array<string, int>>
+     */
+    public function hitungStatusEkin(array $ikpIds, int $tahun, array $indeks): array
+    {
+        $ikpIds = array_values(array_unique(array_filter(array_map('intval', $ikpIds))));
+        if ($ikpIds === [] || ! $this->siap()) {
+            return [];
+        }
+        $rows = $this->db->table('cascading_indikator_target cit')
+            ->select('cit.id, cit.ikp_id, ci.cascading_sasaran_id AS node_id')
+            ->join('cascading_indikator_opd ci', 'ci.id = cit.cascading_indikator_id', 'inner')
+            ->whereIn('cit.ikp_id', $ikpIds)->where('cit.tahun', $tahun)->where('cit.sumber', 'delegasi')
+            ->get()->getResultArray();
+        if ($rows === []) {
+            return [];
+        }
+        $pemilik = [];
+        foreach ((new PohonPemilikService($this->db))->pemilikUntukSimpul(array_column($rows, 'node_id'), $tahun) as $p) {
+            $pemilik[(int) $p['node_id']][(int) $p['pegawai_id']] = true;
+        }
+        $out = [];
+        foreach ($rows as $r) {
+            foreach (array_keys($pemilik[(int) $r['node_id']] ?? []) as $pid) {
+                $k = $indeks[(int) $r['id']][$pid]['status'] ?? 'belum';
+                $out[(int) $r['ikp_id']][$k] = ($out[(int) $r['ikp_id']][$k] ?? 0) + 1;
+            }
         }
 
         return $out;

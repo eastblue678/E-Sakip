@@ -14,7 +14,7 @@ class IkpModel extends Model
     protected $primaryKey    = 'id';
     protected $returnType    = 'array';
     protected $protectFields = true;
-    protected $allowedFields = ['opd_id', 'periode_awal', 'periode_akhir', 'kategori', 'program_unggulan_id', 'rpjmd_misi_id', 'sasaran_pembangunan_id', 'outcome', 'indikator_outcome', 'program_opd', 'bidang_urusan', 'output_prioritas', 'satuan_id', 'satuan_teks', 'metode', 'pola_ukur', 'periode_ukur', 'bulan_ukur', 'penerbit', 'rilis_tahun_berikut', 'pola_ditebak', 'baseline', 'target_5_tahun', 'target_5_tahun_teks', 'dasar_penugasan', 'buku_saku_id', 'cascading_sasaran_id', 'cascading_indikator_id', 'pj_pegawai_id', 'pj_jabatan_teks', 'urutan', 'legacy_prioritas_ikp_id', 'created_by', 'updated_by', 'dihapus_pada'];
+    protected $allowedFields = ['opd_id', 'periode_awal', 'periode_akhir', 'kategori', 'program_unggulan_id', 'rpjmd_misi_id', 'sasaran_pembangunan_id', 'outcome', 'indikator_outcome', 'program_opd', 'bidang_urusan', 'output_prioritas', 'satuan_id', 'satuan_teks', 'metode', 'pola_ukur', 'periode_ukur', 'bulan_ukur', 'penerbit', 'rilis_tahun_berikut', 'pola_ditebak', 'posisi_terbagi', 'baseline', 'target_5_tahun', 'target_5_tahun_teks', 'dasar_penugasan', 'buku_saku_id', 'cascading_sasaran_id', 'cascading_indikator_id', 'pj_pegawai_id', 'pj_jabatan_teks', 'urutan', 'legacy_prioritas_ikp_id', 'created_by', 'updated_by', 'dihapus_pada'];
     protected $useTimestamps = true;
     protected $dateFormat    = 'datetime';
 

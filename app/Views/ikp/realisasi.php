@@ -45,7 +45,7 @@ $sel  = static function (array $t) {
             Angka <strong>0 adalah realisasi yang sah</strong> (tidak sama dengan kosong); kosongkan kotak untuk menghapus realisasi.</p>
         <?php if (! empty($saranEkin)): ?>
             <p class="small mb-1"><span class="saran-ekin d-inline-flex">eKin <b>n</b></span> = saran <strong>Dari eKin (pemikul angka)</strong>: IKP hitungan = jumlah realisasi porsi para pemikul
-                IKP turunan (* = belum semua melapor); posisi/rilis = nilai pemikul angka jenjang terdekat. Tekan <em>Gunakan</em> lalu Simpan — realisasi resmi tetap diisi di sini.</p>
+                IKP turunan (* = belum semua melapor); posisi yang dipecah per bagian = jumlah posisi setiap bagian pada bulan itu; posisi/rilis lain = nilai pemikul angka jenjang terdekat. Tekan <em>Gunakan</em> lalu Simpan — realisasi resmi tetap diisi di sini.</p>
         <?php endif; ?>
         <p class="small mb-1">Sel <strong>"—"</strong> = bulan yang tidak diukur menurut pola ukur IKP itu (posisi triwulanan/semesteran, atau indeks resmi di luar bulan rilisnya) — tidak diisi dan tidak dihitung.
             IKP <span class="ikp-pola rilis">Rilis</span> diisi lewat tombol <em>Catat nilai resmi</em> saat nilainya keluar, wajib dengan tautan bukti publikasi.</p>
@@ -140,9 +140,12 @@ $sel  = static function (array $t) {
                                     <?php if ($sr !== null && ! $kunci): ?>
                                         <?php
                                         $srSama  = $b['realisasi'] !== null && abs((float) $b['realisasi'] - (float) $sr['nilai']) < 0.00005;
-                                        $srJudul = 'Dari eKin (pemikul angka): ' . ($sr['cara'] === 'jumlah_porsi'
-                                            ? 'jumlah hasil ' . count($sr['pegawai']) . ' pemikul (setiap hasil dihitung sekali oleh pemiliknya, termasuk porsi yang dibagi lewat Cascading)' . ($sr['lengkap'] ? '' : ' — belum semua pemikul terbawah melapor')
-                                            : 'nilai yang dilaporkan pemikul angka jenjang terdekat') . '. Realisasi resmi tetap Anda yang mengisi.';
+                                        $srJudul = 'Dari eKin (pemikul angka): ' . match ($sr['cara']) {
+                                            'jumlah_porsi'  => 'jumlah hasil ' . count($sr['pegawai']) . ' pemikul (setiap hasil dihitung sekali oleh pemiliknya, termasuk porsi yang dibagi lewat Cascading)' . ($sr['lengkap'] ? '' : ' — belum semua pemikul terbawah melapor'),
+                                            // Posisi terbagi (D4): Σ posisi terbaru setiap bagian PADA BULAN INI, tidak dijumlah antarbulan.
+                                            'jumlah_posisi' => 'jumlah posisi ' . count($sr['pegawai']) . ' pemegang bagian pada bulan ini (posisi terbaru tiap bagian, tidak dijumlah antarbulan)' . ($sr['lengkap'] ? '' : ' — belum semua bagian melapor'),
+                                            default         => 'nilai yang dilaporkan pemikul angka jenjang terdekat',
+                                        } . '. Realisasi resmi tetap Anda yang mengisi.';
                                         ?>
                                         <span class="saran-ekin<?= $srSama ? ' sama' : '' ?>" data-saran="<?= esc((string) $sr['nilai'], 'attr') ?>" title="<?= esc($srJudul, 'attr') ?>">
                                             eKin <b><?= esc(ikp_fmt((float) $sr['nilai'], 4)) ?></b><?= $sr['lengkap'] ? '' : '*' ?>

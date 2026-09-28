@@ -5,6 +5,7 @@ namespace App\Controllers\AdminOpd;
 use App\Controllers\BaseController;
 use App\Models\Ikp\IkpModel;
 use App\Models\OpdModel;
+use App\Services\EkinClient;
 use App\Services\IkpRekapService;
 use App\Services\IkpTurunService;
 use App\Services\PohonPemilikService;
@@ -31,6 +32,14 @@ use Throwable;
  *   GET  adminkab/ikp/turun[?opd_id=]       index   (baca) Admin Kabupaten/Inspektorat
  *   GET  adminkab/ikp/turun/(:num)          detail  (baca)
  *
+ * PENGIRIMAN KE eKin (29-09-2026, "D1"): sesudah Simpan berhasil, AKSARA+ memanggil
+ * eKin POST api/aksara/ikp-turunan/segarkan untuk setiap OPD terkait dan
+ * menampilkan ringkasannya (flash `kirim_ekin`). eKin mati/lambat tidak
+ * menggagalkan Simpan: pendelegasian tetap tersimpan dan eKin mengirimnya sendiri
+ * saat pegawai membuka eKin atau pada pemeriksaan malam.
+ * STATUS (D2): halaman detail & daftar membaca GET opd/{id}/ikp-turunan-status
+ * (tembolok ≤ 60 detik, dihapus sesudah Simpan) → chip per pemilik.
+ *
  * SIAPA MENURUNKAN: Admin OPD atas nama Kepala OPD (pemilik IKP). Kabid belum
  * menurunkan sendiri untuk cabangnya — dicatat "Terbuka untuk dibahas".
  *
@@ -48,6 +57,7 @@ class IkpTurunController extends BaseController
 
     private ?IkpRekapService $rekap = null;
     private ?IkpTurunService $turun = null;
+    private ?EkinClient $ekin = null;
 
     public function __construct()
     {
@@ -104,22 +114,35 @@ class IkpTurunController extends BaseController
                 return view('ikp/_pilih_opd', ['title' => 'Turunkan IKP', 'scope' => $scope, 'tujuan' => 'adminopd/ikp/turun', 'tahun' => $tahun]);
             }
 
-            return view('ikp/turun_index', $data + ['baris' => [], 'ringkas' => [], 'label' => []]);
+            return view('ikp/turun_index', $data + ['baris' => [], 'ringkas' => [], 'label' => [], 'statusEkin' => null, 'hitungEkin' => []]);
         }
         $opdId = $scope['opd_id'];
         $rekap = $this->svc()->rekapOpd($opdId, $tahun);
         $info  = [];
         foreach ($rekap as $r) {
-            $info[(int) $r['ikp']['id']] = ['pola' => $r['pola']['pola'], 'target' => $r['target_tahunan']];
+            $info[(int) $r['ikp']['id']] = ['pola' => $r['pola']['pola'], 'target' => $r['target_tahunan'],
+                'satuan' => (string) ($r['ikp']['satuan_label'] ?? ''), 'terbagi' => ! empty($r['pola']['posisi_terbagi'])];
         }
         $kec     = $this->turunSvc()->kecamatan($opdId);
         $label   = \App\Services\RuangOpdService::labelJenjang($kec);
         $ringkas = $this->turunSvc()->ringkasIkp($info, $tahun, $kec, $label);
 
+        // Status eKin per IKP (D2): satu panggilan per OPD (tembolok ≤ 60 detik); eKin mati = tanpa ringkasan.
+        $status = ['indeks' => [], 'alasan' => null, 'pesan' => null, 'terbaca' => false];
+        $hitung = [];
+        if (array_sum(array_column($ringkas, 'baris')) > 0) {
+            $status = $this->turunSvc()->statusEkin($this->ekin(), [$opdId], $tahun);
+            if ($status['terbaca']) {
+                $hitung = $this->turunSvc()->hitungStatusEkin(array_keys($info), $tahun, $status['indeks']);
+            }
+        }
+
         return view('ikp/turun_index', $data + [
-            'baris'   => $rekap,
-            'ringkas' => $ringkas,
-            'label'   => $label,
+            'baris'       => $rekap,
+            'ringkas'     => $ringkas,
+            'label'       => $label,
+            'statusEkin'  => $status,
+            'hitungEkin'  => $hitung,
         ]);
     }
 
@@ -155,7 +178,8 @@ class IkpTurunController extends BaseController
 
         // Keadaan formulir: tersimpan → usulan (bila diminta) → isian lama (galat validasi).
         $ikpSederhana = ['id' => (int) $ikp['id'], 'nama' => (string) $ikp['output_prioritas'],
-            'satuan' => (string) ($ikp['satuan_label'] ?? ''), 'pola' => $pola['pola'], 'target' => $target];
+            'satuan' => (string) ($ikp['satuan_label'] ?? ''), 'pola' => $pola['pola'], 'target' => $target,
+            'terbagi' => ! empty($pola['posisi_terbagi'])];
         $usul = [];
         if ($this->request->getGet('usul') === '1' && $this->bolehUbah()) {
             $semua = IkpTurunService::usulkan($ikpSederhana, $pohon);
@@ -169,8 +193,16 @@ class IkpTurunController extends BaseController
 
         $periksa = IkpTurunService::periksaSemua($pola['pola'], $target, array_map(static fn ($b) => [
             'id' => $b['id'], 'induk' => $b['ikp_induk_id'], 'peran' => $b['ikp_peran'], 'target' => $b['target'], 'level' => $b['level'],
-        ], $baris));
+            'satuan' => $b['satuan'] ?? null,
+        ], $baris), ['satuan_ikp' => $ikpSederhana['satuan'], 'terbagi' => $ikpSederhana['terbagi']]);
         $cakupan = IkpTurunService::cakupan(array_column($baris, 'level'), $pohon['kecamatan']);
+
+        // Status eKin per pemilik (D2) — hanya bila ada baris pendelegasian; eKin mati/lama = tanpa chip + catatan.
+        $status = null;
+        if (array_filter($baris, static fn ($b) => ($b['sumber'] ?? '') === 'delegasi') !== []) {
+            $opdSet = $this->turunSvc()->opdTerkait($opdId, array_column($baris, 'node_id'), $tahun);
+            $status = $this->turunSvc()->statusEkin($this->ekin(), $opdSet, $tahun);
+        }
 
         return view('ikp/turun', $this->dasar($scope, $tahun, [
             'title'       => 'Turunkan IKP',
@@ -191,6 +223,9 @@ class IkpTurunController extends BaseController
             'cakupan'     => $cakupan,
             'es2'         => (new PohonPemilikService($this->db))->pemilikEs2($opdId, $tahun),
             'proses'      => IkpTurunService::teksProses($ikpSederhana),
+            'statusEkin'  => $status,
+            'kirimEkin'   => session()->getFlashdata('kirim_ekin'),
+            'sinonim'     => ikp_satuan_peta(),
         ]));
     }
 
@@ -209,6 +244,8 @@ class IkpTurunController extends BaseController
         $opdId = (int) $ikp['opd_id'];
         $rekap = $this->svc()->rekapSatu($opdId, (int) $ikp['id'], $tahun);
         $pohon = $this->turunSvc()->pohon($opdId, $tahun, false);
+        // Simpul yang memikul SEBELUM simpan (baris yang dicabut juga perlu dirapikan eKin).
+        $nodeSebelum = array_column($this->turunSvc()->baris((int) $ikp['id'], $tahun), 'node_id');
 
         // Formulir punya dua set isian per simpul: pemikul angka (indikator/teks/satuan/target)
         // dan pendukung (…_proses). Peran yang dipilih menentukan set yang dipakai.
@@ -247,16 +284,28 @@ class IkpTurunController extends BaseController
                 . ' baru, ' . $hasil['ubah'] . ' diubah, ' . $hasil['cabut'] . ' dicabut');
         }
 
-        // Pemeriksa sesudah simpan (peringatan, tidak memblokir).
+        // Pemeriksa sesudah simpan (peringatan, tidak memblokir) — peran efektif menurut satuan & posisi terbagi.
         $baris   = $this->turunSvc()->baris((int) $ikp['id'], $tahun);
         $periksa = IkpTurunService::periksaSemua($rekap['pola']['pola'], $rekap['target_tahunan'], array_map(static fn ($b) => [
-            'id' => $b['id'], 'induk' => $b['ikp_induk_id'], 'peran' => $b['ikp_peran'], 'target' => $b['target'],
-        ], $baris));
+            'id' => $b['id'], 'induk' => $b['ikp_induk_id'], 'peran' => $b['ikp_peran'], 'target' => $b['target'], 'satuan' => $b['satuan'] ?? null,
+        ], $baris), ['satuan_ikp' => (string) ($ikp['satuan_label'] ?? ''), 'terbagi' => ! empty($rekap['pola']['posisi_terbagi'])]);
         $pesan = $hasil['tambah'] + $hasil['ubah'] + $hasil['cabut'] === 0
-            ? 'Tidak ada perubahan.'
-            : 'Pendelegasian tersimpan: ' . $hasil['tambah'] . ' simpul baru, ' . $hasil['ubah'] . ' diubah, ' . $hasil['cabut'] . ' dicabut.'
-                . ' Pemilik simpul akan melihatnya di eKin (Tarik dari SAKIP).';
+            ? 'Tidak ada perubahan pendelegasian.'
+            : 'Pendelegasian tersimpan: ' . $hasil['tambah'] . ' simpul baru, ' . $hasil['ubah'] . ' diubah, ' . $hasil['cabut'] . ' dicabut.';
+
+        // D1: kirim ke eKin sekarang juga (juga bila tidak ada perubahan — Simpan ulang = "kirim ulang" baris yang
+        // belum sampai). Gagal = pesan, bukan galat: pendelegasian sudah tersimpan dan eKin memeriksanya sendiri.
+        $kirim = null;
+        if ($baris !== [] || $hasil['cabut'] > 0) {
+            $opdSet = $this->turunSvc()->opdTerkait($opdId, array_merge($nodeSebelum, array_column($baris, 'node_id')), $tahun);
+            $kirim  = $this->turunSvc()->kirimKeEkin($this->ekin(), $opdSet, $tahun);
+            log_activity('ubah', 'ikp', 'IKP #' . (int) $ikp['id'] . ' dikirim ke eKin (' . $tahun . '): ' . $kirim['jenis']
+                . ($kirim['alasan'] !== null ? ' [' . $kirim['alasan'] . ']' : '') . ' ' . json_encode($kirim['ringkas']));
+        }
         $redir = redirect()->to($this->u('ikp/turun/' . (int) $ikp['id'], ['tahun' => $tahun], $scope))->with('success', $pesan);
+        if ($kirim !== null) {
+            $redir = $redir->with('kirim_ekin', $kirim);
+        }
         if ($periksa['n_peringatan'] > 0) {
             $redir = $redir->with('warning', 'Pemeriksa: ' . $periksa['pesan'] . ($periksa['n_peringatan'] > 1 ? ' (+' . ($periksa['n_peringatan'] - 1) . ' catatan lain di pohon)' : ''));
         }
@@ -384,5 +433,10 @@ class IkpTurunController extends BaseController
     private function turunSvc(): IkpTurunService
     {
         return $this->turun ??= new IkpTurunService($this->db);
+    }
+
+    private function ekin(): EkinClient
+    {
+        return $this->ekin ??= new EkinClient();
     }
 }

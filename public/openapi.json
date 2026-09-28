@@ -1889,7 +1889,9 @@
             "description": "IKP yang DIPIKUL angkanya (tautan lama / pemikul angka). Indikator proses pendukung: null (lihat ikp_didukung_id)."
           },
           "ikp_didukung_id": { "type": "integer", "nullable": true, "description": "IKP yang didukung indikator PROSES ini (peran pendukung)." },
-          "ikp_peran": { "type": "string", "nullable": true, "enum": ["angka", "pendukung", null] },
+          "ikp_peran": { "type": "string", "nullable": true, "enum": ["angka", "pendukung", null], "description": "Baris delegasi: peran EFEKTIF (satuan indikator ≠ satuan IKP → pendukung)." },
+          "ikp_peran_tersimpan": { "type": "string", "nullable": true, "enum": ["angka", "pendukung", null], "description": "Peran yang dipilih Admin OPD di Turunkan IKP." },
+          "ikp_alasan_peran": { "type": "string", "nullable": true, "description": "Mis. \"Dihitung sebagai pendukung: satuan Pengikut ≠ Media.\" bila peran efektif ≠ tersimpan." },
           "ikp_sumber": { "type": "string", "nullable": true, "enum": ["delegasi", "lama", null], "description": "delegasi = halaman Turunkan IKP; lama = tautan langsung sebelum fitur itu." },
           "ikp_delegasi_id": { "type": "integer", "nullable": true, "description": "cascading_indikator_target.id bila sumber delegasi." },
           "target_bulanan": {
@@ -1913,19 +1915,22 @@
           "level": { "type": "string", "enum": ["es3", "es4", "pelaksana"] },
           "level_label": { "type": "string" },
           "sasaran": { "type": "string" },
-          "peran": { "type": "string", "enum": ["angka", "pendukung"] },
+          "peran": { "type": "string", "enum": ["angka", "pendukung"], "description": "Peran EFEKTIF (29-09-2026): pemikul angka yang satuan indikatornya berbeda dari satuan IKP dikirim pendukung." },
+          "peran_tersimpan": { "type": "string", "enum": ["angka", "pendukung"], "description": "Peran yang dipilih Admin OPD." },
+          "alasan_peran": { "type": "string", "nullable": true, "description": "Kalimat bila peran ≠ peran_tersimpan, mis. \"Dihitung sebagai pendukung: satuan Pengikut ≠ Media.\"" },
+          "alasan_peran_kode": { "type": "string", "nullable": true, "enum": ["satuan_beda", null] },
           "indikator_id": { "type": "integer" },
           "indikator": { "type": "string" },
           "satuan": { "type": "string", "nullable": true },
-          "porsi_target_tahunan": { "type": "number", "nullable": true, "description": "angka+hitungan: porsi; angka+posisi/rilis: target utuh IKP; pendukung: target indikator proses." },
+          "porsi_target_tahunan": { "type": "number", "nullable": true, "description": "angka+hitungan: porsi; angka+posisi terbagi: porsi posisi akhir tahun; angka+posisi/rilis lain: target utuh IKP; pendukung: target indikatornya sendiri." },
           "target_teks": { "type": "string", "nullable": true },
-          "porsi_persen": { "type": "number", "nullable": true, "description": "porsi ÷ target IKP × 100 (hanya angka + hitungan)." },
+          "porsi_persen": { "type": "number", "nullable": true, "description": "porsi ÷ target IKP × 100 (angka + hitungan / posisi terbagi)." },
           "metode": { "type": "string" },
           "pola_indikator": { "type": "string", "enum": ["hitungan", "posisi", "rilis"] },
           "bulan_ukur_indikator": { "type": "array", "items": { "type": "integer", "minimum": 1, "maximum": 12 } },
           "target_bulanan": {
             "type": "object",
-            "description": "Kunci \"1\"..\"12\"; null = tidak ada target bulan itu (posisi/rilis: bukan bulan ukur).",
+            "description": "Kunci \"1\"..\"12\"; null = tidak ada target bulan itu (posisi/rilis: bukan bulan ukur). Posisi terbagi: target posisi bulanan IKP × porsi ÷ target IKP (posisi, bukan cicilan).",
             "additionalProperties": { "type": "number", "nullable": true }
           },
           "induk_delegasi_id": { "type": "integer", "nullable": true },
@@ -1942,7 +1947,9 @@
                 "sasaran": { "type": "string", "nullable": true },
                 "indikator_id": { "type": "integer", "nullable": true },
                 "indikator": { "type": "string", "nullable": true },
-                "peran": { "type": "string", "enum": ["angka", "pendukung", "pemilik_ikp"] },
+                "satuan": { "type": "string", "nullable": true },
+                "peran": { "type": "string", "enum": ["angka", "pendukung", "pemilik_ikp"], "description": "Peran efektif (satuan)." },
+                "peran_tersimpan": { "type": "string", "enum": ["angka", "pendukung", "pemilik_ikp"] },
                 "target": { "type": "number", "nullable": true },
                 "pemilik_pegawai_ids": { "type": "array", "items": { "type": "integer" } }
               }
@@ -2077,6 +2084,10 @@
           "pola_ditebak": {
             "type": "boolean",
             "description": "true = pola hasil klasifikasi otomatis, belum dikonfirmasi Admin OPD."
+          },
+          "posisi_terbagi": {
+            "type": "boolean",
+            "description": "true = pola posisi yang dapat dipecah per bagian: total bulan m = Σ posisi setiap bagian pada bulan m; beberapa pemikul angka berporsi."
           },
           "target_5_tahun": {
             "type": "number",
@@ -2231,6 +2242,10 @@
           "pola_ditebak": {
             "type": "boolean",
             "description": "true = pola hasil klasifikasi otomatis, belum dikonfirmasi Admin OPD."
+          },
+          "posisi_terbagi": {
+            "type": "boolean",
+            "description": "true = pola posisi yang dapat dipecah per bagian: total bulan m = Σ posisi setiap bagian pada bulan m; beberapa pemikul angka berporsi."
           },
           "target_5_tahun": {
             "type": "number",

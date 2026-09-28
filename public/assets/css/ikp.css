@@ -309,8 +309,25 @@ main .ikp-grid tbody tr > td.tw, main .ikp-grid tbody tr:hover > td.tw { backgro
 .tr-periksa.netral { background: #f4f6f5; color: #5d6b62; }
 .tr-periksa i { margin-top: 2px; }
 .tr-anak > summary { font-size: .74rem; font-weight: 700; color: #3a4a40; cursor: pointer; margin: 6px 0 0 10px; padding: 3px 0; list-style-position: inside; }
+/* D2: status IKP turunan di eKin per pemilik; D3: peran efektif menurut satuan; satuan di samping porsi */
+.tr-orang-grup { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 3px; max-width: 100%; min-width: 0; }
+.tr-ekin { display: inline-flex; align-items: center; gap: 4px; font-size: .66rem; font-weight: 700; border-radius: 999px; padding: .15em .55em; white-space: nowrap; }
+.tr-ekin.ok { background: #e6f5ec; color: #0b6b3a; }
+.tr-ekin.tunggu { background: #fff4d6; color: #7a5200; }
+.tr-ekin.tolak { background: #fdecea; color: #a12a2a; }
+.tr-ekin.abu { background: #f1f3f2; color: #5d6b62; }
+.tr-ekin.beda { background: #fff0e6; color: #9a3d00; border: 1px dashed #f0b58a; }
+.tr-efektif { font-size: .76rem; color: #1d4f86; background: #eef5fd; border: 1px dashed #b6cff0; border-radius: 9px; padding: 6px 9px; overflow-wrap: anywhere; }
+.tr-efektif small { display: block; color: #4a6583; font-size: .7rem; }
+.tr-target-isi { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.tr-satuan-porsi { font-size: .76rem; font-weight: 700; color: #3a4a40; overflow-wrap: anywhere; }
+.tr-status-ekin { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; font-size: .74rem; margin: -6px 0 12px; }
+.tr-status-ekin .lbl { font-weight: 700; color: #6b7a70; }
+.tr-kirim ul { margin: 4px 0 0; padding-left: 18px; }
+.tr-kirim li { margin: 1px 0; }
 @media (max-width: 575.98px) {
   .tr-daftar { grid-template-columns: minmax(0, 1fr); }
+  .tr-ekin { white-space: normal; }
   .tr-pohon, .tr-anak > ul { margin-left: 4px; padding-left: 6px; }
   .tr-kartu { padding: 9px 9px; }
   .tr-baru { grid-template-columns: minmax(0, 1fr); }

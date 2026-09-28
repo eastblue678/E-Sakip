@@ -282,7 +282,8 @@ class EkinController extends BaseController
             $turunSvc = new IkpTurunService($this->db);
             $info     = [];
             foreach ($rekap as $r) {
-                $info[(int) $r['ikp']['id']] = ['pola' => $r['pola']['pola'], 'target' => $r['target_tahunan']];
+                $info[(int) $r['ikp']['id']] = ['pola' => $r['pola']['pola'], 'target' => $r['target_tahunan'],
+                    'satuan' => (string) ($r['ikp']['satuan_label'] ?? ''), 'terbagi' => ! empty($r['pola']['posisi_terbagi'])];
             }
             $kec     = $turunSvc->kecamatan($id);
             $turun   = $turunSvc->ringkasIkp($info, $tahun, $kec, \App\Services\RuangOpdService::labelJenjang($kec));
@@ -496,13 +497,26 @@ class EkinController extends BaseController
         $bulananIkp = $this->targetBulananIkp($ikpTaut, $tahun);
         $rekapSvc   = new IkpRekapService($this->db);
         $polaTaut   = $ikpTaut !== [] ? $rekapSvc->polaPerIkp($ikpTaut) : [];
+        // Peran EFEKTIF (D3: satuan indikator ≠ satuan IKP → pendukung) & target tahunan IKP (profil posisi terbagi, D4).
+        $turunSvc   = new IkpTurunService($this->db);
+        $satuanTaut = $ikpTaut !== [] ? $turunSvc->satuanIkpPerId($ikpTaut) : [];
+        $tgtTaut    = [];
+        foreach ($ikpTaut !== [] ? $rekapSvc->targetTahunan($ikpTaut) : [] as $iid => $perTahun) {
+            $tgtTaut[(int) $iid] = $perTahun[$tahun]['target'] ?? null;
+        }
+        $peta = ikp_satuan_peta();
 
         $perSimpul = [];
         foreach ($indMilik as $r) {
             $ikpId  = $r['ikp_id'] !== null && $r['ikp_dihapus'] === null ? (int) $r['ikp_id'] : null;
-            $peran  = $ikpId !== null ? ($r['ikp_peran'] === 'pendukung' ? 'pendukung' : 'angka') : null;
             $sumber = $ikpId !== null ? ($r['ikp_sumber'] ?? null) : null;
             $deleg  = $ikpId !== null && $sumber === 'delegasi';
+            // Baris pendelegasian: peran EFEKTIF menurut satuan. Tautan lama tetap apa adanya (perilaku lama).
+            $ef     = $ikpId !== null
+                ? ($deleg ? IkpTurunService::peranEfektif((string) $r['ikp_peran'], $r['satuan'] ?? null, $satuanTaut[$ikpId] ?? null, $peta)
+                    : IkpTurunService::peranEfektif((string) $r['ikp_peran'], null, null, $peta))
+                : null;
+            $peran  = $ef['peran'] ?? null;
             $target = $r['target'] !== null ? (float) $r['target'] : null;
             // IKP turun sampai pelaksana: baris "delegasi" membawa profil bulanan PORSI orang itu
             // (hitungan: cicilan IKP × porsi/target; posisi/rilis: target di bulan ukur; pendukung:
@@ -510,7 +524,7 @@ class EkinController extends BaseController
             $bulanan = null;
             if ($ikpId !== null) {
                 $bulanan = $deleg && isset($polaTaut[$ikpId])
-                    ? IkpTurunService::profilBulanan($polaTaut[$ikpId], $bulananIkp[$ikpId] ?? [], $target, (string) $peran)
+                    ? IkpTurunService::profilBulanan($polaTaut[$ikpId], $bulananIkp[$ikpId] ?? [], $target, (string) $peran, $tgtTaut[$ikpId] ?? null)
                     : ($bulananIkp[$ikpId] ?? null);
             }
             $perSimpul[(int) $r['cascading_sasaran_id']][] = [
@@ -525,6 +539,8 @@ class EkinController extends BaseController
                 'ikp_id'          => $peran === 'pendukung' ? null : $ikpId,
                 'ikp_didukung_id' => $peran === 'pendukung' ? $ikpId : null,
                 'ikp_peran'       => $peran,
+                'ikp_peran_tersimpan' => $ef['peran_tersimpan'] ?? null,
+                'ikp_alasan_peran'    => $ef['alasan_peran'] ?? null,
                 'ikp_sumber'      => $sumber,
                 'ikp_delegasi_id' => $deleg ? (int) $r['cit_id'] : null,
                 'target_bulanan'  => $bulanan,
@@ -1061,7 +1077,8 @@ class EkinController extends BaseController
     /**
      * Isian pola ukur untuk konsumen eKin (IKI & rencana aksi mengikuti pola):
      * pola_ukur hitungan|posisi|rilis, periode_ukur, bulan_ukur [int], penerbit,
-     * rilis_tahun_berikut (bool), pola_ditebak (bool: belum dikonfirmasi admin OPD).
+     * rilis_tahun_berikut (bool), pola_ditebak (bool: belum dikonfirmasi admin OPD),
+     * posisi_terbagi (bool: posisi yang dipecah per bagian — porsi per pemikul, Σ posisi bagian = total).
      */
     private function polaApi(array $pola): array
     {
@@ -1072,6 +1089,8 @@ class EkinController extends BaseController
             'penerbit'            => $pola['penerbit'],
             'rilis_tahun_berikut' => (bool) $pola['rilis_tahun_berikut'],
             'pola_ditebak'        => (bool) $pola['ditebak'],
+            // Posisi yang dapat dipecah per bagian (D4): beberapa pemikul angka berporsi; total bulan m = Σ posisi bagian.
+            'posisi_terbagi'      => (bool) ($pola['posisi_terbagi'] ?? false),
         ];
     }
 

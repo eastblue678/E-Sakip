@@ -105,6 +105,7 @@
             el('blok-arah').hidden = p === 'hitungan' || p === '';
             el('blok-penerbit').hidden = p !== 'rilis';
             el('blok-tahun-berikut').hidden = p !== 'rilis';
+            if (el('blok-terbagi')) el('blok-terbagi').hidden = p !== 'posisi';
             el('label-bulan-ukur').textContent = p === 'rilis' ? 'Bulan rilis' : 'Bulan ukur';
             var b2 = bulanUkur();
             selPeriode.value = periodeDari(b2);

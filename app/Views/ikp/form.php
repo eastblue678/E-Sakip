@@ -43,6 +43,7 @@ $bulanDipilih   = is_array($bulanLama) ? ikp_bulan_ukur_baca($bulanLama) : ($pol
 $periodeDipilih = ikp_periode_dari_bulan($bulanDipilih === [] ? range(1, 12) : $bulanDipilih);
 $tahunBerikut   = old('pola_ukur') !== null ? (old('rilis_tahun_berikut') === '1') : ! empty($polaAwal['rilis_tahun_berikut']);
 $polaDitebak    = $mode === 'edit' && ! empty($polaAwal['ditebak']) && old('pola_ukur') === null;
+$terbagi        = old('pola_ukur') !== null ? (old('posisi_terbagi') === '1') : ! empty($polaAwal['posisi_terbagi']);
 $polaWarna      = ['hitungan' => '#1971c2', 'posisi' => '#0a8f50', 'rilis' => '#b8860b'];
 ?>
 <?= $this->include('ikp/_kepala') ?>
@@ -211,6 +212,16 @@ $polaWarna      = ['hitungan' => '#1971c2', 'posisi' => '#0a8f50', 'rilis' => '#
                     <i class="fas fa-lightbulb"></i><span id="saran-rilis-teks"></span>
                     <button type="button" class="btn btn-link btn-sm p-0 ms-1" id="saran-rilis-pakai">Pakai saran</button>
                 </div>
+            </div>
+            <div class="col-12" id="blok-terbagi" <?= $polaDipilih === 'posisi' ? '' : 'hidden' ?>>
+                <span class="form-label d-block">Posisi dari beberapa bagian?</span>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="posisi_terbagi" value="1" id="posisi_terbagi" aria-describedby="terbagi-ket" <?= $terbagi ? 'checked' : '' ?>>
+                    <label class="form-check-label" for="posisi_terbagi"><strong>Dapat dipecah per bagian</strong> — total = jumlah posisi setiap bagian pada bulan yang sama</label>
+                </div>
+                <div class="form-text" id="terbagi-ket">Contoh: pengikut semua akun media sosial resmi = Instagram + Facebook + TikTok + YouTube; nasabah aktif per unit.
+                    Di Turunkan IKP setiap bagian mendapat porsi dan target posisinya sendiri; realisasi sebulan = jumlah posisi semua bagian pada bulan itu (tidak dijumlah antarbulan).
+                    Biarkan kosong untuk posisi yang tidak bisa dijumlah (persentase, rasio, indeks internal) — dipikul satu pemikul angka dengan target utuh.</div>
             </div>
             <div class="col-md-5" id="blok-tahun-berikut" <?= $polaDipilih === 'rilis' ? '' : 'hidden' ?>>
                 <span class="form-label d-block">Tahun rilis</span>

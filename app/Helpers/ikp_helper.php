@@ -885,7 +885,8 @@ if (! function_exists('ikp_pola')) {
      *
      *  pola, metode (EFEKTIF untuk rumus: hitungan -> sum; posisi/rilis ->
      *  trend_* arah), periode_ukur, bulan_ukur int[], penerbit,
-     *  rilis_tahun_berikut bool, ditebak bool (belum dikonfirmasi admin).
+     *  rilis_tahun_berikut bool, ditebak bool (belum dikonfirmasi admin),
+     *  posisi_terbagi bool (posisi yang dipecah per bagian: Σ posisi bagian = total).
      *
      * MENGAPA metode efektif tidak selalu = kolom metode: nilai rilis/posisi
      * tidak boleh dijumlah walau data lama bermetode sum, dan hitungan tidak
@@ -895,7 +896,7 @@ if (! function_exists('ikp_pola')) {
      * "metode belum dipilih" (tidak mengarang cara meringkas).
      *
      * @return array{pola:string, metode:string, periode_ukur:string, bulan_ukur:int[], penerbit:?string,
-     *               rilis_tahun_berikut:bool, ditebak:bool}
+     *               rilis_tahun_berikut:bool, ditebak:bool, posisi_terbagi:bool}
      */
     function ikp_pola(array $ikp, ?object $cfg = null): array
     {
@@ -915,6 +916,7 @@ if (! function_exists('ikp_pola')) {
                 'penerbit'            => $t['penerbit'],
                 'rilis_tahun_berikut' => $t['rilis_tahun_berikut'],
                 'ditebak'             => true,
+                'posisi_terbagi'      => $t['pola_ukur'] === 'posisi' && ! empty($ikp['posisi_terbagi']),
             ];
         }
 
@@ -942,6 +944,10 @@ if (! function_exists('ikp_pola')) {
             'penerbit'            => $penerbit === '' ? null : $penerbit,
             'rilis_tahun_berikut' => $pola === 'rilis' && ! empty($ikp['rilis_tahun_berikut']),
             'ditebak'             => $ditebak,
+            // Posisi yang DAPAT DIPECAH per bagian (keputusan 29-09-2026, "D4"): total bulan m = Σ posisi setiap
+            // bagian pada bulan m (mis. pengikut semua akun resmi = IG + FB + TikTok + YouTube). Hanya bermakna
+            // untuk pola posisi; hitungan sudah terbagi, rilis tidak pernah dibagi.
+            'posisi_terbagi'      => $pola === 'posisi' && ! empty($ikp['posisi_terbagi']),
         ];
     }
 }
@@ -1092,8 +1098,11 @@ if (! function_exists('ikp_capaian_pola')) {
             $hasil['calculation_description'] = 'Nilai resmi rilis ' . $label((int) $hasil['bulan_terakhir'])
                 . ' dibanding target bulan itu (tidak dijumlah).';
         } elseif (($pola['pola'] ?? '') === 'posisi' && $hasil['status'] === 'calculated') {
+            // Posisi terbagi: realisasi bulan itu = Σ posisi setiap bagian PADA BULAN ITU (diisi Admin OPD, saran
+            // "Dari eKin"); capaian tetap posisi terakhir vs target bulan itu — tidak pernah dijumlah lintas bulan.
             $hasil['calculation_description'] = 'Posisi ' . ikp_nama_bulan((int) $hasil['bulan_terakhir'])
-                . ' (bulan ukur terakhir yang terisi) dibanding target posisi bulan itu.';
+                . (! empty($pola['posisi_terbagi']) ? ' (jumlah posisi setiap bagian pada bulan itu; bulan ukur terakhir yang terisi)' : ' (bulan ukur terakhir yang terisi)')
+                . ' dibanding target posisi bulan itu.';
         }
 
         return $hasil;
@@ -1167,7 +1176,130 @@ if (! function_exists('ikp_pola_ringkas')) {
         } else {
             $teks .= ' · ' . mb_strtolower(ikp_periode_ukur_label($pola['periode_ukur'] ?? 'bulanan'));
         }
+        if (! empty($pola['posisi_terbagi'])) {
+            $teks .= ' · terbagi per bagian';
+        }
 
         return $teks;
+    }
+}
+
+/*
+ * =====================================================================
+ * SATUAN SEPADAN (29-09-2026) — aturan satuan pemikul angka IKP turunan
+ * =====================================================================
+ *
+ * Baris pendelegasian hanya memikul ANGKA IKP bila satuan indikatornya sama
+ * dengan satuan IKP; selain itu dihitung sebagai pendukung (IkpTurunService::
+ * peranEfektif). Tabel sinonim ada di SATU tempat: app/Config/IkpSatuan.php.
+ */
+
+if (! function_exists('ikp_satuan_peta')) {
+    /**
+     * Peta bentuk → bentuk baku dari Config\IkpSatuan (juga dikirim ke
+     * ikp-turun.js sebagai data-sinonim, supaya peramban memakai tabel yang sama).
+     *
+     * @return array<string, string>
+     */
+    function ikp_satuan_peta(?object $cfg = null): array
+    {
+        $cfg ??= config('IkpSatuan');
+        $peta = [];
+        foreach ((array) ($cfg->sinonim ?? []) as $kelompok) {
+            $kelompok = array_values((array) $kelompok);
+            if ($kelompok === []) {
+                continue;
+            }
+            $baku = ikp_satuan_rapikan((string) $kelompok[0]);
+            foreach ($kelompok as $b) {
+                $peta[ikp_satuan_rapikan((string) $b)] = $baku;
+            }
+        }
+
+        return $peta;
+    }
+}
+
+if (! function_exists('ikp_satuan_rapikan')) {
+    /**
+     * " Pengikut (followers). " → "pengikut": huruf kecil, spasi dirapatkan, titik
+     * di ujung dibuang, keterangan dalam kurung dibuang bila masih ada teks lain
+     * ("(%)" saja → "%").
+     * Cerminan: ikp-turun.js rapikanSatuan().
+     */
+    function ikp_satuan_rapikan(?string $satuan): string
+    {
+        $s = mb_strtolower(trim((string) $satuan));
+        $s = (string) preg_replace('/\s+/u', ' ', $s);
+        $tanpaKurung = trim((string) preg_replace('/\s*\([^)]*\)\s*/u', ' ', $s));
+        $s = $tanpaKurung !== ''
+            ? (string) preg_replace('/\s+/u', ' ', $tanpaKurung)
+            : trim(str_replace(['(', ')'], '', $s));   // "(%)" → "%"
+
+        return trim(rtrim($s, '.'));
+    }
+}
+
+if (! function_exists('ikp_satuan_kunci')) {
+    /** Bentuk baku satuan untuk dibandingkan ('' = satuan kosong / tidak diketahui). */
+    function ikp_satuan_kunci(?string $satuan, ?array $peta = null): string
+    {
+        $s = ikp_satuan_rapikan($satuan);
+        if ($s === '') {
+            return '';
+        }
+        $peta ??= ikp_satuan_peta();
+
+        return $peta[$s] ?? $s;
+    }
+}
+
+if (! function_exists('ikp_satuan_sama')) {
+    /**
+     * Dua satuan sama? null = tidak dapat dinilai (salah satunya kosong) —
+     * pemanggil tidak menurunkan peran atas dasar ketidaktahuan.
+     *
+     * Sama bila (setelah dirapikan & dipetakan sinonim):
+     *   1. bentuknya sama ("Media" = "media", "Followers" = "Pengikut");
+     *   2. satuan bergaris miring berbagi satu bagian ("Pekon/kelurahan" ~ "Kelurahan");
+     *   3. satuan FRASA dibanding satuan SATU KATA: kata pertama frasa = kata itu
+     *      ("Indeks Keterbukaan Informasi Publik" ~ "Indeks", "permohonan informasi" ~
+     *      "Permohonan", "aduan SP4N-LAPOR!" ~ "Aduan"). Dua frasa harus sama utuh.
+     * MENGAPA aturan 2–3: satuan IKP sering ditulis sebagai frasa penjelas; tanpa itu
+     * pemikul angka indeks resmi (satuan "Indeks") ikut dihitung pendukung. "Media" vs
+     * "Pengikut", "KM" vs "Paket", "Dokumen" vs "Usulan" tetap berbeda.
+     * Cerminan: ikp-turun.js satuanSama().
+     */
+    function ikp_satuan_sama(?string $a, ?string $b, ?array $peta = null): ?bool
+    {
+        $peta ??= ikp_satuan_peta();
+        $x = ikp_satuan_kunci($a, $peta);
+        $y = ikp_satuan_kunci($b, $peta);
+        if ($x === '' || $y === '') {
+            return null;
+        }
+        if ($x === $y) {
+            return true;
+        }
+        $bagian = static function (string $k) use ($peta): array {
+            $out = [$k => true];
+            $pot = preg_split('~\s*/\s*~u', $k) ?: [];
+            if (count($pot) > 1) {
+                foreach ($pot as $p) {
+                    $kk = ikp_satuan_kunci($p, $peta);
+                    if ($kk !== '') {
+                        $out[$kk] = true;
+                    }
+                }
+            }
+
+            return $out;
+        };
+        if (array_intersect_key($bagian($x), $bagian($y)) !== []) {
+            return true;
+        }
+        $kepala = static fn (string $k): ?string => str_contains($k, ' ') ? ikp_satuan_kunci(explode(' ', $k)[0], $peta) : null;
+
+        return (! str_contains($y, ' ') && $kepala($x) === $y) || (! str_contains($x, ' ') && $kepala($y) === $x);
     }
 }

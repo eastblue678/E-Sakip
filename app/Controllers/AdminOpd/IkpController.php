@@ -294,6 +294,12 @@ class IkpController extends BaseController
             log_activity('ubah', 'ikp', 'IKP #' . (int) $lama['id'] . ' pola ukur ' . $polaLama['pola'] . ' [' . ikp_bulan_ukur_teks($polaLama['bulan_ukur'])
                 . '] -> ' . $data['pola_ukur'] . ' [' . $data['bulan_ukur'] . ']');
         }
+        if (array_key_exists('posisi_terbagi', $data) && (bool) ($polaLama['posisi_terbagi'] ?? false) !== ($data['posisi_terbagi'] === 1)) {
+            // Porsi pemikul angka bergantung pada bendera ini (target utuh vs porsi per bagian).
+            $pesan .= $data['posisi_terbagi'] === 1
+                ? ' Posisi kini dapat dipecah per bagian: atur porsi setiap pemikul di Turunkan IKP.'
+                : ' Posisi tidak lagi dipecah per bagian: di Turunkan IKP cukup satu pemikul angka per jenjang dengan target utuh — simpan ulang pendelegasiannya.';
+        }
 
         return redirect()->to($this->u('adminopd/ikp', [], $scope))->with('success', $pesan);
     }
@@ -1070,6 +1076,10 @@ class IkpController extends BaseController
         $data['periode_ukur']        = $bulanUkur === [] ? null : ikp_periode_dari_bulan($bulanUkur);
         $data['penerbit']            = $pola === 'rilis' && $penerbit !== '' ? mb_substr($penerbit, 0, 150) : null;
         $data['rilis_tahun_berikut'] = $pola === 'rilis' && $in('rilis_tahun_berikut') === '1' ? 1 : 0;
+        // Posisi terbagi (29-09-2026): hanya untuk posisi. Kolom baru → dikirim hanya bila migrasinya sudah jalan.
+        if ($this->db->fieldExists('posisi_terbagi', 'ikp')) {
+            $data['posisi_terbagi'] = $pola === 'posisi' && $in('posisi_terbagi') === '1' ? 1 : 0;
+        }
         // Disimpan admin = dikonfirmasi; chip "Periksa pola ukur" hilang.
         $data['pola_ditebak']        = 0;
 

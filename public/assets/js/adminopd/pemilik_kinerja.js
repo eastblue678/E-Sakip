@@ -202,6 +202,7 @@
             // IKP turun sampai pelaksana: pemikul angka (★) atau pendukung (☆) — baris "delegasi" diatur di Turunkan IKP.
             var pendukung = ind.ikp_peran === 'pendukung';
             h += '<span class="pmk-tag ikp" title="' + esc((pendukung ? 'Mendukung IKP: ' : 'Memikul angka IKP: ') + (ind.ikp_nama || '')
+                + (ind.ikp_alasan_peran ? ' — ' + ind.ikp_alasan_peran : '')
                 + (ind.ikp_sumber === 'delegasi' ? ' — diatur di Kinerja Prioritas › Turunkan IKP' : '')) + '"><i class="fas fa-link"></i>'
                 + (pendukung ? '☆ Mendukung IKP: <b>' : '★ IKP: <b>')
                 + esc(ind.ikp_nama || ('#' + ind.ikp_id)) + '</b>' + (ind.ikp_dihapus ? ' (sudah dihapus)' : '') + '</span>';

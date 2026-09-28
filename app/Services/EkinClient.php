@@ -19,6 +19,20 @@ use Throwable;
  *                                      "bulan":{"<1..12>":{"realisasi","pada"}}}]} — realisasi RHK/IKI yang ditarik dari
  *                                      baris pendelegasian IKP (IKP turun sampai pelaksana); belum tentu disediakan eKin
  *                                      (404 → belum_tersedia → halaman realisasi IKP tidak menampilkan saran).
+ *   opd/{id}/ikp-turunan-status?tahun= {"status":"success","data":{"opd_id","tahun","baris":[{"delegasi_id","pegawai_id",
+ *                                      "status":"rhk|menunggu|ditolak|skp_draf|tanpa_skp|belum","penugasan_id","iki_id",
+ *                                      "target_ekin","target_aksara","beda_target"}]}} — keadaan IKP turunan per pemilik
+ *                                      di eKin (chip di Turunkan IKP). Tembolok 60 detik, dihapus setiap kali Simpan.
+ *
+ * Satu-satunya panggilan yang MENGUBAH sesuatu di eKin (POST + JSON, tanpa tembolok):
+ *   ikp-turunan/segarkan               {"opd_id","tahun"} → {"status":"success","data":{"opd_id","tahun","pegawai":[{
+ *                                      "pegawai_id","dibuat","dimasukkan_skp_draf","sudah","ditolak","tanpa_skp",
+ *                                      "ditautkan"}],"ringkas":{…sama, dijumlah}}}; 400 isian salah, 401 token salah,
+ *                                      503 eKin tidak dapat membaca AKSARA+. Dipanggil sesudah Simpan di Turunkan IKP
+ *                                      (keputusan 29-09-2026 "D1": pengiriman otomatis). Idempoten di sisi eKin.
+ *
+ * Dua kontrak baru itu memakai AMPLOP {"status","data"}; kontrak lama mengirim isi apa adanya. Amplop hanya dibuka
+ * untuk kontrak baru (PKRINGKAS lama juga punya kunci `status`, jadi membuka amplop secara umum berbahaya).
  *
  * MENGAPA setiap kegagalan menjadi null (bukan pengecualian): Ruang OPD adalah halaman
  * baca yang merangkum BANYAK sumber. eKin yang sedang dipasang ulang, token yang belum
@@ -40,6 +54,16 @@ class EkinClient
     public const UMUR_CACHE    = 300;  // detik (5 menit)
     public const UMUR_GAGAL    = 60;   // detik — kegagalan di-cache lebih singkat
 
+    /** Status IKP turunan per pemilik: paling lama 60 detik basi (keputusan "D2"); dihapus sesudah Simpan. */
+    public const UMUR_STATUS   = 60;
+
+    /**
+     * Batas waktu POST segarkan: eKin memeriksa SEMUA pegawai OPD yang memikul IKP turunan (membaca API AKSARA+ per
+     * pegawai) sebelum menjawab — lebih lama dari GET ringkasan. Lewat batas ini dianggap tidak terjangkau; pengiriman
+     * tetap terjadi lewat pemeriksaan eKin sendiri (saat pegawai membuka eKin / malam hari).
+     */
+    public const BATAS_WAKTU_KIRIM = 20;
+
     /** Kode alasan -> kalimat untuk layar (tanpa detail teknis yang membingungkan). */
     public const ALASAN = [
         'belum_dikonfigurasi' => 'Sambungan ke eKin belum dikonfigurasi di server ini.',
@@ -48,6 +72,8 @@ class EkinClient
         'belum_tersedia'      => 'Layanan data eKin untuk AKSARA belum dipasang.',
         'galat_server'        => 'eKin sedang mengalami gangguan.',
         'format'              => 'Jawaban eKin tidak sesuai kontrak data.',
+        'aksara_tak_terjangkau' => 'eKin tidak dapat membaca pendelegasian dari AKSARA+ saat ini.',
+        'isian_ditolak'       => 'eKin menolak isian permintaan (perangkat daerah/tahun).',
     ];
 
     private string $base;
@@ -204,6 +230,65 @@ class EkinClient
         }
 
         return $j;
+    }
+
+    /**
+     * Keadaan IKP turunan setiap pemilik simpul di eKin (chip "Masuk RHK ✓", "Menunggu diterima", …). Tembolok
+     * UMUR_STATUS detik; eKin lama tanpa endpoint ini (404 → belum_tersedia) = tanpa chip, halaman tetap jalan.
+     *
+     * @return array<string,mixed>|null {"opd_id","tahun","baris":[…]}
+     */
+    public function ikpTurunanStatus(int $opdId, int $tahun): ?array
+    {
+        $j = $this->ambil('opd/' . $opdId . '/ikp-turunan-status', $tahun, [], self::UMUR_STATUS, true);
+        if ($j !== null && ! is_array($j['baris'] ?? null)) {
+            return $this->gagal('format', 'opd/ikp-turunan-status');
+        }
+
+        return $j;
+    }
+
+    /** Hapus tembolok status IKP turunan satu OPD (sesudah Simpan / segarkan: layar harus membaca keadaan baru). */
+    public function lupakanStatusIkpTurunan(int $opdId, int $tahun): void
+    {
+        if ($this->cache !== null && $this->terkonfigurasi()) {
+            $this->cache->delete($this->kunciCache($this->url('opd/' . $opdId . '/ikp-turunan-status', ['tahun' => $tahun])));
+        }
+    }
+
+    /**
+     * Minta eKin segera mengirim IKP turunan satu OPD (keputusan "D1"): SKP draf/dikembalikan → RHK langsung masuk,
+     * SKP diajukan/disetujui → penugasan "IKP turunan" untuk diterima. TANPA tembolok (setiap panggilan = aksi).
+     *
+     * @return array<string,mixed>|null {"opd_id","tahun","pegawai":[…],"ringkas":{dibuat,dimasukkan_skp_draf,sudah,
+     *                                  ditolak,tanpa_skp,ditautkan}} — null + alasanTerakhir() bila gagal
+     */
+    public function segarkanIkpTurunan(int $opdId, int $tahun): ?array
+    {
+        $j = $this->kirim('ikp-turunan/segarkan', ['opd_id' => $opdId, 'tahun' => $tahun]);
+        if ($j !== null && (! is_array($j['pegawai'] ?? null) || ! is_array($j['ringkas'] ?? null))) {
+            return $this->gagal('format', 'ikp-turunan/segarkan');
+        }
+
+        return $j;
+    }
+
+    /**
+     * Buka amplop {"status":"success","data":{…}} kontrak baru. status "error" / data bukan objek → null.
+     * Isi tanpa amplop (eKin yang mengirim isi langsung) diterima apa adanya.
+     *
+     * @return array<string,mixed>|null
+     */
+    public static function bukaAmplop(array $json): ?array
+    {
+        if (! array_key_exists('status', $json)) {
+            return $json;
+        }
+        if ($json['status'] !== 'success' || ! is_array($json['data'] ?? null)) {
+            return null;
+        }
+
+        return $json['data'];
     }
 
     // =================================================================
@@ -579,8 +664,23 @@ class EkinClient
     // JARINGAN
     // =================================================================
 
-    /** @return array<string,mixed>|null */
-    private function ambil(string $jalur, int $tahun, array $param = []): ?array
+    private function url(string $jalur, array $query = []): string
+    {
+        return rtrim($this->base, '/') . '/api/aksara/' . $jalur . ($query === [] ? '' : '?' . http_build_query($query));
+    }
+
+    private function kunciCache(string $url): string
+    {
+        return 'ekin_aksara_' . md5($url);
+    }
+
+    /**
+     * @param int  $umur   umur tembolok jawaban sukses (detik); kegagalan paling lama UMUR_GAGAL
+     * @param bool $amplop buka amplop {"status","data"} (hanya kontrak baru)
+     *
+     * @return array<string,mixed>|null
+     */
+    private function ambil(string $jalur, int $tahun, array $param = [], int $umur = self::UMUR_CACHE, bool $amplop = false): ?array
     {
         $this->alasan = null;
 
@@ -590,8 +690,8 @@ class EkinClient
             return null;
         }
 
-        $url   = rtrim($this->base, '/') . '/api/aksara/' . $jalur . '?' . http_build_query(['tahun' => $tahun] + $param);
-        $kunci = 'ekin_aksara_' . md5($url);
+        $url   = $this->url($jalur, ['tahun' => $tahun] + $param);
+        $kunci = $this->kunciCache($url);
 
         if ($this->cache !== null) {
             $simpan = $this->cache->get($kunci);
@@ -626,20 +726,77 @@ class EkinClient
 
         $json = json_decode((string) $badan, true);
         if (! is_array($json)) {
-            return $this->simpanGagal($kunci, 'format', $jalur, 'bukan JSON');
+            return $this->simpanGagal($kunci, 'format', $jalur, 'bukan JSON', min($umur, self::UMUR_GAGAL));
+        }
+        if ($amplop) {
+            $json = self::bukaAmplop($json);
+            if ($json === null) {
+                return $this->simpanGagal($kunci, 'format', $jalur, 'amplop bukan success', min($umur, self::UMUR_GAGAL));
+            }
         }
 
-        $this->cache?->save($kunci, ['ok' => true, 'data' => $json], self::UMUR_CACHE);
+        $this->cache?->save($kunci, ['ok' => true, 'data' => $json], $umur);
 
         return $json;
     }
 
-    private function simpanGagal(string $kunci, string $alasan, string $jalur, string $detail): ?array
+    /**
+     * POST + JSON ke eKin (tanpa tembolok). Kode 503 kontrak segarkan = eKin tidak dapat membaca AKSARA+.
+     *
+     * @return array<string,mixed>|null isi amplop
+     */
+    private function kirim(string $jalur, array $isi): ?array
+    {
+        $this->alasan = null;
+
+        if (! $this->terkonfigurasi()) {
+            $this->alasan = 'belum_dikonfigurasi';
+
+            return null;
+        }
+
+        try {
+            [$kode, $badan] = ($this->pengambil)($this->url($jalur), [
+                'Authorization' => 'Bearer ' . $this->token,
+                'Accept'        => 'application/json',
+                'Content-Type'  => 'application/json',
+            ], 'POST', (string) json_encode($isi));
+        } catch (Throwable $e) {
+            return $this->gagalKirim('tidak_terjangkau', $jalur, get_class($e));
+        }
+
+        $alasan = match (true) {
+            $kode === 401 || $kode === 403 => 'ditolak',
+            $kode === 400 || $kode === 422 => 'isian_ditolak',
+            $kode === 404 || $kode === 405 => 'belum_tersedia',
+            $kode === 503                  => 'aksara_tak_terjangkau',
+            $kode >= 500                   => 'galat_server',
+            $kode < 200 || $kode >= 300    => 'tidak_terjangkau',
+            default                        => null,
+        };
+        if ($alasan !== null) {
+            return $this->gagalKirim($alasan, $jalur, 'HTTP ' . $kode);
+        }
+        $json = json_decode((string) $badan, true);
+        $json = is_array($json) ? self::bukaAmplop($json) : null;
+
+        return $json ?? $this->gagalKirim('format', $jalur, 'bukan JSON/amplop');
+    }
+
+    private function gagalKirim(string $alasan, string $jalur, string $detail): ?array
+    {
+        $this->alasan = $alasan;
+        log_message('warning', 'EkinClient: POST ' . $jalur . ' gagal (' . $alasan . ', ' . $detail . ')');
+
+        return null;
+    }
+
+    private function simpanGagal(string $kunci, string $alasan, string $jalur, string $detail, int $umur = self::UMUR_GAGAL): ?array
     {
         $this->alasan = $alasan;
         // Token sengaja tidak pernah ikut: hanya jalur kontrak & ringkas galatnya.
         log_message('warning', 'EkinClient: ' . $jalur . ' gagal (' . $alasan . ', ' . $detail . ')');
-        $this->cache?->save($kunci, ['ok' => false, 'alasan' => $alasan], self::UMUR_GAGAL);
+        $this->cache?->save($kunci, ['ok' => false, 'alasan' => $alasan], $umur);
 
         return null;
     }
@@ -655,19 +812,20 @@ class EkinClient
     /**
      * Pengambil bawaan: CURLRequest BARU per panggilan (bukan instans bersama —
      * header Authorization tidak boleh terbawa ke permintaan lain di proses ini).
+     * Pengambil tiruan di uji boleh hanya menerima ($url, $header): argumen metode & badan diabaikan PHP.
      *
      * @return array{0:int, 1:string}
      */
-    private function ambilLewatCurl(string $url, array $header): array
+    private function ambilLewatCurl(string $url, array $header, string $metode = 'GET', ?string $badan = null): array
     {
         $klien = \Config\Services::curlrequest([
-            'timeout'         => self::BATAS_WAKTU,
+            'timeout'         => $metode === 'POST' ? self::BATAS_WAKTU_KIRIM : self::BATAS_WAKTU,
             'connect_timeout' => 3,
             'http_errors'     => false,
             'headers'         => $header,
         ], null, null, false);
 
-        $res = $klien->get($url);
+        $res = $metode === 'POST' ? $klien->post($url, ['body' => (string) $badan]) : $klien->get($url);
 
         return [$res->getStatusCode(), (string) $res->getBody()];
     }

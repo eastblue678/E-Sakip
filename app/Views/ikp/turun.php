@@ -10,16 +10,27 @@
  *
  * Tanpa elemen melayang: tombol Simpan di ujung formulir (bukan bilah lekat).
  *
- * @var array $ikp, $rekap, $pola, $pohon, $perNode, $usul, $periksa, $cakupan, $es2, $proses, $ikpSederhana
+ * Peran EFEKTIF (D3): pemikul angka yang satuan indikatornya berbeda dari satuan IKP dihitung sebagai pendukung —
+ * kartu menulis "Dihitung sebagai pendukung: satuan X ≠ Y" (server untuk yang tersimpan, ikp-turun.js seketika).
+ * Posisi terbagi (D4): pemikul angka posisi mendapat PORSI (bukan target utuh terkunci).
+ * Status eKin (D2): chip per pemilik dari $statusEkin; ringkasan pengiriman sesudah Simpan dari $kirimEkin (D1).
+ *
+ * @var array $ikp, $rekap, $pola, $pohon, $perNode, $usul, $periksa, $cakupan, $es2, $proses, $ikpSederhana, $sinonim
  * @var ?float $target
  * @var ?array $lama   isian terakhir (setelah galat validasi)
+ * @var ?array $statusEkin IkpTurunService::statusEkin() (null = belum ada baris pendelegasian)
+ * @var ?array $kirimEkin  IkpTurunService::ringkasKirim() dari flash sesudah Simpan
  */
 $label    = $pohon['label'];
 $simpul   = $pohon['simpul'];
 $ind      = $pohon['indikator'];
 $polaKode = $pola['pola'];
-$utuh     = $polaKode !== 'hitungan';
+$terbagi  = $polaKode === 'posisi' && ! empty($pola['posisi_terbagi']);
+$utuh     = $polaKode !== 'hitungan' && ! $terbagi;
 $satuan   = (string) ($ikp['satuan_label'] ?? '');
+$efektif  = $periksa['efektif'] ?? [];
+$stIndeks = $statusEkin['indeks'] ?? [];
+$stBaca   = $statusEkin !== null && ! empty($statusEkin['terbaca']);
 $ikpId    = (int) $ikp['id'];
 $ubah     = $bolehUbah;
 $bulanTeks = $polaKode === 'rilis'
@@ -105,20 +116,33 @@ $urut = static function (array $ids) use ($dicentang, $bukaCabang): array {
     return array_merge($pakai, $lain);
 };
 
-$chipPemilik = static function (array $orang): string {
+// $status: [pegawai_id => IkpTurunService::chipStatusEkin()] — chip keadaan di eKin menempel pada pemiliknya.
+$chipPemilik = static function (array $orang, array $status = []): string {
     if ($orang === []) {
         return '<span class="tr-orang kosong"><i class="fas fa-user-slash"></i> Belum ada pemilik — isi di Pemilik Kinerja</span>';
     }
-    $h = '';
-    foreach (array_slice($orang, 0, 4) as $o) {
+    $h    = '';
+    $maks = $status !== [] ? 8 : 4;   // bila ada status, setiap pemilik tampil (chipnya berbeda-beda)
+    foreach (array_slice($orang, 0, $maks) as $o) {
         $nama = \App\Services\PohonPemilikService::namaPendek((string) $o['nama']);
+        $st   = $status[(int) ($o['pegawai_id'] ?? 0)] ?? null;
+        $h .= $st !== null ? '<span class="tr-orang-grup">' : '';
         $h .= '<span class="tr-orang ' . esc($o['peran'], 'attr') . '" title="' . esc($o['nama'] . ($o['jabatan'] !== '' ? ' — ' . $o['jabatan'] : '') . ' · ' . (\App\Services\PohonPemilikService::PERAN[$o['peran']] ?? $o['peran']), 'attr') . '">'
             . '<span class="ava">' . esc(\App\Services\PohonPemilikService::inisial((string) $o['nama'])) . '</span>'
             . '<span class="nm">' . esc(mb_convert_case(mb_strtolower($nama), MB_CASE_TITLE)) . '</span>'
             . '<span class="pr">' . esc(\App\Services\PohonPemilikService::PERAN_SINGKAT[$o['peran']] ?? $o['peran']) . '</span></span>';
+        if ($st !== null) {
+            $h .= '<span class="tr-ekin ' . esc($st['kelas'], 'attr') . '" data-status-ekin="' . esc($st['kode'], 'attr') . '" title="' . esc($st['judul'], 'attr') . '">'
+                . '<i class="fas fa-mobile-screen-button" aria-hidden="true"></i> ' . esc($st['label']) . '</span>';
+            if ($st['beda'] !== null) {
+                $h .= '<span class="tr-ekin beda" data-status-ekin="beda_target" title="' . esc($st['beda']['judul'], 'attr') . '">'
+                    . '<i class="fas fa-not-equal" aria-hidden="true"></i> ' . esc($st['beda']['label']) . '</span>';
+            }
+            $h .= '</span>';
+        }
     }
-    if (count($orang) > 4) {
-        $h .= '<span class="tr-orang lagi">+' . (count($orang) - 4) . '</span>';
+    if (count($orang) > $maks) {
+        $h .= '<span class="tr-orang lagi">+' . (count($orang) - $maks) . '</span>';
     }
 
     return $h;
@@ -133,7 +157,7 @@ $kotakPeriksa = static function (?array $p, string $kunci, string $judul): strin
 };
 
 // Satu simpul beserta cabangnya.
-$render = function (int $id) use (&$render, $urut, $simpul, $ind, $label, $keadaan, $ubah, $utuh, $polaKode, $target, $satuan, $ikpId, $chipPemilik, $kotakPeriksa, $periksa, $perNode, $bukaCabang, $pola, $tahun): string {
+$render = function (int $id) use (&$render, $urut, $simpul, $ind, $label, $keadaan, $ubah, $utuh, $terbagi, $polaKode, $target, $satuan, $ikpId, $chipPemilik, $kotakPeriksa, $periksa, $perNode, $bukaCabang, $pola, $tahun, $efektif, $stIndeks, $stBaca): string {
     $s   = $simpul[$id];
     $st  = $keadaan($id);
     $nm  = 'turun[' . $id . ']';
@@ -141,20 +165,36 @@ $render = function (int $id) use (&$render, $urut, $simpul, $ind, $label, $keada
     $anak = $s['anak'];
     $buka = ! empty($bukaCabang[$id]) || $st['ikut'];
     $row  = $perNode[$id] ?? null;
+    $ef   = $row !== null ? ($efektif[$row['id']] ?? null) : null;
+    $peranTampil = $ef['peran'] ?? ($row['ikp_peran'] ?? null);
+    // Chip status eKin per pemilik: hanya baris PENDELEGASIAN (tautan lama tidak dikirim lewat jalur ini).
+    $stPemilik = [];
+    if ($row !== null && $stBaca && ($row['sumber'] ?? '') === 'delegasi') {
+        foreach ($s['pemilik'] as $o) {
+            $stPemilik[(int) $o['pegawai_id']] = \App\Services\IkpTurunService::chipStatusEkin($stIndeks, (int) $row['id'], (int) $o['pegawai_id'], (int) $tahun);
+        }
+    }
+    // Satuan indikator yang terpilih (untuk label porsi & peran efektif awal).
+    $satPilih = static function (string $pilih, string $teksSatuan) use ($ind): string {
+        return ctype_digit($pilih) && isset($ind[(int) $pilih]) ? (string) $ind[(int) $pilih]['satuan'] : $teksSatuan;
+    };
     ob_start(); ?>
     <li class="tr-simpul" data-node="<?= $id ?>" data-level="<?= esc($lv, 'attr') ?>">
         <div class="tr-kartu<?= $st['ikut'] ? ' ikut' : '' ?><?= $st['sumber'] === 'usulan' ? ' usulan' : '' ?>" id="simpul-<?= $id ?>">
             <div class="tr-kepala">
                 <span class="tr-level lv-<?= esc($lv, 'attr') ?>"><?= esc($label[$lv] ?? $lv) ?></span>
                 <?php if ($row !== null): ?>
-                    <span class="tr-bintang <?= $row['ikp_peran'] === 'pendukung' ? 'pendukung' : '' ?>" title="Tersimpan: <?= $row['ikp_peran'] === 'pendukung' ? 'mendukung IKP ini' : 'memikul angka IKP ini' ?>"><?= $row['ikp_peran'] === 'pendukung' ? '☆ Mendukung IKP' : '★ IKP' ?></span>
+                    <span class="tr-bintang <?= $peranTampil === 'pendukung' ? 'pendukung' : '' ?>" title="Tersimpan: <?= $peranTampil === 'pendukung' ? 'mendukung IKP ini' : 'memikul angka IKP ini' ?><?= ($ef['alasan_peran'] ?? null) !== null ? ' — ' . esc($ef['alasan_peran'], 'attr') : '' ?>"><?= $peranTampil === 'pendukung' ? '☆ Mendukung IKP' : '★ IKP' ?></span>
                     <?php if (($row['sumber'] ?? '') === 'lama'): ?><span class="tr-tanda lama" title="Tautan langsung IKP → indikator sebelum fitur Turunkan IKP. Simpan untuk menjadikannya pendelegasian.">tautan lama</span><?php endif; ?>
                 <?php endif; ?>
                 <?php if ($st['sumber'] === 'usulan'): ?><span class="tr-tanda usul">usulan</span><?php endif; ?>
                 <?php if ($anak !== []): ?><span class="tr-turunan"><?= count($anak) ?> simpul di bawahnya</span><?php endif; ?>
             </div>
             <div class="tr-sasaran"><?= esc($s['nama']) ?></div>
-            <div class="tr-pemilik"><?= $chipPemilik($s['pemilik']) ?></div>
+            <div class="tr-pemilik"><?= $chipPemilik($s['pemilik'], $stPemilik) ?></div>
+            <?php $alasanAwal = $ef['alasan_peran'] ?? null; ?>
+            <div class="tr-efektif" data-efektif role="note" <?= $alasanAwal === null ? 'hidden' : '' ?>><i class="fas fa-scale-unbalanced" aria-hidden="true"></i> <span class="isi"><?= esc((string) $alasanAwal) ?></span>
+                <small>Tidak ikut dijumlah ke angka IKP. Samakan satuan indikatornya dengan satuan IKP (<?= esc($satuan !== '' ? $satuan : '—') ?>) bila memang memikul angka.</small></div>
 
             <?php if ($ubah): ?>
                 <label class="tr-ikut">
@@ -177,7 +217,7 @@ $render = function (int $id) use (&$render, $urut, $simpul, $ind, $label, $keada
                             <select class="form-select form-select-sm" id="ind-<?= $id . $sfx ?>" name="<?= $nm ?>[indikator<?= $sfx ?>]" data-pilih-ind data-no-select2>
                                 <?php foreach ($s['indikator'] as $iid): ?>
                                     <?php $i = $ind[$iid]; $lain = $i['ikp_id'] !== null && $i['ikp_id'] !== $ikpId; ?>
-                                    <option value="<?= (int) $iid ?>" <?= $st['indikator' . $sfx] === (string) $iid ? 'selected' : '' ?> <?= $lain ? 'disabled' : '' ?>>
+                                    <option value="<?= (int) $iid ?>" data-satuan="<?= esc($i['satuan'], 'attr') ?>" <?= $st['indikator' . $sfx] === (string) $iid ? 'selected' : '' ?> <?= $lain ? 'disabled' : '' ?>>
                                         <?= esc(mb_strimwidth($i['nama'], 0, 90, '…')) ?><?= $i['satuan'] !== '' ? ' (' . esc($i['satuan']) . ')' : '' ?><?= $lain ? ' — memikul IKP lain' : '' ?>
                                     </option>
                                 <?php endforeach; ?>
@@ -194,11 +234,15 @@ $render = function (int $id) use (&$render, $urut, $simpul, $ind, $label, $keada
                                     — <?= $polaKode === 'rilis' ? 'nilai resmi tidak dibagi' : 'posisi tidak dibagi' ?> (<?= esc(ikp_pola_ringkas($pola, (int) $tahun)) ?>).</div>
                             <?php else: ?>
                                 <div class="tr-target">
-                                    <label class="small fw-bold" for="tgt-<?= $id . $sfx ?>"><?= $peran === 'angka' ? 'Porsi target ' . (int) $tahun : 'Target proses ' . (int) $tahun ?></label>
-                                    <input type="text" inputmode="decimal" class="form-control form-control-sm isian" id="tgt-<?= $id . $sfx ?>"
-                                           name="<?= $nm ?>[target<?= $sfx ?>]" value="<?= esc($st['target' . $sfx], 'attr') ?>" data-nol="sah"
-                                           <?= $peran === 'angka' ? 'data-porsi' : '' ?> placeholder="0">
+                                    <label class="small fw-bold" for="tgt-<?= $id . $sfx ?>"><?= $peran === 'angka' ? ($terbagi ? 'Porsi posisi akhir ' : 'Porsi target ') . (int) $tahun : 'Target proses ' . (int) $tahun ?></label>
+                                    <span class="tr-target-isi">
+                                        <input type="text" inputmode="decimal" class="form-control form-control-sm isian" id="tgt-<?= $id . $sfx ?>"
+                                               name="<?= $nm ?>[target<?= $sfx ?>]" value="<?= esc($st['target' . $sfx], 'attr') ?>" data-nol="sah"
+                                               <?= $peran === 'angka' ? 'data-porsi' : '' ?> placeholder="0">
+                                        <span class="tr-satuan-porsi" data-satuan-porsi><?= esc($satPilih($st['indikator' . $sfx], $st['satuan' . $sfx])) ?></span>
+                                    </span>
                                     <?php if ($peran === 'angka'): ?><span class="tr-porsi-persen" data-persen></span><?php endif; ?>
+                                    <?php if ($peran === 'angka' && $terbagi): ?><span class="tr-porsi-persen d-block">Target posisi bulanan = target posisi bulanan IKP × porsi ÷ target IKP (posisi, bukan cicilan).</span><?php endif; ?>
                                 </div>
                             <?php endif; ?>
                         </div>
@@ -206,9 +250,9 @@ $render = function (int $id) use (&$render, $urut, $simpul, $ind, $label, $keada
                 </div>
             <?php elseif ($row !== null): ?>
                 <div class="tr-baca">
-                    <b><?= esc(\App\Services\IkpTurunService::PERAN[$row['ikp_peran']]) ?></b> ·
+                    <b><?= esc(\App\Services\IkpTurunService::PERAN[$peranTampil]) ?></b> ·
                     <?= esc($row['indikator']) ?>
-                    · <?= $row['ikp_peran'] === 'angka' ? ($utuh ? 'target utuh ' : 'porsi ') : 'target proses ' ?><b><?= esc(ikp_fmt($row['target'], 4)) ?></b> <?= esc((string) ($row['satuan'] ?? '')) ?>
+                    · <?= $peranTampil === 'angka' ? ($utuh ? 'target utuh ' : 'porsi ') : 'target ' . ($row['ikp_peran'] === 'pendukung' ? 'proses ' : 'sendiri ') ?><b><?= esc(ikp_fmt($row['target'], 4)) ?></b> <?= esc((string) ($row['satuan'] ?? '')) ?>
                 </div>
             <?php endif; ?>
         </div>
@@ -265,6 +309,50 @@ $render = function (int $id) use (&$render, $urut, $simpul, $ind, $label, $keada
     <?php endif; ?>
 </section>
 
+<?php if (is_array($kirimEkin ?? null)): ?>
+    <div class="ikp-info <?= $kirimEkin['jenis'] === 'ok' ? '' : 'kuning' ?> tr-kirim" role="status" data-kirim-ekin="<?= esc($kirimEkin['jenis'], 'attr') ?>">
+        <i class="fas fa-paper-plane"></i>
+        <div>
+            <p><strong>Pengiriman ke eKin.</strong> <?= esc($kirimEkin['pesan']) ?></p>
+            <?php if (($kirimEkin['rincian'] ?? []) !== []): ?>
+                <ul class="small">
+                    <?php foreach ($kirimEkin['rincian'] as $r): ?><li><?= esc($r) ?></li><?php endforeach; ?>
+                </ul>
+            <?php endif; ?>
+        </div>
+    </div>
+<?php endif; ?>
+
+<?php if ($statusEkin !== null): ?>
+    <?php
+    $nStatus = [];
+    foreach ($baris as $b) {
+        if (($b['sumber'] ?? '') !== 'delegasi' || ! isset($simpul[$b['node_id']])) {
+            continue;
+        }
+        foreach ($simpul[$b['node_id']]['pemilik'] as $o) {
+            $k = \App\Services\IkpTurunService::chipStatusEkin($stIndeks, (int) $b['id'], (int) $o['pegawai_id'], (int) $tahun);
+            $nStatus[$k['kode']] = ($nStatus[$k['kode']] ?? 0) + 1;
+        }
+    }
+    ?>
+    <div class="tr-status-ekin" data-status-ringkas>
+        <span class="lbl"><i class="fas fa-mobile-screen-button me-1"></i>Di eKin:</span>
+        <?php if (! $stBaca): ?>
+            <span class="tr-ekin abu" title="<?= esc('Status dibaca ulang paling lama 1 menit lagi. Pendelegasian tetap sampai ke eKin lewat pemeriksaan eKin sendiri.', 'attr') ?>">Status belum dapat dibaca — <?= esc(rtrim((string) ($statusEkin['pesan'] ?? 'Data eKin belum tersedia.'), '.')) ?></span>
+        <?php elseif ($nStatus === []): ?>
+            <span class="tr-ekin abu">Belum ada pemilik simpul yang bisa menerima.</span>
+        <?php else: ?>
+            <?php foreach (\App\Services\IkpTurunService::STATUS_EKIN as $k => $m): ?>
+                <?php if (! empty($nStatus[$k])): ?>
+                    <span class="tr-ekin <?= esc($m['kelas'], 'attr') ?>"><?= (int) $nStatus[$k] ?> × <?= esc(strtr($m['label'], ['{tahun}' => (string) (int) $tahun])) ?></span>
+                <?php endif; ?>
+            <?php endforeach; ?>
+            <span class="small text-secondary">(per pemilik; diperbarui paling lama 1 menit)</span>
+        <?php endif; ?>
+    </div>
+<?php endif; ?>
+
 <?php if ($minta_usul): ?>
     <div class="ikp-info kuning" role="status" data-banner="usulan">
         <i class="fas fa-wand-magic-sparkles"></i>
@@ -290,7 +378,8 @@ $render = function (int $id) use (&$render, $urut, $simpul, $ind, $label, $keada
 <?php else: ?>
     <form method="post" action="<?= esc($u('ikp/turun/' . $ikpId . '/save'), 'attr') ?>" id="form-turun"
           data-pola="<?= esc($polaKode, 'attr') ?>" data-target="<?= esc($target === null ? '' : (string) $target, 'attr') ?>"
-          data-satuan="<?= esc($satuan, 'attr') ?>" data-boleh="<?= $ubah ? 1 : 0 ?>">
+          data-satuan="<?= esc($satuan, 'attr') ?>" data-boleh="<?= $ubah ? 1 : 0 ?>" data-terbagi="<?= $terbagi ? 1 : 0 ?>"
+          data-sinonim="<?= esc((string) json_encode($sinonim, JSON_UNESCAPED_UNICODE), 'attr') ?>">
         <?= csrf_field() ?>
         <input type="hidden" name="tahun" value="<?= (int) $tahun ?>">
 
