@@ -623,7 +623,13 @@ class IkpTurunService
      *                 IKP (Eselon III dulu; bila belum melapor, turun satu jenjang).
      * Hanya bulan ukur. `peran` baris = peran EFEKTIF (bersatuan lain = pendukung, tidak dijumlah).
      *
-     * @param list<array{id:int, induk:?int, peran:string, level:string}> $baris
+     * `pegawai` (dan `baris`) = hanya PEMEGANG BAGIAN: pemikul terbawah, jenjang tengah yang menyisakan porsi untuk
+     * dirinya (`target` − Σ porsi anak > 0), atau yang melaporkan bagian sendiri ≠ 0. MENGAPA (temuan uji 28-09-2026,
+     * C-12): IKP pengikut Diskominfo punya 4 bagian (IG, FB, TikTok, YouTube) tetapi keterangan saran menulis
+     * "6 pemegang bagian" — Es III & Es IV (porsi habis dibagi, bagian sendiri 0) ikut terhitung orang. Nilainya
+     * tetap benar (bagian 0 menambah 0); yang diperbaiki hanya siapa yang disebut memegang bagian.
+     *
+     * @param list<array{id:int, induk:?int, peran:string, level:string, target?:?float}> $baris
      * @param array<int, array<int, list<array{pegawai_id:int, realisasi:float|int|null, pada?:?string}>>> $lapor
      *        [id baris => [bulan => [laporan per pegawai]]]
      *
@@ -636,9 +642,26 @@ class IkpTurunService
             return [];
         }
         $punyaAnakAngka = [];
+        $porsiAnak      = [];   // [id induk => Σ porsi anak angka] (null = ada anak tanpa porsi)
         foreach ($angka as $b) {
             if (($b['induk'] ?? null) !== null) {
-                $punyaAnakAngka[(int) $b['induk']] = true;
+                $i = (int) $b['induk'];
+                $punyaAnakAngka[$i] = true;
+                if (! array_key_exists($i, $porsiAnak)) {
+                    $porsiAnak[$i] = 0.0;
+                }
+                if ($porsiAnak[$i] !== null) {
+                    $porsiAnak[$i] = ($b['target'] ?? null) === null ? null : $porsiAnak[$i] + (float) $b['target'];
+                }
+            }
+        }
+        // Bagian SENDIRI jenjang tengah (porsi − Σ porsi anak angka) > 0 = ia juga memegang bagian (hanya bila porsi
+        // diketahui; `target` baris opsional).
+        $bagianSendiri = [];
+        foreach ($angka as $b) {
+            $id = (int) $b['id'];
+            if (! empty($punyaAnakAngka[$id]) && ($b['target'] ?? null) !== null && $porsiAnak[$id] !== null) {
+                $bagianSendiri[$id] = (float) $b['target'] - $porsiAnak[$id] > 1e-9;
             }
         }
         $urutLevel = array_flip(self::LEVEL);
@@ -674,11 +697,21 @@ class IkpTurunService
                     if ($isi === []) {
                         continue;
                     }
-                    $ada   = true;
-                    $ids[] = (int) $b['id'];
+                    $pegBaris = [];
                     foreach ($isi as $l) {
                         $jumlah += (float) ($perBaris ? ($l['baris'] ?? 0) : $l['realisasi']);
-                        $peg[]   = (int) $l['pegawai_id'];
+                        // Yang disebut "N pemegang bagian/pemikul" hanya yang MEMEGANG bagian: pemikul terbawah, baris
+                        // yang menyisakan porsi untuk dirinya, atau yang melaporkan bagian sendiri ≠ 0. Jenjang tengah
+                        // yang porsinya habis dibagi (bagian sendiri 0) tetap dijumlah (0) tetapi tidak dihitung orang.
+                        if (! $perBaris || empty($punyaAnakAngka[(int) $b['id']]) || ! empty($bagianSendiri[(int) $b['id']])
+                            || abs((float) ($l['baris'] ?? 0)) > 1e-9) {
+                            $pegBaris[] = (int) $l['pegawai_id'];
+                        }
+                    }
+                    if ($pegBaris !== []) {
+                        $ada   = true;
+                        $ids[] = (int) $b['id'];
+                        array_push($peg, ...$pegBaris);
                     }
                 }
                 if ($ada) {
@@ -1420,14 +1453,9 @@ class IkpTurunService
                     } elseif ($ada['dibuat_oleh'] === null) {
                         $isi['dibuat_oleh'] = $userId;
                     }
-                    $berubah = false;
-                    foreach ($isi as $k => $v) {
-                        $a = $ada[$k] ?? null;
-                        if ($k === 'target' ? ($a === null || abs((float) $a - (float) $v) > 1e-9) : (string) $a !== (string) $v) {
-                            $berubah = true;
-                        }
-                    }
-                    if ($berubah) {
+                    // Hanya perubahan ISI (porsi, peran, metode, IKP) yang menulis baris & dihitung "diubah"; kolom
+                    // jejak (dibuat_oleh) ikut tertulis bersama perubahan isi saja — lihat kolomBerubah().
+                    if (self::kolomBerubah($ada, $isi) !== []) {
                         $isi['updated_at'] = $kini;
                         $this->db->table('cascading_indikator_target')->where('id', (int) $ada['id'])->update($isi);
                         $hitung['ubah']++;
@@ -1482,6 +1510,42 @@ class IkpTurunService
         }
 
         return $out;
+    }
+
+    /** Kolom JEJAK baris pendelegasian (siapa pembuatnya, keadaan sebelum pendelegasian) — bukan isi pendelegasian. */
+    public const KOLOM_JEJAK = ['dibuat_oleh', 'sebelum_delegasi'];
+
+    /**
+     * Kolom ISI yang berbeda antara baris tersimpan dan isian Simpan (murni, diuji) — dasar menulis baris itu dan
+     * hitungan "n diubah" pada pesan "Pendelegasian tersimpan: …".
+     *
+     * MENGAPA kolom jejak tidak dihitung (temuan uji 28-09-2026, B-3): baris buatan tahap simulasi (03b_ikp_turun.php)
+     * sengaja ber-dibuat_oleh NULL (= simulasi). Simpan pertama oleh Admin OPD dulu mengisinya lalu menghitung SETIAP
+     * baris itu "diubah" — mengubah 2 porsi tertulis "6 diubah", padahal isi 4 baris lain tidak berubah. Kini
+     * dibuat_oleh hanya ikut tertulis bila isinya memang berubah (Admin yang mengubah menjadi pembuatnya); baris yang
+     * tidak disentuh tetap bertanda simulasi. Baris yang baru diambil alih (jejak sebelum_delegasi) selalu berubah
+     * isinya (ikp_id/sumber), jadi jejaknya tetap tertulis. Target dibandingkan sebagai angka (DECIMAL "22000.0000"
+     * = 22000), kolom lain sebagai teks.
+     *
+     * @param array<string, mixed> $ada baris cascading_indikator_target tersimpan
+     * @param array<string, mixed> $isi isian yang akan ditulis
+     *
+     * @return list<string> nama kolom isi yang berubah ([] = tidak ada perubahan)
+     */
+    public static function kolomBerubah(array $ada, array $isi): array
+    {
+        $beda = [];
+        foreach ($isi as $k => $v) {
+            if (in_array($k, self::KOLOM_JEJAK, true)) {
+                continue;
+            }
+            $a = $ada[$k] ?? null;
+            if ($k === 'target' ? ($a === null || abs((float) $a - (float) $v) > 1e-9) : (string) $a !== (string) $v) {
+                $beda[] = (string) $k;
+            }
+        }
+
+        return $beda;
     }
 
     /**
@@ -1595,7 +1659,8 @@ class IkpTurunService
         foreach ($rekap as $r) {
             $id    = (int) $r['ikp']['id'];
             // Peran EFEKTIF: baris bersatuan lain dihitung sebagai pendukung — laporannya tidak ikut dijumlah ke IKP.
-            $baris = array_map(static fn ($b) => ['id' => $b['id'], 'induk' => $b['ikp_induk_id'], 'peran' => $b['peran'], 'level' => $b['level']],
+            $baris = array_map(static fn ($b) => ['id' => $b['id'], 'induk' => $b['ikp_induk_id'], 'peran' => $b['peran'], 'level' => $b['level'],
+                'target' => $b['target']],
                 self::efektifkan(array_values(array_filter($this->baris($id, $tahun), static fn ($b) => ($b['sumber'] ?? '') === 'delegasi')),
                     (string) ($r['ikp']['satuan_label'] ?? '')));
             if ($baris === []) {
@@ -1756,43 +1821,73 @@ class IkpTurunService
             $cari = $r['ikp_induk_id'] !== null ? (int) $r['ikp_induk_id'] : null;
             $jaga = 0;
             while ($cari !== null && isset($byId[$cari]) && $jaga++ < 10) {
-                $p  = $byId[$cari];
-                $ef = self::peranEfektif((string) $p['ikp_peran'], $p['satuan'] ?? null, $satIkp[(int) $p['ikp_id']] ?? null, $peta);
-                $list[] = [
-                    'delegasi_id'         => (int) $p['id'],
-                    'node_id'             => (int) $p['node_id'],
-                    'level'               => (string) $p['level'],
-                    'level_label'         => $label[(int) $p['opd_id']][$p['level']] ?? (string) $p['level'],
-                    'sasaran'             => (string) $p['nama_sasaran'],
-                    'indikator_id'        => (int) $p['cascading_indikator_id'],
-                    'indikator'           => (string) $p['indikator'],
-                    'satuan'              => ($p['satuan'] ?? '') !== '' ? (string) $p['satuan'] : null,
-                    'peran'               => $ef['peran'],
-                    'peran_tersimpan'     => $ef['peran_tersimpan'],
-                    'target'              => $p['target'] !== null ? (float) $p['target'] : null,
-                    'pemilik_pegawai_ids' => $pemilik[(int) $p['node_id']] ?? [],
-                ];
-                $cari = $p['ikp_induk_id'] !== null ? (int) $p['ikp_induk_id'] : null;
+                $p      = $byId[$cari];
+                $list[] = self::butirRantai($p, $satIkp[(int) $p['ikp_id']] ?? null, $label, $pemilik[(int) $p['node_id']] ?? [], $peta);
+                $cari   = $p['ikp_induk_id'] !== null ? (int) $p['ikp_induk_id'] : null;
             }
             $opd    = $opdIkp[(int) $r['ikp_id']] ?? (int) $r['opd_id'];
-            $list[] = [
-                'delegasi_id'         => null,
-                'node_id'             => null,
-                'level'               => 'es2',
-                'level_label'         => $label[$opd]['es2'] ?? 'Eselon II',
-                'sasaran'             => null,
-                'indikator_id'        => null,
-                'indikator'           => null,
-                'satuan'              => null,
-                'peran'               => 'pemilik_ikp',
-                'peran_tersimpan'     => 'pemilik_ikp',
-                'target'              => null,
-                'pemilik_pegawai_ids' => $kepala[$opd] ?? [],
-            ];
+            $list[] = self::butirRantaiPemilikIkp($label[$opd]['es2'] ?? 'Eselon II', $kepala[$opd] ?? []);
             $out[$id] = $list;
         }
 
         return $out;
+    }
+
+    /**
+     * Satu butir rantai_induk (baris pendelegasian induk) untuk API eKin (murni, diuji).
+     *
+     * Peran EFEKTIF (D3) dikirim lengkap seperti butir delegasi[]: `peran`, `peran_tersimpan`, `alasan_peran`,
+     * `alasan_peran_kode`. MENGAPA alasannya ikut (temuan uji 28-09-2026, D-5): induk bersatuan lain (mis. baris #328
+     * "Usulan" di bawah IKP ber-satuan "Dokumen") terkirim `peran: pendukung` + `peran_tersimpan: angka` TANPA
+     * alasan — eKin/pembaca API melihat peran yang "berubah sendiri" tanpa penjelasan, padahal kontrak D3 menjanjikan
+     * alasan di setiap tempat peran efektif berbeda dari peran tersimpan.
+     *
+     * @param array $p      baris induk (id, ikp_peran, satuan, node_id, level, opd_id, nama_sasaran, cascading_indikator_id,
+     *                      indikator, target)
+     * @param array $label  [opd_id => [level => label jenjang]]
+     * @param int[] $pemilikIds pemilik simpul baris induk
+     */
+    public static function butirRantai(array $p, ?string $satuanIkp, array $label, array $pemilikIds, ?array $peta = null): array
+    {
+        $ef = self::peranEfektif((string) ($p['ikp_peran'] ?? 'angka'), $p['satuan'] ?? null, $satuanIkp, $peta);
+
+        return [
+            'delegasi_id'         => (int) $p['id'],
+            'node_id'             => (int) $p['node_id'],
+            'level'               => (string) $p['level'],
+            'level_label'         => $label[(int) $p['opd_id']][$p['level']] ?? (string) $p['level'],
+            'sasaran'             => (string) $p['nama_sasaran'],
+            'indikator_id'        => (int) $p['cascading_indikator_id'],
+            'indikator'           => (string) $p['indikator'],
+            'satuan'              => ($p['satuan'] ?? '') !== '' ? (string) $p['satuan'] : null,
+            'peran'               => $ef['peran'],
+            'peran_tersimpan'     => $ef['peran_tersimpan'],
+            'alasan_peran'        => $ef['alasan_peran'],
+            'alasan_peran_kode'   => $ef['alasan_peran_kode'],
+            'target'              => $p['target'] !== null ? (float) $p['target'] : null,
+            'pemilik_pegawai_ids' => $pemilikIds,
+        ];
+    }
+
+    /** Butir puncak rantai_induk: Kepala OPD sebagai pemilik IKP (kunci sama dengan butirRantai, isi null). */
+    public static function butirRantaiPemilikIkp(string $levelLabel, array $kepalaIds): array
+    {
+        return [
+            'delegasi_id'         => null,
+            'node_id'             => null,
+            'level'               => 'es2',
+            'level_label'         => $levelLabel,
+            'sasaran'             => null,
+            'indikator_id'        => null,
+            'indikator'           => null,
+            'satuan'              => null,
+            'peran'               => 'pemilik_ikp',
+            'peran_tersimpan'     => 'pemilik_ikp',
+            'alasan_peran'        => null,
+            'alasan_peran_kode'   => null,
+            'target'              => null,
+            'pemilik_pegawai_ids' => $kepalaIds,
+        ];
     }
 
     // =================================================================

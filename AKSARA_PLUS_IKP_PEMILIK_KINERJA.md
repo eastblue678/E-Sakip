@@ -703,6 +703,39 @@ keadaan pra-D5 dan kini DILEWATI dengan pesan bila baris 363–365 tidak ada (sa
 6. **Migrasi AKSARA+ `posisi_terbagi`** harus terpasang di `aksara_demo` sebelum 02d (jalankan.sh tidak menjalankan migrasi
    AKSARA+; 02d berhenti dengan pesan jelas bila kolomnya belum ada).
 
+## Perbaikan sesudah uji gabungan AKSARA+ ↔ eKin (28-09-2026)
+
+Uji peramban gabungan `/root/demo-kinerja/uji/turunan/cek_turunan.mjs` (eKin :8195 + AKSARA+ :8196, keadaan sesudah D5)
+menemukan tiga cacat kecil di AKSARA+. Ketiganya soal pesan dan kunci API yang kurang; angka dan data tidak pernah salah.
+
+| Temuan | Sebab | Perbaikan | MENGAPA |
+|---|---|---|---|
+| **B-3** Simpan pertama sesudah pipa D5 (2 porsi diubah) menulis "Pendelegasian tersimpan: 0 simpul baru, **6** diubah" | Baris pipa sengaja ber-`dibuat_oleh` NULL (= simulasi). `simpan()` mengisinya dengan id Admin dan menghitung pengisian itu sebagai perubahan | `IkpTurunService::kolomBerubah()` (murni) hanya membandingkan kolom ISI (target, target_teks, metode, ikp_id, ikp_peran, sumber). Kolom JEJAK (`KOLOM_JEJAK` = dibuat_oleh, sebelum_delegasi) tidak dihitung dan hanya ikut tertulis bila isinya berubah | Pesan Simpan harus menyebut apa yang Admin ubah. Baris yang tidak disentuh tetap bertanda simulasi (NULL) dan tidak diakui sebagai milik Admin yang kebetulan menyimpan. Admin yang mengubah porsinya menjadi pembuatnya. Baris yang baru diambil alih (jejak `sebelum_delegasi`) selalu berubah isinya (ikp_id/sumber), jadi jejaknya tetap tertulis. |
+| **C-12** Judul saran "Dari eKin" September: "jumlah posisi **6** pemegang bagian", padahal bagiannya 4 (IG, FB, TikTok, YouTube) | `saranRealisasi()` kontrak baru menjumlah `realisasi_baris` SEMUA pemikul angka (benar), tetapi juga mencatat SEMUA pelapornya sebagai orang. Es III & Es IV ikut terhitung, padahal porsinya habis dibagi (bagian sendiri 0) | `pegawai`/`baris` hasil saran kini hanya berisi **pemegang bagian**: pemikul terbawah, jenjang tengah yang menyisakan porsi untuk dirinya (`target` − Σ porsi anak angka > 0; `saranUntukOpd()` kini mengirim `target`), atau yang melaporkan bagian sendiri ≠ 0. Jumlahnya tidak berubah (48.250). Bila hanya jenjang tengah berbagian 0 yang melapor, tidak ada saran | Admin OPD membaca "N pemegang bagian" sebagai "sudah berapa akun yang melapor". Bila Kabid & Katim yang tidak memegang akun ikut disebut, hitungan itu tidak cocok dengan pohon. Aturan yang sama berlaku untuk hitungan ("jumlah hasil N pemikul"). |
+| **D-5** API `api/ekin/pegawai/{id}/kinerja`: butir `rantai_induk` yang turun jadi pendukung karena satuan (mis. #328, Usulan ≠ Dokumen) membawa `peran: pendukung` + `peran_tersimpan: angka` **tanpa** `alasan_peran` | `rantaiInduk()` menyusun butirnya sendiri dan tidak memuat dua kunci yang sudah ada di `delegasi[]` | Butir rantai disusun oleh `butirRantai()` / `butirRantaiPemilikIkp()` (murni) dengan kunci yang sama seperti `delegasi[]`: `peran`, `peran_tersimpan`, `alasan_peran`, `alasan_peran_kode` (puncak Kepala OPD = null). `API_DOCUMENTATION.md` diperbarui | Kontrak D3: di mana pun peran efektif berbeda dari peran tersimpan, alasannya ikut. Tanpa alasan, pembaca API melihat peran yang "berubah sendiri". eKin tidak memakai kunci ini untuk sidik baris, jadi kunci baru tidak membuat penugasan terkirim ulang. |
+
+**Uji.** Ada tiga unit baru: `IkpTurunTest::testKolomJejakTidakDihitungDiubah`,
+`IkpTurunSatuanTerbagiTest::testButirRantaiIndukMembawaAlasanPeranEfektif`, dan
+`IkpTurunSatuanTerbagiTest::testSaranPosisiTerbagiMenyebutPemegangBagianSaja`. Ketiganya gagal pada kode sebelum perbaikan;
+yang terakhir gagal persis dengan "6 ≠ 4". Uji peramban `cek_turunan.mjs` lulus 169/169 (sebelumnya 166 lulus, 3 gagal) dan `d5_cek_pengikut.mjs` (baca saja)
+105/105. `aksara_uji`/`ekin_uji` dipulihkan, dan CHECKSUM TABLE-nya sama dengan sebelum uji. Seluruh unit AKSARA+: 185 tes,
+hanya 2 gagal lama `CapaianTotalTest`. eKin tidak berubah (352 tes OK).
+
+### Terbuka untuk dibahas (sesudah uji gabungan)
+
+1. **Porsi yang diubah sesudah pegawai MENERIMA tidak sampai ke pegawai.** Target IKI di eKin tetap angka lama dan pegawai
+   tidak mendapat kabar. Hanya AKSARA+ yang menandai "Target di eKin berbeda". Untuk kasus *ubah porsi*, ini sama dengan
+   keluhan awal pengguna ("tersimpan di AKSARA, tapi di eKin ybs ga reflected"). Judul chip itu masih menulis "eKin
+   menyelaraskannya lewat penugasan baru", padahal eKin belum melakukannya. Belum diubah karena perlu keputusan: penugasan
+   "perubahan target" untuk diterima, atau ubah langsung bila SKP masih draf/dikembalikan.
+2. **SKP draf lewat Simpan AKSARA+.** RHK yang masuk karena Simpan di AKSARA+ tidak memunculkan kabar "baru saja
+   dimasukkan" di eKin. Kabar itu hanya muncul bila eKin sendiri yang memasukkannya saat pegawai membuka halaman.
+3. **Kepala halaman AKSARA+ lekat & tombol "ke atas" melayang** (`admin_chrome.php`, di luar area konten) tampak di 390 px.
+   Keduanya sudah ada sebelum pekerjaan ini, tetapi bertentangan dengan pedoman "tanpa elemen melayang".
+4. **`dibuat_oleh` baris yang tidak disentuh tetap NULL** sesudah Admin menyimpan. Bila "pembuat" seharusnya berarti "Admin
+   terakhir yang menyetujui seluruh pohon", pencatatan itu perlu kolom tersendiri (mis. `disimpan_oleh`) supaya jejak
+   pembuat tidak tertimpa.
+
 ## Keputusan desain penting
 
 - IKP melekat ke **OPD × periode RPJMD** (bukan per dokumen PK). Hapus IKP = *soft delete* (`dihapus_pada`) karena aplikasi

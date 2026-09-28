@@ -396,6 +396,26 @@ final class IkpTurunTest extends CIUnitTestCase
         $this->assertSame([2, 3], array_column(T::barisDicabut($lama, [], [270, 271]), 'id'));
     }
 
+    public function testKolomJejakTidakDihitungDiubah(): void
+    {
+        // Temuan uji 28-09-2026 (B-3): baris tahap simulasi ber-dibuat_oleh NULL; Simpan pertama mengubah 2 porsi
+        // tetapi pesan menulis "6 diubah" karena pengisian dibuat_oleh ikut dihitung.
+        $ada = ['id' => 375, 'target' => '15000.0000', 'target_teks' => '15.000', 'metode' => 'trend_naik', 'ikp_id' => '476',
+            'ikp_peran' => 'angka', 'sumber' => 'delegasi', 'dibuat_oleh' => null, 'sebelum_delegasi' => null];
+        $isi = ['target' => 15000.0, 'target_teks' => '15.000', 'metode' => 'trend_naik', 'ikp_id' => 476,
+            'ikp_peran' => 'angka', 'sumber' => 'delegasi'];
+        $this->assertSame([], T::kolomBerubah($ada, $isi));
+        $this->assertSame([], T::kolomBerubah($ada, $isi + ['dibuat_oleh' => 11]));   // jejak saja: bukan perubahan
+
+        $ubah = ['target' => 14500.0, 'target_teks' => '14.500'] + $isi;
+        $this->assertSame(['target', 'target_teks'], T::kolomBerubah($ada, $ubah + ['dibuat_oleh' => 11]));
+        $this->assertSame(['ikp_peran'], T::kolomBerubah($ada, ['ikp_peran' => 'pendukung'] + $isi));
+        // Mengambil alih tautan lama: sumber berubah → tertulis (jejak sebelum_delegasi ikut).
+        $this->assertSame(['sumber'], T::kolomBerubah(['sumber' => 'lama'] + $ada, $isi + ['sebelum_delegasi' => '{}']));
+        // Target tersimpan kosong selalu dianggap berubah.
+        $this->assertSame(['target'], T::kolomBerubah(['target' => null] + $ada, $isi));
+    }
+
     public function testMengambilAlihTautanLamaMenyimpanJejak(): void
     {
         $lama = ['ikp_id' => 314, 'sumber' => 'lama', 'target' => '120.0000', 'target_teks' => '120', 'metode' => 'sum', 'sebelum_delegasi' => null];

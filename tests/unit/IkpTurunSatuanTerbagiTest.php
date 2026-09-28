@@ -130,6 +130,34 @@ final class IkpTurunSatuanTerbagiTest extends CIUnitTestCase
         $this->assertSame(5.0, $out[0]['target']);
     }
 
+    public function testButirRantaiIndukMembawaAlasanPeranEfektif(): void
+    {
+        // Temuan uji 28-09-2026 (D-5): baris induk #328 "Usulan" di bawah IKP Kecamatan ber-satuan "Dokumen" terkirim
+        // peran pendukung + peran_tersimpan angka TANPA alasan_peran di rantai_induk (delegasi[] sudah membawanya).
+        $p = ['id' => 328, 'ikp_peran' => 'angka', 'satuan' => 'Usulan', 'node_id' => 1989, 'level' => 'es3', 'opd_id' => 7,
+            'nama_sasaran' => 'Sasaran simpul', 'cascading_indikator_id' => 2500, 'indikator' => 'Jumlah usulan', 'target' => '12.0000'];
+        $b = T::butirRantai($p, 'Dokumen', [7 => ['es3' => 'Camat']], [925]);
+        $this->assertSame('pendukung', $b['peran']);
+        $this->assertSame('angka', $b['peran_tersimpan']);
+        $this->assertSame('satuan_beda', $b['alasan_peran_kode']);
+        $this->assertSame('Dihitung sebagai pendukung: satuan Usulan ≠ Dokumen.', $b['alasan_peran']);
+        $this->assertSame('Camat', $b['level_label']);
+        $this->assertSame(12.0, $b['target']);
+        $this->assertSame([925], $b['pemilik_pegawai_ids']);
+
+        // Satuan sama: pemikul angka, tanpa alasan (kunci tetap ada, null).
+        $a = T::butirRantai(['satuan' => 'dokumen'] + $p, 'Dokumen', [], []);
+        $this->assertSame('angka', $a['peran']);
+        $this->assertArrayHasKey('alasan_peran', $a);
+        $this->assertNull($a['alasan_peran']);
+
+        // Puncak (Kepala OPD) berkunci sama dengan butir induk — konsumen tidak perlu memeriksa kunci.
+        $k = T::butirRantaiPemilikIkp('Eselon II', [11]);
+        $this->assertSame(array_keys($b), array_keys($k));
+        $this->assertSame('pemilik_ikp', $k['peran']);
+        $this->assertNull($k['alasan_peran']);
+    }
+
     /* ================================ D4 — posisi terbagi ================================ */
 
     public function testIkpPolaMengenalPosisiTerbagiHanyaUntukPosisi(): void
@@ -208,6 +236,56 @@ final class IkpTurunSatuanTerbagiTest extends CIUnitTestCase
 
         unset($lapor[4][8]);   // FB belum melapor Agustus
         $this->assertFalse(T::saranRealisasi($pola, $baris, $lapor)[8]['lengkap']);
+    }
+
+    public function testSaranPosisiTerbagiMenyebutPemegangBagianSaja(): void
+    {
+        // Temuan uji 28-09-2026 (C-12): IKP pengikut Diskominfo — Es III (50.000) → Es IV (50.000) → 4 akun.
+        // Jenjang tengah melapor bagian sendiri 0; keterangan dulu menulis "6 pemegang bagian", seharusnya 4.
+        $pola  = $this->pola('posisi', range(1, 12), 'trend_naik', true);
+        $baris = [
+            ['id' => 372, 'induk' => null, 'peran' => 'angka', 'level' => 'es3', 'target' => 50000.0],
+            ['id' => 373, 'induk' => 372, 'peran' => 'angka', 'level' => 'es4', 'target' => 50000.0],
+            ['id' => 374, 'induk' => 373, 'peran' => 'angka', 'level' => 'pelaksana', 'target' => 22000.0],   // IG
+            ['id' => 375, 'induk' => 373, 'peran' => 'angka', 'level' => 'pelaksana', 'target' => 15000.0],   // FB
+            ['id' => 376, 'induk' => 373, 'peran' => 'angka', 'level' => 'pelaksana', 'target' => 9000.0],    // TikTok
+            ['id' => 377, 'induk' => 373, 'peran' => 'angka', 'level' => 'pelaksana', 'target' => 4000.0],    // YouTube
+        ];
+        $pos   = [374 => 21350.0, 375 => 14200.0, 376 => 8800.0, 377 => 3900.0];
+        $lapor = [
+            372 => [9 => [['pegawai_id' => 1012, 'realisasi' => 48250.0, 'baris' => 0.0]]],
+            373 => [9 => [['pegawai_id' => 304, 'realisasi' => 48250.0, 'baris' => 0.0]]],
+        ];
+        foreach ($pos as $id => $v) {
+            $lapor[$id] = [9 => [['pegawai_id' => $id * 10, 'realisasi' => $v, 'baris' => $v]]];
+        }
+        $s = T::saranRealisasi($pola, $baris, $lapor)[9];
+        $this->assertSame(48250.0, $s['nilai']);              // nilai tidak berubah
+        $this->assertCount(4, $s['pegawai']);                  // 4 pemegang bagian, bukan 6
+        $this->assertNotContains(1012, $s['pegawai']);
+        $this->assertNotContains(304, $s['pegawai']);
+        $this->assertSame([374, 375, 376, 377], $s['baris']);
+        $this->assertTrue($s['lengkap']);
+
+        // Es IV menyisakan bagian sendiri (porsi 50.000, anak Σ 46.000): ia juga pemegang bagian meski bulan ini 0.
+        $awal = $baris;
+        $baris[5]['target'] = 0.0;
+        $baris[5]['peran']  = 'pendukung';   // YouTube keluar dari aritmetika → Σ anak angka 46.000
+        $s2 = T::saranRealisasi($pola, $baris, $lapor)[9];
+        $this->assertContains(304, $s2['pegawai']);
+        $this->assertNotContains(1012, $s2['pegawai']);
+        $this->assertSame(44350.0, $s2['nilai']);
+
+        // Tanpa `target` (pemanggil lama): jenjang tengah yang melapor bagian sendiri ≠ 0 tetap disebut.
+        $tanpa = array_map(static fn ($b) => array_diff_key($b, ['target' => 1]), $baris);
+        $lapor[373][9][0]['baris'] = 500.0;
+        $s3 = T::saranRealisasi($pola, $tanpa, $lapor)[9];
+        $this->assertContains(304, $s3['pegawai']);
+        $this->assertNotContains(1012, $s3['pegawai']);
+
+        // Hanya jenjang tengah berbagian 0 yang melapor: belum ada bagian yang melapor → tanpa saran.
+        $cuma = [372 => $lapor[372], 373 => [9 => [['pegawai_id' => 304, 'realisasi' => 0.0, 'baris' => 0.0]]]];
+        $this->assertSame([], T::saranRealisasi($pola, $awal, $cuma));
     }
 
     public function testUsulanPosisiTerbagiSepertiHitungan(): void
