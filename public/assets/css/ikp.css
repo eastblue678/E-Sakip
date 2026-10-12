@@ -341,3 +341,12 @@ main .ikp-grid tbody tr > td.tw, main .ikp-grid tbody tr:hover > td.tw { backgro
 .saran-ekin button { border: 1px solid #b6cff0; background: #eef5fd; color: #1864ab; border-radius: 6px; padding: 0 5px; font-size: .64rem; font-weight: 700; line-height: 1.5; }
 .saran-ekin button:hover { background: #dbeafb; }
 .saran-ekin.sama { color: #6b7a70; }
+
+/* Jalur darurat — IKP lewat penugasan tambahan di eKin (eKin README §25). Mengalir bersama isi (tanpa elemen melayang). */
+.tr-lencana.darurat { background: #fff0e6; color: #9a3d00; }
+.tr-darurat { background: #fff8f1; border: 1px dashed #f0b58a; border-radius: 10px; padding: 8px 10px; font-size: .78rem; color: #4a3b2e; min-width: 0; }
+.tr-darurat-judul { font-weight: 800; color: #9a3d00; margin-bottom: 4px; }
+.tr-darurat ul { list-style: none; padding: 0; margin: 0 0 4px; display: flex; flex-direction: column; gap: 3px; }
+.tr-darurat li { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: baseline; overflow-wrap: anywhere; }
+.tr-darurat .alasan { font-style: italic; color: #6b5a4a; overflow-wrap: anywhere; }
+.tr-darurat .kosong { color: #6b7a70; }

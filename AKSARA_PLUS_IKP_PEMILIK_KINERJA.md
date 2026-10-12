@@ -23,6 +23,7 @@ menilai kinerja Kepala OPD setiap bulan, dan penilaian SKP bulanan menjadi prose
 
 Keduanya idempoten. Untuk API eKin tambahkan `EKIN_API_TOKEN` di `.env` (token terpisah dari `API_TOKEN`).
 Untuk Ruang OPD membaca eKin: `EKIN_INTERNAL_URL` dan `EKIN_AKSARA_TOKEN` (tanpa keduanya bagian eKin tampil "belum tersedia").
+Tautan ke layar eKin (jalur darurat IKP): `EKIN_PUBLIC_URL` (opsional, bawaan `https://ekin.siprima-ai.com/`).
 Impor data prototipe Prioritas (opsional): `php spark ikp:impor-prioritas --db=/path/database.sqlite [--kecuali=23,20,11] [--kering]`.
 
 ## Yang ditambahkan
@@ -735,6 +736,56 @@ hanya 2 gagal lama `CapaianTotalTest`. eKin tidak berubah (352 tes OK).
 4. **`dibuat_oleh` baris yang tidak disentuh tetap NULL** sesudah Admin menyimpan. Bila "pembuat" seharusnya berarti "Admin
    terakhir yang menyetujui seluruh pohon", pencatatan itu perlu kolom tersendiri (mis. `disimpan_oleh`) supaya jejak
    pembuat tidak tertimpa.
+
+## Jalur darurat — IKP lewat penugasan tambahan di eKin (12-10-2026)
+
+Permintaan pengguna: *"Harusnya indikator kinerja prioritas memang bisa relevan dengan pohon kinerja, rencana aksi, hingga
+SKP harian. Nah, namun hal ini harus diantisipasi, karena bisa aja ada IKP ini ternyata memang ga bisa masuk ke pohon
+kinerja, dsb. Maka emergency exitnya IKP harus tetap masuk di SKP bulanan, namun sebagai penugasan tambahan."*
+
+**Jalur utama tetap Turunkan IKP lewat pohon kinerja.** IKP yang memang tidak bisa ditempatkan di pohon kinerja
+ditugaskan **di eKin** (menu Penugasan Tambahan → Beri penugasan → *Dari IKP (tidak masuk pohon kinerja)*, atau CLI
+`ekin:ikp-tambahan` untuk input lewat chat model) atas nama Kepala OPD, dengan **alasan wajib**. Pegawai menekan Diterima →
+RHK **tambahan** berlencana "IKP · penugasan tambahan" + rencana aksi menurut pola ukur IKP; realisasinya dari kegiatan
+harian. Rincian & aturan: eKin README §25. **AKSARA+ hanya membaca dan menautkan** — tidak ada tabel atau migrasi baru.
+
+| Tempat di AKSARA+ | Yang tampil |
+|---|---|
+| Turunkan IKP — daftar (`adminopd/ikp/turun`, `adminkab/ikp/turun?opd_id=`) | per IKP kotak **"Jalur darurat — penugasan tambahan di eKin"**: pemikul (nama pendek), chip status (Menunggu diterima / Diterima — masuk SKP ✓ / Ditolak pegawai / Dibatalkan), target + satuan, periode, realisasi eKin bila sudah diterima, dan **"Mengapa tidak masuk pohon kinerja: …"**. IKP **tanpa** baris pendelegasian yang punya pemikul menunggu/diterima berlencana **"Tertangani lewat penugasan tambahan"** (bukan "Belum diturunkan"); kartu ringkas "Sudah diturunkan" menambah "+n lewat penugasan tambahan (jalur darurat)" — **tidak** dijumlahkan ke "sudah diturunkan". Tombol **"Tugaskan lewat penugasan tambahan (eKin)"** pada IKP yang belum punya baris pohon atau sudah punya jalur darurat |
+| Turunkan IKP — pohon satu IKP (`…/ikp/turun/{id}`) | kotak yang sama + tautan **"Tugaskan lewat penugasan tambahan (eKin)"** (selalu, dengan penjelasan bahwa jalur utama tetap pohon di bawahnya) |
+| Realisasi IKP (`adminopd/ikp/realisasi`) | saran **"Dari eKin"** ikut memakai pemikul jalur darurat yang sudah **Diterima**: hitungan & posisi terbagi → realisasi bulan itu **ditambahkan** ke Σ pemikul pohon (bagian lain dari IKP); posisi/rilis → dipakai hanya bila pohon tidak memberi angka bulan itu (nilai terbaru menurut `realisasi_pada`). Judul saran menyebut "termasuk n pemikul lewat penugasan tambahan (jalur darurat)"; `data-saran-tambahan` di elemen saran |
+| Rekap Kabupaten IKP (`adminkab/ikp`) | baris OPD "+n jalur darurat" di bawah "Turun sampai pelaksana" dan kalimat ringkas "n IKP tertangani lewat penugasan tambahan (jalur darurat)" — label berbeda, tidak masuk hitungan "sudah turun" |
+| Rencana Aksi Pegawai (Ruang OPD) | chip peran IKP `tambahan` → "IKP · penugasan tambahan" (`EkinClient::PERAN_IKP`) |
+
+**Kontrak** (eKin menyediakan; Bearer `EKIN_AKSARA_TOKEN`; tembolok 60 detik, `EkinClient::UMUR_STATUS`):
+`GET api/aksara/opd/{id}/ikp-tambahan?tahun=` → `{opd_id, tahun, diperbarui, baris:[{ikp_id, pegawai_id, penugasan_id,
+status (menunggu|diterima|ditolak|dibatalkan), status_label, target, satuan, pola, bulan_mulai, bulan_selesai, alasan,
+realisasi_bulan:{"1".."12"}, realisasi_total, + ikp_opd_id, posisi_terbagi, realisasi_pada, pegawai_nama, pegawai_jabatan,
+pegawai_fiktif, rhk_id, diperbarui_pada}]}`; `GET api/aksara/ikp-tambahan?tahun=` = semua OPD (rekap kabupaten). eKin lama
+tanpa endpoint → "Penugasan tambahan IKP (jalur darurat) di eKin belum dapat dibaca" (halaman tetap jalan).
+
+**Tautan publik eKin**: `.env` **`EKIN_PUBLIC_URL`** (bawaan `https://ekin.siprima-ai.com/`) — berbeda dari
+`EKIN_INTERNAL_URL` (jalur mesin 127.0.0.1). Tautan: `<EKIN_PUBLIC_URL>penugasan?ikp=<id>&opd=<opd_id>` — eKin membuka
+formulir "Dari IKP" dengan IKP itu terpilih (`opd` dipakai Admin Kabupaten; Kepala/Admin OPD memakai OPD-nya sendiri).
+
+**Kode**: `EkinClient::ikpTambahan`, `ikpTambahanSemua`, `urlPublik`, `tautanPenugasanIkp`;
+`IkpTurunService::STATUS_TAMBAHAN`, `indeksTambahan`, `tertanganiTambahan`, `gabungSaranTambahan` (murni),
+`saranUntukOpd(…, $dataTambahan)`, `rekapKabupaten(…, $tambahan)` (kunci `darurat`); view `ikp/_turun_tambahan.php`; CSS
+`.tr-darurat`, `.tr-lencana.darurat` (mengalir bersama isi). Uji: `tests/unit/IkpTambahanEkinTest.php` (indeks & tertangani,
+saran hitungan Σ pohon + darurat & hanya yang diterima, posisi/rilis memilih terbaru bila pohon kosong, posisi terbagi Σ,
+klien API + 404/format, tautan publik, chip peran). Seluruh unit AKSARA+ 189 tes (185 + 4 baru), hanya 2 gagal lama `CapaianTotalTest`.
+Peramban gabungan `/root/demo-kinerja/uji/ikp_tambahan/cek_ikp_tambahan.mjs` (eKin :8197 + AKSARA+ :8196) 62/62.
+
+**MENGAPA baca saja di AKSARA+**: penugasan & penerimaannya adalah kesepakatan kinerja pegawai — rumahnya eKin (sama dengan
+IKP turunan yang menunggu Diterima). AKSARA+ cukup menunjukkan bahwa IKP itu tidak "hilang" dan menautkan ke tempat input.
+**MENGAPA tidak dihitung "sudah diturunkan"**: rekap Bupati harus membedakan IKP yang turun lewat pohon (jalur resmi) dari
+jalan darurat, supaya OPD tetap didorong merapikan pohon kinerjanya.
+
+### Terbuka untuk dibahas (jalur darurat)
+
+1. IKP yang kemudian bisa masuk pohon: AKSARA+ menampilkan baris pohon **dan** jalur darurat; saran realisasi menjumlah
+   keduanya (hitungan). Admin OPD perlu membatalkan/merevisi penugasan darurat di eKin — perlu pemeriksa "ganda"?
+2. Admin OPD belum bisa menugaskan jalur darurat dari AKSARA+ langsung (hanya tautan ke eKin) — sengaja, satu tempat input.
 
 ## Keputusan desain penting
 

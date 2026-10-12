@@ -20,6 +20,8 @@
  * @var ?array $lama   isian terakhir (setelah galat validasi)
  * @var ?array $statusEkin IkpTurunService::statusEkin() (null = belum ada baris pendelegasian)
  * @var ?array $kirimEkin  IkpTurunService::ringkasKirim() dari flash sesudah Simpan
+ * @var array  $tambahan   jalur darurat eKin §25: ['indeks' => [ikp_id => baris], 'terbaca', 'pesan']
+ * @var string $tautanEkin tautan "Tugaskan lewat penugasan tambahan (eKin)"
  */
 $label    = $pohon['label'];
 $simpul   = $pohon['simpul'];
@@ -306,6 +308,21 @@ $render = function (int $id) use (&$render, $urut, $simpul, $ind, $label, $keada
                 <a class="btn btn-sm btn-outline-secondary" href="<?= esc($u('adminopd/ikp/target/' . $ikpId, ['tahun' => $tahun]), 'attr') ?>"><i class="fas fa-bullseye me-1"></i>Target IKP</a>
             <?php endif; ?>
         </div>
+    <?php endif; ?>
+    <?php // eKin README §25 — jalur darurat: kotak pemikul penugasan tambahan + tautan ke eKin. ?>
+    <?php $rowsDarurat = ($tambahan ?? [])['indeks'][$ikpId] ?? []; ?>
+    <?php if (\App\Services\IkpTurunService::tertanganiTambahan($rowsDarurat) && array_filter($baris, static fn ($b) => ($b['sumber'] ?? '') === 'delegasi') === []): ?>
+        <div><span class="tr-lencana darurat" data-lencana-darurat><i class="fas fa-life-ring"></i>Tertangani lewat penugasan tambahan</span></div>
+    <?php endif; ?>
+    <?= view('ikp/_turun_tambahan', ['rows' => $rowsDarurat, 'ikpId' => $ikpId, 'tahun' => (int) $tahun]) ?>
+    <?php if (! empty($tautanEkin)): ?>
+        <div class="small">
+            <a href="<?= esc($tautanEkin, 'attr') ?>" target="_blank" rel="noopener" data-tautan-darurat="<?= $ikpId ?>"><i class="fas fa-life-ring me-1"></i>Tugaskan lewat penugasan tambahan (eKin)</a>
+            <span class="text-secondary">— jalur darurat untuk IKP yang memang tidak bisa ditempatkan di pohon kinerja (alasan wajib); jalur utama tetap pohon di bawah.</span>
+        </div>
+    <?php endif; ?>
+    <?php if (isset($tambahan) && empty($tambahan['terbaca'])): ?>
+        <div class="small text-secondary" data-tambahan-ekin="tidak_terbaca"><i class="fas fa-life-ring me-1"></i>Penugasan tambahan IKP di eKin belum dapat dibaca — <?= esc(rtrim((string) ($tambahan['pesan'] ?? 'Data eKin belum tersedia.'), '.')) ?>.</div>
     <?php endif; ?>
 </section>
 

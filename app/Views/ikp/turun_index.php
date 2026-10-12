@@ -8,15 +8,20 @@
  * @var array $label   label jenjang (kecamatan bergeser)
  * @var ?array $statusEkin IkpTurunService::statusEkin() (null = tidak ada baris pendelegasian / belum dibaca)
  * @var array $hitungEkin [ikp_id => [kode status => n]] (IkpTurunService::hitungStatusEkin)
+ * @var array $tambahan   jalur darurat eKin §25: ['indeks' => [ikp_id => baris], 'terbaca' => bool, 'pesan' => ?string]
+ * @var callable(int):string $tautanEkin tautan "Tugaskan lewat penugasan tambahan (eKin)"
  */
 $statusEkin = $statusEkin ?? null;
 $hitungEkin = $hitungEkin ?? [];
+$tambahan   = $tambahan ?? ['indeks' => [], 'terbaca' => false, 'pesan' => null];
 $n       = count($baris);
 $turun   = 0;
 $sampai  = 0;
-foreach ($ringkas as $r) {
+$darurat = 0;   // IKP tanpa baris pohon yang tertangani lewat penugasan tambahan di eKin
+foreach ($ringkas as $id => $r) {
     $turun  += $r['baris'] > 0 ? 1 : 0;
     $sampai += $r['cakupan']['sampai_pelaksana'] ? 1 : 0;
+    $darurat += $r['baris'] === 0 && \App\Services\IkpTurunService::tertanganiTambahan($tambahan['indeks'][$id] ?? []) ? 1 : 0;
 }
 $this->setVar('subJudul', $area === 'adminopd'
     ? 'Turunkan setiap IKP lewat pohon kinerja sampai pelaksana, supaya IKP masuk ke RHK pegawai di eKin.'
@@ -42,6 +47,7 @@ $this->setVar('subJudul', $area === 'adminopd'
             kecuali posisi yang <em>dapat dipecah per bagian</em> (mis. pengikut beberapa akun resmi) yang dibagi porsi seperti hitungan. Pemikul angka harus bersatuan sama dengan IKP; satuan lain dihitung sebagai pendukung.
             <strong>Pendukung</strong>: ikut bekerja lewat indikator prosesnya sendiri (mis. bukti dukung penilaian indeks), tidak menambah angka IKP.</p>
         <p class="small mb-0">Setiap Simpan langsung dikirim ke eKin: SKP yang masih draf langsung berisi RHK-nya, SKP yang sudah diajukan/disetujui mendapat penugasan "IKP turunan" untuk diterima pegawai.</p>
+        <p class="small mb-0"><strong>Jalur darurat:</strong> IKP yang memang tidak bisa ditempatkan di pohon kinerja tetap bisa masuk SKP bulanan pegawai sebagai <em>penugasan tambahan</em> di eKin (alasan wajib) — tombol <em>Tugaskan lewat penugasan tambahan (eKin)</em>. IKP seperti itu ditandai "Tertangani lewat penugasan tambahan", bukan "Belum diturunkan".</p>
     </div>
 </div>
 
@@ -52,13 +58,17 @@ $this->setVar('subJudul', $area === 'adminopd'
     </div>
     <div class="col-6 col-sm-4">
         <div class="ikp-kartu"><div class="kh"><div class="ki" style="background:#1971c2"><i class="fas fa-arrow-down-short-wide"></i></div><div class="kt">Sudah diturunkan</div></div>
-            <div class="kn" data-stat="turun"><?= $turun ?><small> / <?= $n ?></small></div><div class="ks">minimal satu jenjang di bawah Kepala</div></div>
+            <div class="kn" data-stat="turun"><?= $turun ?><small> / <?= $n ?></small></div><div class="ks">minimal satu jenjang di bawah Kepala<?php if ($darurat > 0): ?><br><span data-stat="darurat" style="color:#9a3d00">+<?= $darurat ?> lewat penugasan tambahan (jalur darurat)</span><?php endif; ?></div></div>
     </div>
     <div class="col-6 col-sm-4">
         <div class="ikp-kartu"><div class="kh"><div class="ki" style="background:#b45309"><i class="fas fa-people-group"></i></div><div class="kt">Sampai pelaksana</div></div>
             <div class="kn" data-stat="sampai"><?= $sampai ?><small> / <?= $n ?></small></div><div class="ks">sudah dipikul jenjang pelaksana</div></div>
     </div>
 </div>
+
+<?php if (empty($tambahan['terbaca'])): ?>
+    <p class="small text-secondary mb-2" data-tambahan-ekin="tidak_terbaca"><i class="fas fa-life-ring me-1"></i>Penugasan tambahan IKP (jalur darurat) di eKin belum dapat dibaca — <?= esc(rtrim((string) ($tambahan['pesan'] ?? 'Data eKin belum tersedia.'), '.')) ?>.</p>
+<?php endif; ?>
 
 <?php if ($statusEkin !== null && empty($statusEkin['terbaca'])): ?>
     <p class="small text-secondary mb-2" data-status-ekin="tidak_terbaca"><i class="fas fa-mobile-screen-button me-1"></i>Status di eKin belum dapat dibaca — <?= esc(rtrim((string) ($statusEkin['pesan'] ?? 'Data eKin belum tersedia.'), '.')) ?>. Pendelegasian tetap dikirim eKin saat pegawai membuka eKin dan setiap malam.</p>
@@ -85,10 +95,13 @@ $this->setVar('subJudul', $area === 'adminopd'
                 <div class="tr-atas">
                     <?php if ($meta): ?><span class="ikp-kat <?= esc($ikp['kategori'], 'attr') ?>"><i class="fas <?= esc($meta['ikon'], 'attr') ?>"></i><?= esc($meta['singkat']) ?></span><?php endif; ?>
                     <span class="ikp-pola <?= esc($r['pola']['pola'], 'attr') ?>"><?= esc(ikp_pola_ringkas($r['pola'], (int) $tahun)) ?></span>
+                    <?php $rowsDarurat = $tambahan['indeks'][$id] ?? []; ?>
                     <?php if ($c['sampai_pelaksana']): ?>
                         <span class="tr-lencana ok"><i class="fas fa-circle-check"></i>Sampai pelaksana</span>
                     <?php elseif (($rk['baris'] ?? 0) > 0): ?>
                         <span class="tr-lencana sebagian"><i class="fas fa-circle-half-stroke"></i>Sebagian</span>
+                    <?php elseif (\App\Services\IkpTurunService::tertanganiTambahan($rowsDarurat)): ?>
+                        <span class="tr-lencana darurat" data-lencana-darurat><i class="fas fa-life-ring"></i>Tertangani lewat penugasan tambahan</span>
                     <?php else: ?>
                         <span class="tr-lencana belum"><i class="fas fa-circle-minus"></i>Belum diturunkan</span>
                     <?php endif; ?>
@@ -117,6 +130,7 @@ $this->setVar('subJudul', $area === 'adminopd'
                         <?php endforeach; ?>
                     </div>
                 <?php endif; ?>
+                <?= view('ikp/_turun_tambahan', ['rows' => $rowsDarurat, 'ikpId' => $id, 'tahun' => (int) $tahun]) ?>
                 <?php if ($pk !== null && ($rk['baris'] ?? 0) > 0): ?>
                     <div class="tr-periksa-ringkas <?= esc($pk['warna'], 'attr') ?>">
                         <i class="fas <?= $pk['warna'] === 'peringatan' ? 'fa-triangle-exclamation' : 'fa-circle-check' ?>"></i>
@@ -128,6 +142,11 @@ $this->setVar('subJudul', $area === 'adminopd'
                        href="<?= esc($u('ikp/turun/' . $id, ['tahun' => $tahun]), 'attr') ?>">
                         <i class="fas <?= $area === 'adminopd' && $bolehUbah ? 'fa-sitemap' : 'fa-eye' ?> me-1"></i><?= $area === 'adminopd' && $bolehUbah ? (($rk['baris'] ?? 0) > 0 ? 'Atur pendelegasian' : 'Turunkan') : 'Lihat pohon' ?>
                     </a>
+                    <?php if (($rk['baris'] ?? 0) === 0 || $rowsDarurat !== []): ?>
+                        <a class="btn btn-sm btn-outline-secondary" href="<?= esc($tautanEkin($id), 'attr') ?>" target="_blank" rel="noopener" data-tautan-darurat="<?= $id ?>"
+                           title="Untuk IKP yang memang tidak bisa masuk pohon kinerja: tugaskan langsung kepada pegawai sebagai penugasan tambahan di eKin (alasan wajib).">
+                            <i class="fas fa-life-ring me-1"></i>Tugaskan lewat penugasan tambahan (eKin)</a>
+                    <?php endif; ?>
                 </div>
             </article>
         <?php endforeach; ?>

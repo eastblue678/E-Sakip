@@ -40,6 +40,11 @@ use Throwable;
  * STATUS (D2): halaman detail & daftar membaca GET opd/{id}/ikp-turunan-status
  * (tembolok ≤ 60 detik, dihapus sesudah Simpan) → chip per pemilik.
  *
+ * JALUR DARURAT (eKin README §25, 12-10-2026): IKP yang memang tidak bisa masuk pohon kinerja ditugaskan di eKin sebagai
+ * PENUGASAN TAMBAHAN (alasan wajib). Halaman ini hanya MEMBACA api/aksara/opd/{id}/ikp-tambahan (tembolok ≤ 60 detik):
+ * kotak "Jalur darurat — penugasan tambahan di eKin" per IKP, lencana "Tertangani lewat penugasan tambahan" (bukan
+ * "Belum diturunkan") untuk IKP tanpa baris pohon, dan tautan "Tugaskan lewat penugasan tambahan (eKin)".
+ *
  * SIAPA MENURUNKAN: Admin OPD atas nama Kepala OPD (pemilik IKP). Kabid belum
  * menurunkan sendiri untuk cabangnya — dicatat "Terbuka untuk dibahas".
  *
@@ -114,7 +119,8 @@ class IkpTurunController extends BaseController
                 return view('ikp/_pilih_opd', ['title' => 'Turunkan IKP', 'scope' => $scope, 'tujuan' => 'adminopd/ikp/turun', 'tahun' => $tahun]);
             }
 
-            return view('ikp/turun_index', $data + ['baris' => [], 'ringkas' => [], 'label' => [], 'statusEkin' => null, 'hitungEkin' => []]);
+            return view('ikp/turun_index', $data + ['baris' => [], 'ringkas' => [], 'label' => [], 'statusEkin' => null, 'hitungEkin' => [],
+                'tambahan' => ['indeks' => [], 'terbaca' => false, 'pesan' => null], 'tautanEkin' => static fn (int $i) => '']);
         }
         $opdId = $scope['opd_id'];
         $rekap = $this->svc()->rekapOpd($opdId, $tahun);
@@ -143,6 +149,8 @@ class IkpTurunController extends BaseController
             'label'       => $label,
             'statusEkin'  => $status,
             'hitungEkin'  => $hitung,
+            'tambahan'    => $this->tambahan($opdId, $tahun),
+            'tautanEkin'  => static fn (int $ikpId) => EkinClient::tautanPenugasanIkp($ikpId, $opdId),
         ]);
     }
 
@@ -224,6 +232,8 @@ class IkpTurunController extends BaseController
             'es2'         => (new PohonPemilikService($this->db))->pemilikEs2($opdId, $tahun),
             'proses'      => IkpTurunService::teksProses($ikpSederhana),
             'statusEkin'  => $status,
+            'tambahan'    => $this->tambahan($opdId, $tahun),
+            'tautanEkin'  => EkinClient::tautanPenugasanIkp((int) $ikp['id'], $opdId),
             'kirimEkin'   => session()->getFlashdata('kirim_ekin'),
             'sinonim'     => ikp_satuan_peta(),
         ]));
@@ -366,6 +376,18 @@ class IkpTurunController extends BaseController
         }
 
         return $this->svc()->satu($opd, $id);
+    }
+
+    /**
+     * Jalur darurat (eKin README §25): penugasan tambahan IKP OPD ini di eKin, per IKP. eKin mati/lama = kosong + pesan.
+     *
+     * @return array{indeks: array<int, list<array>>, terbaca: bool, pesan: ?string}
+     */
+    private function tambahan(int $opdId, int $tahun): array
+    {
+        $d = $this->ekin()->ikpTambahan($opdId, $tahun);
+
+        return ['indeks' => IkpTurunService::indeksTambahan($d), 'terbaca' => $d !== null, 'pesan' => $d === null ? $this->ekin()->pesanTerakhir() : null];
     }
 
     private function bolehUbah(): bool

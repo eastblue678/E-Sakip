@@ -24,6 +24,14 @@ use Throwable;
  *                                      "target_ekin","target_aksara","beda_target"}]}} — keadaan IKP turunan per pemilik
  *                                      di eKin (chip di Turunkan IKP). Tembolok 60 detik, dihapus setiap kali Simpan.
  *
+ *   opd/{id}/ikp-tambahan?tahun=       {"opd_id","tahun","diperbarui","baris":[{"ikp_id","pegawai_id","penugasan_id",
+ *                                      "status":"menunggu|diterima|ditolak|dibatalkan","status_label","target","satuan","pola",
+ *                                      "bulan_mulai","bulan_selesai","alasan","realisasi_bulan":{"1".."12"},"realisasi_total",
+ *                                      + ikp_opd_id, posisi_terbagi, realisasi_pada, pegawai_nama, pegawai_jabatan, …}]} —
+ *                                      JALUR DARURAT: IKP yang tidak masuk pohon kinerja dan ditugaskan sebagai penugasan
+ *                                      tambahan di eKin (eKin README §25). Tembolok 60 detik. eKin lama → belum_tersedia.
+ *   ikp-tambahan?tahun=                sama, semua OPD (rekap kabupaten; baris membawa ikp_opd_id).
+ *
  * Satu-satunya panggilan yang MENGUBAH sesuatu di eKin (POST + JSON, tanpa tembolok):
  *   ikp-turunan/segarkan               {"opd_id","tahun"} → {"status":"success","data":{"opd_id","tahun","pegawai":[{
  *                                      "pegawai_id","dibuat","dimasukkan_skp_draf","sudah","ditolak","tanpa_skp",
@@ -246,6 +254,50 @@ class EkinClient
         }
 
         return $j;
+    }
+
+    /**
+     * JALUR DARURAT (eKin README §25): IKP yang tidak masuk pohon kinerja dan ditugaskan sebagai penugasan tambahan di
+     * eKin — pemikul, status, target, alasan, realisasi bulanan. Tembolok UMUR_STATUS detik; eKin lama → null.
+     *
+     * @return array<string,mixed>|null {"opd_id","tahun","diperbarui","baris":[…]}
+     */
+    public function ikpTambahan(int $opdId, int $tahun): ?array
+    {
+        $j = $this->ambil('opd/' . $opdId . '/ikp-tambahan', $tahun, [], self::UMUR_STATUS);
+        if ($j !== null && ! is_array($j['baris'] ?? null)) {
+            return $this->gagal('format', 'opd/ikp-tambahan');
+        }
+
+        return $j;
+    }
+
+    /** Jalur darurat semua OPD sekaligus (rekap kabupaten). @return array<string,mixed>|null {"tahun","diperbarui","baris":[… + ikp_opd_id]} */
+    public function ikpTambahanSemua(int $tahun): ?array
+    {
+        $j = $this->ambil('ikp-tambahan', $tahun, [], self::UMUR_STATUS);
+        if ($j !== null && ! is_array($j['baris'] ?? null)) {
+            return $this->gagal('format', 'ikp-tambahan');
+        }
+
+        return $j;
+    }
+
+    /**
+     * Alamat PUBLIK eKin untuk tautan di layar (.env EKIN_PUBLIC_URL; bawaan https://ekin.siprima-ai.com/) — beda dengan
+     * EKIN_INTERNAL_URL (jalur mesin 127.0.0.1 yang tidak bisa dibuka peramban pengguna).
+     */
+    public static function urlPublik(): string
+    {
+        $u = trim((string) env('EKIN_PUBLIC_URL', ''));
+
+        return rtrim($u !== '' ? $u : 'https://ekin.siprima-ai.com/', '/') . '/';
+    }
+
+    /** Tautan "Tugaskan lewat penugasan tambahan (eKin)": halaman Penugasan eKin dengan formulir "Dari IKP" terbuka. */
+    public static function tautanPenugasanIkp(int $ikpId, int $opdId): string
+    {
+        return self::urlPublik() . 'penugasan?' . http_build_query(['ikp' => $ikpId, 'opd' => $opdId]);
     }
 
     /** Hapus tembolok status IKP turunan satu OPD (sesudah Simpan / segarkan: layar harus membaca keadaan baru). */
@@ -506,6 +558,8 @@ class EkinClient
         'angka'     => ['IKP', 'ikp', 'IKP turunan — pemikul angka: target pegawai ini dihitung ke IKP perangkat daerah.'],
         'pendukung' => ['Mendukung IKP', 'dukung', 'IKP turunan — pendukung: indikator proses milik pegawai ini; tidak menambah angka IKP.'],
         'turunan'   => ['IKP · porsi pimpinan', 'ikp', 'Porsi dari RHK IKP pimpinan (Cascading "Bagi ke bawahan" di eKin).'],
+        // eKin README §25: jalur darurat — IKP yang tidak masuk pohon kinerja, dipikul lewat penugasan tambahan.
+        'tambahan'  => ['IKP · penugasan tambahan', 'ikp', 'Jalur darurat: IKP yang tidak bisa masuk pohon kinerja, ditugaskan di eKin sebagai penugasan tambahan (RHK tambahan).'],
     ];
 
     private const BULAN_PENDEK = [1 => 'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];

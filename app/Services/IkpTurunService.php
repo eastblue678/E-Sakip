@@ -72,6 +72,18 @@ class IkpTurunService
     public const LEVEL = ['es3', 'es4', 'pelaksana'];
 
     /**
+     * JALUR DARURAT (eKin README §25, 12-10-2026): IKP yang tidak bisa masuk pohon kinerja ditugaskan di eKin sebagai
+     * PENUGASAN TAMBAHAN (kontrak api/aksara/opd/{id}/ikp-tambahan). Status per pemikul + kelas chip (sama dengan
+     * STATUS_EKIN). Jalur utama tetap pohon kinerja; jalur ini hanya dibaca & ditautkan di AKSARA+.
+     */
+    public const STATUS_TAMBAHAN = [
+        'menunggu'   => ['label' => 'Menunggu diterima', 'kelas' => 'tunggu'],
+        'diterima'   => ['label' => 'Diterima — masuk SKP ✓', 'kelas' => 'ok'],
+        'ditolak'    => ['label' => 'Ditolak pegawai', 'kelas' => 'tolak'],
+        'dibatalkan' => ['label' => 'Dibatalkan', 'kelas' => 'abu'],
+    ];
+
+    /**
      * Keadaan IKP turunan per pemilik di eKin (kontrak api/aksara/opd/{id}/ikp-turunan-status). {tahun} diganti tahun.
      * kelas: ok (hijau) | tunggu (kuning) | tolak (merah) | abu.
      */
@@ -1261,12 +1273,13 @@ class IkpTurunService
      *
      * @param int[] $opdIds
      */
-    public function rekapKabupaten(array $opdIds, int $tahun): array
+    public function rekapKabupaten(array $opdIds, int $tahun, ?array $tambahan = null): array
     {
         $opdIds = array_values(array_unique(array_map('intval', $opdIds)));
         $out    = [];
         foreach ($opdIds as $o) {
-            $out[$o] = ['ikp' => 0, 'turun' => 0, 'sampai_pelaksana' => 0];
+            // darurat = IKP yang TIDAK punya baris pendelegasian tetapi tertangani lewat penugasan tambahan di eKin (§25).
+            $out[$o] = ['ikp' => 0, 'turun' => 0, 'sampai_pelaksana' => 0, 'darurat' => 0];
         }
         if ($opdIds === []) {
             return $out;
@@ -1294,6 +1307,17 @@ class IkpTurunService
                 $out[$opd]['turun']++;
                 $out[$opd]['sampai_pelaksana'] += self::cakupan($lv, $kec)['sampai_pelaksana'] ? 1 : 0;
             }
+        }
+        // Jalur darurat (§25): IKP tanpa pendelegasian yang punya penugasan tambahan menunggu/diterima di eKin.
+        $hitung = [];
+        foreach (self::indeksTambahan($tambahan) as $ikpId => $rows) {
+            $opd = (int) ($rows[0]['ikp_opd_id'] ?? 0);
+            if (isset($out[$opd]) && ! isset($level[$opd][$ikpId]) && self::tertanganiTambahan($rows)) {
+                $hitung[$opd][$ikpId] = true;
+            }
+        }
+        foreach ($hitung as $opd => $ikp) {
+            $out[$opd]['darurat'] = count($ikp);
         }
 
         return $out;
@@ -1622,19 +1646,134 @@ class IkpTurunService
         $tbl()->where('id', $id)->update($pulih);
     }
 
+    // =================================================================
+    // JALUR DARURAT — IKP lewat penugasan tambahan di eKin (murni)
+    // =================================================================
+
+    /**
+     * Baris jalur darurat per IKP: [ikp_id => list<baris>] (urut status: diterima, menunggu, ditolak, dibatalkan).
+     *
+     * @param array<string,mixed>|null $data EkinClient::ikpTambahan()/ikpTambahanSemua()
+     *
+     * @return array<int, list<array<string,mixed>>>
+     */
+    public static function indeksTambahan(?array $data): array
+    {
+        $urut = array_flip(['diterima', 'menunggu', 'ditolak', 'dibatalkan']);
+        $out  = [];
+        foreach (is_array($data['baris'] ?? null) ? $data['baris'] : [] as $b) {
+            if (is_array($b) && (int) ($b['ikp_id'] ?? 0) > 0) {
+                $out[(int) $b['ikp_id']][] = $b;
+            }
+        }
+        foreach ($out as &$rows) {
+            usort($rows, static fn ($a, $b) => [$urut[$a['status'] ?? ''] ?? 9, (int) ($a['pegawai_id'] ?? 0)] <=> [$urut[$b['status'] ?? ''] ?? 9, (int) ($b['pegawai_id'] ?? 0)]);
+        }
+        unset($rows);
+
+        return $out;
+    }
+
+    /** IKP ini TERTANGANI lewat penugasan tambahan? (minimal satu pemikul menunggu diterima atau sudah menerima) */
+    public static function tertanganiTambahan(array $rows): bool
+    {
+        foreach ($rows as $r) {
+            if (in_array($r['status'] ?? '', ['menunggu', 'diterima'], true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Gabungkan realisasi pemikul jalur darurat (hanya yang DITERIMA) ke saran "Dari eKin" satu IKP:
+     *   hitungan & posisi terbagi  saran bulan m + Σ realisasi bulan m para pemikul jalur darurat (bagian lain dari IKP
+     *                              yang memang tidak ada di pohon — tidak terhitung dua kali)
+     *   posisi / rilis             dipakai hanya bila pohon kinerja tidak memberi saran bulan itu: nilai terbaru (pada)
+     * Hasil bertanda `tambahan` = jumlah pemikul jalur darurat yang ikut.
+     *
+     * @param array<int, array> $saran [bulan => saranRealisasi()] dari pohon kinerja (boleh kosong)
+     * @param list<array>       $rows  baris jalur darurat IKP ini
+     *
+     * @return array<int, array>
+     */
+    public static function gabungSaranTambahan(array $pola, array $saran, array $rows): array
+    {
+        $aktif = array_values(array_filter($rows, static fn ($r) => ($r['status'] ?? '') === 'diterima'));
+        if ($aktif === []) {
+            return $saran;
+        }
+        $kode   = (string) ($pola['pola'] ?? 'hitungan');
+        $jumlah = $kode === 'hitungan' || ($kode === 'posisi' && ! empty($pola['posisi_terbagi']));
+        foreach ($pola['bulan_ukur'] ?? [] as $m) {
+            $m   = (int) $m;
+            $isi = [];
+            foreach ($aktif as $r) {
+                $bulan = (array) ($r['realisasi_bulan'] ?? []);
+                $v     = $bulan[(string) $m] ?? $bulan[$m] ?? null;
+                if (is_numeric($v)) {
+                    $pada  = (array) ($r['realisasi_pada'] ?? []);
+                    $isi[] = ['pegawai_id' => (int) ($r['pegawai_id'] ?? 0), 'nilai' => (float) $v, 'pada' => (string) ($pada[(string) $m] ?? $pada[$m] ?? '')];
+                }
+            }
+            if ($isi === []) {
+                continue;
+            }
+            if ($jumlah) {
+                $ada = $saran[$m] ?? null;
+                $saran[$m] = [
+                    'nilai'    => round((float) ($ada['nilai'] ?? 0) + array_sum(array_column($isi, 'nilai')), 4),
+                    'cara'     => $ada['cara'] ?? ($kode === 'hitungan' ? 'jumlah_porsi' : 'jumlah_posisi'),
+                    'baris'    => $ada['baris'] ?? [],
+                    'pegawai'  => array_values(array_unique(array_merge($ada['pegawai'] ?? [], array_column($isi, 'pegawai_id')))),
+                    'lengkap'  => $ada['lengkap'] ?? true,
+                    'level'    => $ada['level'] ?? null,
+                    'tambahan' => count($isi),
+                ];
+            } elseif (! isset($saran[$m])) {
+                usort($isi, static fn ($a, $b) => strcmp($b['pada'], $a['pada']));
+                $saran[$m] = ['nilai' => round($isi[0]['nilai'], 4), 'cara' => 'pemikul_angka', 'baris' => [], 'pegawai' => [$isi[0]['pegawai_id']],
+                    'lengkap' => true, 'level' => 'tambahan', 'tambahan' => 1];
+            }
+        }
+        ksort($saran);
+
+        return $saran;
+    }
+
     /**
      * Saran "Dari eKin (pemikul angka)" untuk semua IKP satu OPD pada halaman realisasi.
      *
-     * @param list<array> $rekap    IkpRekapService::rekapOpd()
-     * @param array|null  $dataEkin EkinClient::ikpTurunan() (null = eKin belum menyediakan → tanpa saran)
+     * @param list<array> $rekap        IkpRekapService::rekapOpd()
+     * @param array|null  $dataEkin     EkinClient::ikpTurunan() (null = eKin belum menyediakan → tanpa saran pohon)
+     * @param array|null  $dataTambahan EkinClient::ikpTambahan() — jalur darurat (eKin README §25), ikut dijumlah/dipilih
      *
      * @return array<int, array<int, array>> [ikp_id => [bulan => saranRealisasi()]]
      */
-    public function saranUntukOpd(array $rekap, int $tahun, ?array $dataEkin): array
+    public function saranUntukOpd(array $rekap, int $tahun, ?array $dataEkin, ?array $dataTambahan = null): array
     {
-        if ($dataEkin === null || ! $this->siap()) {
-            return [];
+        $tambahan = self::indeksTambahan($dataTambahan);
+        $dariPohon = $dataEkin === null || ! $this->siap() ? [] : $this->saranPohon($rekap, $tahun, $dataEkin);
+        if ($tambahan === []) {
+            return $dariPohon;
         }
+        foreach ($rekap as $r) {
+            $id = (int) $r['ikp']['id'];
+            if (isset($tambahan[$id])) {
+                $g = self::gabungSaranTambahan($r['pola'], $dariPohon[$id] ?? [], $tambahan[$id]);
+                if ($g !== []) {
+                    $dariPohon[$id] = $g;
+                }
+            }
+        }
+
+        return $dariPohon;
+    }
+
+    /** Saran dari baris pendelegasian pohon kinerja (sebelum jalur darurat). @return array<int, array<int, array>> */
+    private function saranPohon(array $rekap, int $tahun, array $dataEkin): array
+    {
         $lapor = [];   // [delegasi_id => [bulan => [laporan]]]
         foreach ($dataEkin['baris'] ?? [] as $b) {
             if (! is_array($b) || ! isset($b['delegasi_id'])) {

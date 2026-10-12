@@ -14,6 +14,7 @@
 $turun = $turun ?? [];
 $sampaiTotal = array_sum(array_column($turun, 'sampai_pelaksana'));
 $turunTotal  = array_sum(array_column($turun, 'turun'));
+$daruratTotal = array_sum(array_column($turun, 'darurat'));   // jalur darurat eKin (README eKin §25)
 $namaBulan = ikp_nama_bulan($bulan);
 $qs        = static fn (array $x = []) => '?' . http_build_query(array_merge(['tahun' => $tahun, 'bulan' => $bulan], $x));
 $persenTeks = static fn (?float $v) => $v === null ? '–' : ikp_fmt($v, 2) . '%';
@@ -119,6 +120,7 @@ CSS);
         <?= (int) $total['lengkap'] ?> IKP dengan target tahunan &amp; bulanan lengkap<br>
         <a href="<?= base_url('adminkab/ikp/turun?tahun=' . (int) $tahun) ?>" data-stat="kab-sampai"><?= (int) $sampaiTotal ?> IKP sudah turun sampai pelaksana</a>
         <span class="text-muted">(<?= (int) $turunTotal ?> sudah diturunkan)</span>
+        <?php if ($daruratTotal > 0): ?><br><span data-stat="kab-darurat" title="IKP yang tidak bisa masuk pohon kinerja dan ditugaskan sebagai penugasan tambahan di eKin (jalur darurat) — tidak dihitung sebagai sudah diturunkan"><?= (int) $daruratTotal ?> IKP tertangani lewat penugasan tambahan (jalur darurat)</span><?php endif; ?>
       </div>
     </div>
   </div>
@@ -259,13 +261,16 @@ CSS);
                 </span>
               <?php else: ?>–<?php endif; ?>
             </td>
-            <?php $tr = $turun[(int) $b['opd']['id']] ?? ['ikp' => 0, 'turun' => 0, 'sampai_pelaksana' => 0]; ?>
+            <?php $tr = ($turun[(int) $b['opd']['id']] ?? []) + ['ikp' => 0, 'turun' => 0, 'sampai_pelaksana' => 0, 'darurat' => 0]; ?>
             <td class="num" data-label="Turun sampai pelaksana">
               <?php if ($tr['ikp'] > 0): ?>
                 <a href="<?= base_url('adminkab/ikp/turun?opd_id=' . (int) $b['opd']['id'] . '&tahun=' . (int) $tahun) ?>" class="text-decoration-none"
                    title="<?= (int) $tr['turun'] ?> IKP sudah diturunkan; <?= (int) $tr['sampai_pelaksana'] ?> sampai pelaksana">
                   <b><?= (int) $tr['sampai_pelaksana'] ?></b>/<?= (int) $tr['ikp'] ?>
                 </a>
+                <?php if ($tr['darurat'] > 0): ?>
+                  <div class="small" style="color:#9a3d00" data-darurat="<?= (int) $tr['darurat'] ?>" title="IKP tanpa pohon kinerja yang tertangani lewat penugasan tambahan di eKin (jalur darurat)">+<?= (int) $tr['darurat'] ?> jalur darurat</div>
+                <?php endif; ?>
               <?php else: ?>–<?php endif; ?>
             </td>
           </tr>

@@ -422,7 +422,10 @@ class IkpController extends BaseController
         try {
             $klien = new \App\Services\EkinClient();
             if ($klien->terkonfigurasi()) {
-                $saranEkin = (new \App\Services\IkpTurunService($this->db))->saranUntukOpd($rekap, $tahun, $klien->ikpTurunan((int) $scope['opd_id'], $tahun));
+                // + jalur darurat (eKin README §25): pemikul IKP lewat penugasan tambahan ikut dijumlah (hitungan/posisi
+                // terbagi) atau dipilih bila pohon tidak memberi angka (posisi/rilis).
+                $saranEkin = (new \App\Services\IkpTurunService($this->db))->saranUntukOpd($rekap, $tahun, $klien->ikpTurunan((int) $scope['opd_id'], $tahun),
+                    $klien->ikpTambahan((int) $scope['opd_id'], $tahun));
             }
         } catch (\Throwable $e) {
             log_message('warning', '[ikp.realisasi] saran eKin dilewati: ' . $e->getMessage());

@@ -144,10 +144,11 @@ $sel  = static function (array $t) {
                                             'jumlah_porsi'  => 'jumlah hasil ' . count($sr['pegawai']) . ' pemikul (setiap hasil dihitung sekali oleh pemiliknya, termasuk porsi yang dibagi lewat Cascading)' . ($sr['lengkap'] ? '' : ' — belum semua pemikul terbawah melapor'),
                                             // Posisi terbagi (D4): Σ posisi terbaru setiap bagian PADA BULAN INI, tidak dijumlah antarbulan.
                                             'jumlah_posisi' => 'jumlah posisi ' . count($sr['pegawai']) . ' pemegang bagian pada bulan ini (posisi terbaru tiap bagian, tidak dijumlah antarbulan)' . ($sr['lengkap'] ? '' : ' — belum semua bagian melapor'),
-                                            default         => 'nilai yang dilaporkan pemikul angka jenjang terdekat',
-                                        } . '. Realisasi resmi tetap Anda yang mengisi.';
+                                            default         => ($sr['level'] ?? null) === 'tambahan' ? 'nilai terbaru pemikul penugasan tambahan (jalur darurat — IKP tidak masuk pohon kinerja)' : 'nilai yang dilaporkan pemikul angka jenjang terdekat',
+                                        } . (! empty($sr['tambahan']) && ($sr['level'] ?? null) !== 'tambahan' ? ' — termasuk ' . (int) $sr['tambahan'] . ' pemikul lewat penugasan tambahan (jalur darurat)' : '')
+                                          . '. Realisasi resmi tetap Anda yang mengisi.';
                                         ?>
-                                        <span class="saran-ekin<?= $srSama ? ' sama' : '' ?>" data-saran="<?= esc((string) $sr['nilai'], 'attr') ?>" title="<?= esc($srJudul, 'attr') ?>">
+                                        <span class="saran-ekin<?= $srSama ? ' sama' : '' ?>" data-saran="<?= esc((string) $sr['nilai'], 'attr') ?>"<?= ! empty($sr['tambahan']) ? ' data-saran-tambahan="' . (int) $sr['tambahan'] . '"' : '' ?> title="<?= esc($srJudul, 'attr') ?>">
                                             eKin <b><?= esc(ikp_fmt((float) $sr['nilai'], 4)) ?></b><?= $sr['lengkap'] ? '' : '*' ?>
                                             <?php if (! $srSama): ?><button type="button" data-gunakan="<?= esc(ikp_fmt((float) $sr['nilai'], 4), 'attr') ?>" aria-label="Gunakan nilai eKin <?= esc(ikp_fmt((float) $sr['nilai'], 4), 'attr') ?> untuk <?= esc(ikp_nama_bulan($m), 'attr') ?>">Gunakan</button><?php else: ?>✓<?php endif; ?>
                                         </span>

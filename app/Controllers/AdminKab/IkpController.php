@@ -97,7 +97,16 @@ class IkpController extends BaseController
         $opdList = $this->daftarOpd($jenis);
         $baris   = $this->rekapLintas($tahun, $bulan, $opdList);
         // IKP turun sampai pelaksana: per OPD berapa IKP sudah diturunkan / sampai pelaksana.
-        $turun   = (new \App\Services\IkpTurunService($this->db))->rekapKabupaten(array_map(static fn ($o) => (int) $o['id'], $opdList), $tahun);
+        // + jalur darurat (eKin README §25): IKP tanpa pendelegasian yang tertangani lewat penugasan tambahan di eKin —
+        // dihitung TERPISAH ("darurat"), bukan sebagai "sudah turun". eKin mati/lama = tanpa angka darurat.
+        $tambahan = null;
+        try {
+            $klien = new \App\Services\EkinClient();
+            $tambahan = $klien->terkonfigurasi() ? $klien->ikpTambahanSemua($tahun) : null;
+        } catch (\Throwable $e) {
+            log_message('warning', '[ikp.kab] jalur darurat eKin dilewati: ' . $e->getMessage());
+        }
+        $turun   = (new \App\Services\IkpTurunService($this->db))->rekapKabupaten(array_map(static fn ($o) => (int) $o['id'], $opdList), $tahun, $tambahan);
 
         return view('ikp/kab_index', [
             'turun'     => $turun,
