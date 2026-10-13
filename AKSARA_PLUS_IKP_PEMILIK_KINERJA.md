@@ -50,6 +50,9 @@ Impor data prototipe Prioritas (opsional): `php spark ikp:impor-prioritas --db=/
 `app/Commands/JagaAsap.php` (halaman IKP, Ruang OPD, Perjanjian Kinerja), `ALUR_FITUR_DAN_ROUTE.md` (§2, §7, §8.5–8.7, §8.10,
 §9.6, §9.10, §9.11), `API_DOCUMENTATION.md`, `public/openapi.json`; untuk Ruang OPD & menu: tampilan `ikp/{_kepala,inovasi,kab_*}`,
 `pemilik_kinerja/index`, `adminOpd/pk_renaksi/{index,monev}`, `{adminOpd,adminKabupaten}/cascading/cascading` (tab), `profile`.
+Untuk isian pilihan bisa dicari (13-10-2026): `{adminOpd,adminKabupaten}/templates/footer.php` (skrip Select2 otomatis →
+`templates/pilih_cari`), `adminOpd/pk/{tambah_pk,edit_pk}` (kelas `select2` pada satuan), `adminOpd/pk_renaksi/form`,
+`adminKabupaten/program_pk/{tambah,edit,import}_program`, `public/assets/js/adminKabupaten/pk/pk-bupati-form.js`.
 
 ## Masuk sebagai (prototipe; bawaan mati)
 
@@ -786,6 +789,41 @@ jalan darurat, supaya OPD tetap didorong merapikan pohon kinerjanya.
 1. IKP yang kemudian bisa masuk pohon: AKSARA+ menampilkan baris pohon **dan** jalur darurat; saran realisasi menjumlah
    keduanya (hitungan). Admin OPD perlu membatalkan/merevisi penugasan darurat di eKin — perlu pemeriksa "ganda"?
 2. Admin OPD belum bisa menugaskan jalur darurat dari AKSARA+ langsung (hanya tautan ke eKin) — sengaja, satu tempat input.
+
+## Isian pilihan bisa dicari & kotak saring daftar (13-10-2026)
+
+**Bug yang diperbaiki.** "Fokus cabang" (`#ppFokus`) dan "Tahun" (`#ppTahun`) di bagan Pohon Kinerja tidak bereaksi bila
+dipilih dengan klik: Select2 otomatis footer mengabarkan pilihan lewat jQuery `trigger('change')`, yang tidak sampai ke
+pendengar `addEventListener('change')` bawaan. (Uji lama lolos karena `selectOption` mengirim event bawaan.)
+
+**Satu berkas untuk semua halaman admin**: `public/assets/js/pilih-cari.js` + `public/assets/css/pilih-cari.css`, dimuat
+`templates/pilih_cari.php` dari footer adminOpd & adminKabupaten (menggantikan skrip Select2 otomatis yang dulu disalin di
+kedua footer).
+
+| Aturan | Isi |
+|---|---|
+| Jembatan event | `trigger('change')` tanpa namespace pada select ber-Select2 → **tepat satu** event `change` bawaan yang menggelembung; pendengar jQuery, atribut `onchange`, dan pendengar delegasi menerima event yang sama (tidak dobel). `trigger('change.select2')` tidak disentuh |
+| Pasang otomatis | `select.form-select` di luar form POST/modal (aturan lama) **dan** `select[data-pilih-cari]` di mana pun — modal memakai `dropdownParent` modal itu. `data-no-select2` = jangan |
+| Kotak cari | hanya bila pilihan **> 8** (`minimumResultsForSearch` 9) — bawaan semua Select2 non-AJAX yang tidak menyetel sendiri; AJAX/tags tidak disentuh |
+| API `window.AksaraPilih` | `pasang(akar, pemilih?)` sesudah baris disisipkan · `segarkan(el)` sesudah `.value` diubah dari kode (tanpa memicu pendengar — `trigger('change.select2')` ikut menjalankan `onchange` inline, jadi hindari) · `klon(node)` = `cloneNode` tanpa sisa Select2 · `saring(kotak)` |
+| Kotak saring | `<div data-saring-wadah data-saring-butir [data-saring-teks]>` + `input[data-saring-input]`, opsional `[data-saring-hanya]`, `[data-saring-info]`, `[data-saring-kosong]`. Butir bersarang: induk tampil redup sebagai jalur, `<details>` dibuka lalu dikembalikan. **Hanya tampilan** — isian butir tersembunyi tetap terkirim |
+
+**Yang diubah**: pemilih OPD Perjanjian Kinerja & Turunkan IKP Admin Kab (dulu `data-no-select2`; kini berkelompok
+`optgroup`), `#pmkIkp` modal Pemilik Kinerja, Penanggung Jawab RA PK Bupati, satuan sub rencana aksi, satuan indikator PK
+(kelas `select2` → `initSelect2` pk-form*.js; PK Bupati menyalin baris lewat `klon`), OPD Program PK tambah/ubah/impor;
+kotak saring simpul Turunkan IKP (> 8 simpul; Bapperida 59) dan baris grid realisasi IKP (> 8 IKP). Tidak ada perubahan
+data, rute, atau isi kiriman formulir.
+
+**Uji**: `/root/demo-kinerja/uji/combobox/cek_combobox_aksara.mjs` (semua pilihan lewat **klik** Select2; Diskominfo,
+Bapperida, Admin Kab, Super Admin; 1366 & 390) 93/93; `combobox/asap_combobox_aksara.mjs` (semua tautan menu 5 akun, tanpa
+galat JS, setelan kotak cari benar) lulus; unit 189 tes, hanya 2 gagal lama `CapaianTotalTest`.
+
+### Terbuka untuk dibahas (isian pilihan)
+
+1. Belum disentuh (prioritas rendah): halaman publik `user/*` (tanpa jQuery/Select2), `opd-select` Cascading Kabupaten,
+   kotak cari indeks Rencana Aksi Pegawai (±46 OPD), jabatan 2.418 opsi di modal Master.
+2. Halaman yang memuat ulang jQuery/Select2 sesudah footer (form RKT/Renstra/RPJMD, PK) tetap mendapat jembatan & aturan
+   kotak cari saat `DOMContentLoaded`; inisialisasi Select2 yang berjalan **sebelum** itu memakai setelan Select2 asli.
 
 ## Keputusan desain penting
 
