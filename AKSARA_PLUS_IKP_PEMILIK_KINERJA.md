@@ -787,6 +787,35 @@ jalan darurat, supaya OPD tetap didorong merapikan pohon kinerjanya.
    keduanya (hitungan). Admin OPD perlu membatalkan/merevisi penugasan darurat di eKin — perlu pemeriksa "ganda"?
 2. Admin OPD belum bisa menugaskan jalur darurat dari AKSARA+ langsung (hanya tautan ke eKin) — sengaja, satu tempat input.
 
+## Simulasi unit ke-6: Bapperida sampai pelaksana (13-10-2026)
+
+Data simulasi 2026 untuk seluruh pejabat & pegawai Bapperida (opd 7), setara lima unit simulasi. **Tidak ada kode AKSARA+ yang
+diubah** — hanya data, lewat tiga tahap TAMBAHAN di luar repo (`/root/demo-kinerja/simulasi/`, idempoten, `--kering` = ROLLBACK,
+env `AKSARA_DB`; berkas peta 600, hanya id; lihat `/root/demo-kinerja/tugas/SIM_UMUM.md` "Unit ke-6 Bapperida").
+
+| Tahap | Isi |
+|---|---|
+| `01c_bapperida.php` | roster 43 orang (opd 7 ∩ SIASN; tanpa pegawai fiktif), PPK, ketua tim Perencana Ahli Pertama, penempatan 11 staf berunor setingkat Badan (asumsi simulasi) → `unit_bapperida.json`; `opd.id_kepala_opd(7)` dibetulkan (35 → 9184; dipakai `IkpInovasiController`) |
+| `03c_pohon_bapperida.php` | pohon versi OPD 16-09 (59 simpul) dipertahankan + 36 simpul baru (Es III Sekretariat & tiga bidang kewilayahan = sasaran PK 215/248/249/250, setara Es IV dipegang JF Ahli Muda/Kasubbag, pelaksana per staf); setiap indikator bersatuan & bertarget 2026; 95 pemilik sumber `simulasi` → `pohon_bapperida.json` |
+| `03d_ikp_turun_bapperida.php` | 11 IKP diberi PJ (Kabid pengampu) dan diturunkan Es III → setara Es IV → pelaksana: 61 baris `delegasi`, porsi terbagi habis di setiap jenjang, satuan = satuan IKP (tetap pemikul angka menurut D3) → `03d_ikp_turun_bapperida.json` |
+
+**Hasil (salinan uji `aksara_bap_uji`, AKSARA+ uji :8224).** 43/43 orang punya simpul atau Es II (Kepala lewat PK JPT 199);
+95 simpul opd 7, 0 tanpa PJ, 0 tersembunyi; 162 indikator, semuanya bersatuan & bertarget 2026; Turunkan IKP: 11/11 "Sampai
+pelaksana", "Terbagi habis" di setiap jenjang; API `ekin/pegawai/{id}/kinerja` memberi calon RHK untuk ke-43 orang. Data OPD
+lain identik (sidik per tabel tanpa opd 7). Satu baris pegawai opd 7 sisa anonimisasi (tidak ada di SIASN) sengaja dibiarkan,
+sehingga halaman Pohon Kinerja menampilkan "Pegawai belum punya tugas di pohon ini: 1" (preseden Kelurahan 42).
+
+**MENGAPA tahap terpisah, bukan unit ke-6 di `unit5.json`**: `01b_pk.php` menolak unit5 yang memuat pegawai IKUT_PK (Kabid Riset),
+`01_pegawai.php` menulis ulang unit5, dan eKin berhenti dengan "unit tak dikenal" sebelum kodenya mengenal unit baru; lima unit
+yang sedang dievaluasi tidak boleh ikut dibangun ulang.
+
+### Terbuka untuk dibahas (Bapperida)
+
+1. Bidang Riset (Kabid + 2 Analis Kebijakan + 1 pelaksana) memikul 19 simpul Es IV/pelaksana pohon 16-09 — 5–7 simpul per orang.
+   Pohon versi OPD perlu dirampingkan, atau staf ditambah di sana?
+2. IKP "Dokumen Perencanaan Kolaboratif" menyebut 7 dokumen (termasuk CSR) dengan target 2026 = 6; pendelegasian membagi 6
+   (Perekonomian-SDA 2, Pemerintahan-PM 3, Infrastruktur 1 — CSR belum dipikul).
+
 ## Keputusan desain penting
 
 - IKP melekat ke **OPD × periode RPJMD** (bukan per dokumen PK). Hapus IKP = *soft delete* (`dihapus_pada`) karena aplikasi
