@@ -93,12 +93,20 @@ $jumlahSemua = array_sum($hitung);
       <input type="search" name="q" value="<?= esc($q, 'attr') ?>" class="form-control" placeholder="Cari nama atau jabatan pihak pertama/kedua<?= $kel !== 'opd' ? ', atau nama OPD' : '' ?>…" aria-label="Cari">
     </label>
     <?php if ($kel !== 'opd'): ?>
-      <select name="opd_id" class="form-select" data-no-select2 style="flex:1 1 260px;min-width:0;width:auto;" onchange="this.form.submit()" aria-label="Perangkat daerah">
-        <option value="">Semua perangkat daerah</option>
-        <?php foreach ($daftarOpd as $o): ?>
-          <option value="<?= (int) $o['id'] ?>" <?= (int) $o['id'] === (int) $opdId ? 'selected' : '' ?>><?= esc($o['nama_tampil']) ?></option>
-        <?php endforeach; ?>
-      </select>
+      <?php // Bisa dicari (Select2 otomatis, footer → pilih-cari.js) dan dikelompokkan per jenis perangkat daerah. ?>
+      <div style="flex:1 1 260px;min-width:0;">
+        <select name="opd_id" class="form-select" onchange="this.form.submit()" aria-label="Perangkat daerah">
+          <option value="">Semua perangkat daerah</option>
+          <?php $grupOpd = []; foreach ($daftarOpd as $o) { $grupOpd[$o['kelompok'] ?? 'lainnya'][] = $o; } ?>
+          <?php foreach ($grupOpd as $kel => $isiGrup): ?>
+            <optgroup label="<?= esc(\App\Services\RuangOpdService::KELOMPOK[$kel] ?? 'Lainnya', 'attr') ?>">
+              <?php foreach ($isiGrup as $o): ?>
+                <option value="<?= (int) $o['id'] ?>" <?= (int) $o['id'] === (int) $opdId ? 'selected' : '' ?>><?= esc($o['nama_tampil']) ?></option>
+              <?php endforeach; ?>
+            </optgroup>
+          <?php endforeach; ?>
+        </select>
+      </div>
     <?php endif; ?>
     <button type="submit" class="btn btn-success"><i class="fas fa-filter me-1"></i>Terapkan</button>
   </form>

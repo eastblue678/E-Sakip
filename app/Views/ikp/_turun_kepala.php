@@ -32,10 +32,21 @@ $this->setVar('shellCss', (string) @file_get_contents(FCPATH . 'assets/css/ikp.c
     <form method="get" action="<?= base_url('adminkab/ikp/turun') ?>" class="tr-pilih-opd">
         <input type="hidden" name="tahun" value="<?= (int) $tahun ?>">
         <label for="tr-opd" class="form-label mb-1 small fw-bold">Perangkat daerah</label>
-        <select id="tr-opd" name="opd_id" class="form-select" data-no-select2 onchange="this.form.submit()">
+        <?php // Bisa dicari (Select2 otomatis, footer → pilih-cari.js), dikelompokkan Perangkat Daerah / Kecamatan.
+        $grupOpd = ['Perangkat Daerah' => [], 'Kecamatan' => []];
+        foreach ($scope['opd_list'] as $o) {
+            $grupOpd[($o['jenis'] ?? '') === \App\Models\OpdModel::JENIS_KECAMATAN ? 'Kecamatan' : 'Perangkat Daerah'][] = $o;
+        }
+        $grupOpd = array_filter($grupOpd);
+        ?>
+        <select id="tr-opd" name="opd_id" class="form-select" onchange="this.form.submit()">
             <option value="">— pilih perangkat daerah —</option>
-            <?php foreach ($scope['opd_list'] as $o): ?>
-                <option value="<?= (int) $o['id'] ?>" <?= (int) $o['id'] === (int) ($scope['opd_id'] ?? 0) ? 'selected' : '' ?>><?= esc($o['nama_opd']) ?></option>
+            <?php foreach ($grupOpd as $judulGrup => $isiGrup): ?>
+                <optgroup label="<?= esc($judulGrup, 'attr') ?>">
+                    <?php foreach ($isiGrup as $o): ?>
+                        <option value="<?= (int) $o['id'] ?>" <?= (int) $o['id'] === (int) ($scope['opd_id'] ?? 0) ? 'selected' : '' ?>><?= esc($o['nama_opd']) ?></option>
+                    <?php endforeach; ?>
+                </optgroup>
             <?php endforeach; ?>
         </select>
     </form>
