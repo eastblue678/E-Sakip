@@ -11,6 +11,9 @@
 .pp-pilih { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: .8rem; color: var(--pp-redup); min-width: 0; }
 .pp-pilih .form-select { width: auto; max-width: 320px; min-width: 0; }
 .pp-pilih-tahun .form-select { width: 90px; }
+/* #ppFokus/#ppTahun dibungkus Select2 (public/assets/js/pilih-cari.js): kontainernya mengikuti aturan select. */
+.pp-pilih .select2-container { min-width: 0; max-width: 320px; }
+.pp-pilih-tahun .select2-container { width: 90px !important; }
 .pp-legenda { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #e0e7e2; font-size: .76rem; color: #4d5e53; }
 .pp-legenda-cat { flex: 1 1 100%; color: var(--pp-redup); }
 .pp-titik { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
@@ -22,7 +25,9 @@
 @media (max-width: 767.98px) {
     .pp-pilih { flex: 1 1 100%; }
     .pp-pilih .form-select { flex: 1 1 auto; max-width: none; }
+    .pp-pilih .select2-container { flex: 1 1 auto; width: auto !important; max-width: none; }
     .pp-pilih-tahun { flex: 0 0 auto; }
+    .pp-pilih-tahun .select2-container { flex: 0 0 90px; width: 90px !important; }
 }
 
 /* ---------- Kotak pemilik di dalam simpul ---------- */

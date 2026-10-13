@@ -100,7 +100,13 @@
         var $s = $(el);
         if ($s.hasClass('select2-hidden-accessible') || $s.is('[data-no-select2]')) { return; }
         var $modal = $s.closest('.modal');
-        $s.select2({ width: '100%', theme: 'bootstrap-5', dropdownParent: $modal.length ? $modal : $(d.body) });
+        var opsi = { width: '100%', theme: 'bootstrap-5', dropdownParent: $modal.length ? $modal : $(d.body) };
+        // Ukuran kecil ikut form-select-sm / input-group-sm (kelas tema bootstrap-5).
+        if ($s.hasClass('form-select-sm') || $s.closest('.input-group-sm').length) {
+            opsi.selectionCssClass = 'select2--small';
+            opsi.dropdownCssClass = 'select2--small';
+        }
+        $s.select2(opsi);
         $s.on('select2:open.aksaraPilih', fokusCari);
     }
 
@@ -120,9 +126,18 @@
         $akar.filter(sel).add($akar.find(sel)).each(function () { pasangSatu($, this); });
     }
 
+    /**
+     * Segarkan tampilan Select2 sesudah .value/option diubah dari kode, TANPA
+     * memicu pendengar apa pun. (trigger('change.select2') ikut menjalankan
+     * atribut onchange inline — perilaku bawaan jQuery — jadi dihindari.)
+     */
     function segarkan(el) {
         var $ = w.jQuery;
-        if ($ && el && el.classList && el.classList.contains('select2-hidden-accessible')) {
+        if (!$ || !el || !el.classList || !el.classList.contains('select2-hidden-accessible')) { return; }
+        var inst = $(el).data('select2');
+        if (inst && inst.dataAdapter && typeof inst.trigger === 'function') {
+            inst.dataAdapter.current(function (data) { inst.trigger('selection:update', { data: data }); });
+        } else {
             $(el).trigger('change.select2');
         }
     }
