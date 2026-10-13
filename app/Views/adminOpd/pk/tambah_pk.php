@@ -622,7 +622,14 @@ foreach ($pkMasterPakai as $kunci) {
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script>
         function initSelect2(context = document) {
-            $(context).find('.select2').each(function() {
+            // Hanya <select>: kontainer Select2 sendiri juga berkelas "select2" (span.select2).
+            $(context).find('select.select2').each(function() {
+                // Sudah dipasang AksaraPilih (tema bootstrap-5; PK Bupati: satuan, juga di
+                // baris kloning) — jangan ditimpa tema bawaan, agar satu formulir seragam.
+                var inst = $(this).data('select2');
+                if (inst && inst.options && inst.options.get('theme') === 'bootstrap-5') {
+                    return;
+                }
                 if ($(this).hasClass('select2-hidden-accessible')) {
                     $(this).select2('destroy');
                 }
