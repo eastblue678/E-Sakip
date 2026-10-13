@@ -57,6 +57,16 @@
     // ------------------------------------------------------------------
     // 3. Bawaan kotak cari (hanya untuk daftar statis)
     // ------------------------------------------------------------------
+    var BAHASA = {
+        noResults: function () { return 'Tidak ditemukan'; },
+        searching: function () { return 'Mencari…'; },
+        loadingMore: function () { return 'Memuat lebih banyak…'; },
+        errorLoading: function () { return 'Hasil tidak dapat dimuat.'; },
+        removeAllItems: function () { return 'Hapus semua pilihan'; },
+        inputTooShort: function (a) { return 'Ketik ' + (a.minimum - a.input.length) + ' huruf lagi'; },
+        maximumSelected: function (a) { return 'Paling banyak ' + a.maximum + ' pilihan'; }
+    };
+
     function pasangBawaanCari($) {
         var asli = $ && $.fn && $.fn.select2;
         if (!asli || asli._aksaraBawaan) { return; }
@@ -67,6 +77,8 @@
                 if (o.minimumResultsForSearch === undefined && !o.ajax && !o.tags) {
                     o.minimumResultsForSearch = MIN_CARI;
                 }
+                // Pesan Select2 berbahasa Indonesia (aturan rumah) untuk SEMUA instans yang belum menyetel bahasanya.
+                if (o.language === undefined) { o.language = BAHASA; }
                 var args = Array.prototype.slice.call(arguments);
                 args[0] = o;
                 return asli.apply(this, args);
