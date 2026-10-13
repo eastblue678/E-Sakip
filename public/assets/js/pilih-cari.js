@@ -216,6 +216,10 @@
     //   <input type="checkbox" data-saring-hanya=":scope > .y.ikut">   (opsional)
     //   <span data-saring-info></span>  <p data-saring-kosong hidden>…</p>
     // </div>
+    // data-saring-tetap=".kotor" (opsional, di kotak): butir yang cocok dengan
+    // pemilih itu SELALU tampil walau tidak cocok saringan — mis. baris yang
+    // sedang diisi dan belum disimpan, agar perubahannya tidak hilang dari mata.
+    // Jumlahnya disebut di info (data-saring-tetap-info, bawaan "tetap tampil").
     // Butir boleh bersarang (pohon): butir tampil bila cocok atau punya turunan
     // yang cocok (diberi .saring-konteks), dan <details> di jalurnya dibuka.
     // Isian di butir tersembunyi TETAP ikut terkirim — saringan hanya tampilan.
@@ -236,6 +240,8 @@
         var kosong = kotak.querySelector('[data-saring-kosong]');
         var pilihTeks = kotak.getAttribute('data-saring-teks');
         var satuan = kotak.getAttribute('data-saring-satuan') || 'butir';
+        var pilihTetap = kotak.getAttribute('data-saring-tetap');
+        var infoTetap = kotak.getAttribute('data-saring-tetap-info') || 'tetap tampil';
         var butir = Array.prototype.slice.call(wadah.querySelectorAll(pilihButir));
         var induk = butir.map(function (b) { return b.parentElement ? b.parentElement.closest(pilihButir) : null; });
         var teks = butir.map(function (b) {
@@ -253,7 +259,7 @@
             var semuaDetails = wadah.querySelectorAll('details');
 
             if (!aktif) {
-                butir.forEach(function (b) { b.classList.remove('saring-sembunyi', 'saring-konteks'); });
+                butir.forEach(function (b) { b.classList.remove('saring-sembunyi', 'saring-konteks', 'saring-tetap'); });
                 if (detailsAsli) {
                     detailsAsli.forEach(function (p) { p[0].open = p[1]; });
                     detailsAsli = null;
@@ -270,7 +276,9 @@
                 if (selHanya && !b.querySelector(selHanya)) { return false; }
                 return kata.every(function (k) { return teks[i].indexOf(k) !== -1; });
             });
-            var tampil = cocok.slice();
+            var tetap = butir.map(function (b, i) { return !cocok[i] && !!pilihTetap && b.matches(pilihTetap); });
+            var nTetap = tetap.filter(Boolean).length;
+            var tampil = cocok.map(function (c, i) { return c || tetap[i]; });
             // Dari belakang (turunan selalu sesudah leluhurnya dalam urutan dokumen).
             for (var i = butir.length - 1; i >= 0; i--) {
                 if (tampil[i] && induk[i]) {
@@ -281,7 +289,8 @@
             var n = 0;
             butir.forEach(function (b, i) {
                 b.classList.toggle('saring-sembunyi', !tampil[i]);
-                b.classList.toggle('saring-konteks', tampil[i] && !cocok[i]);
+                b.classList.toggle('saring-tetap', tetap[i]);
+                b.classList.toggle('saring-konteks', tampil[i] && !cocok[i] && !tetap[i]);
                 if (cocok[i]) { n++; }
             });
             // Buka <details> cabang yang memuat butir tampil; tutup cabang lain.
@@ -290,7 +299,10 @@
                 if (!isi.length) { return; }
                 x.open = Array.prototype.some.call(isi, function (b) { return !b.classList.contains('saring-sembunyi'); });
             });
-            if (info) { info.textContent = n + ' dari ' + butir.length + ' ' + satuan + ' cocok'; }
+            if (info) {
+                info.textContent = n + ' dari ' + butir.length + ' ' + satuan + ' cocok'
+                    + (nTetap ? ' · ' + nTetap + ' ' + infoTetap : '');
+            }
             if (kosong) { kosong.hidden = n > 0; }
         }
 

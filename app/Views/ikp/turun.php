@@ -396,7 +396,7 @@ $render = function (int $id) use (&$render, $urut, $simpul, $ind, $label, $keada
     <?php if (count($simpul) > 8): ?>
         <?php // Kotak saring (public/assets/js/pilih-cari.js): hanya tampilan — simpul yang tersembunyi tetap ikut tersimpan. ?>
         <div class="saring-daftar" data-saring-wadah="#tr-pohon" data-saring-butir="li.tr-simpul" data-saring-satuan="simpul"
-             data-saring-teks=".tr-level, .tr-sasaran, .tr-pemilik, .tr-baca, select[data-pilih-ind] option">
+             data-saring-teks=".tr-level, .tr-sasaran, .tr-pemilik, .tr-baca, select[data-pilih-ind] option:not([value='baru'])">
             <label class="saring-cari"><i class="fas fa-filter" aria-hidden="true"></i>
                 <input type="search" class="form-control form-control-sm" data-saring-input autocomplete="off"
                        placeholder="Saring <?= count($simpul) ?> simpul: sasaran, pemilik, atau indikator…" aria-label="Saring simpul pohon"></label>

@@ -84,9 +84,11 @@ $sel  = static function (array $t) {
     </div>
 <?php else: ?>
     <?php if (count($rekap) > 8): ?>
-        <?php // Kotak saring (public/assets/js/pilih-cari.js): hanya menyembunyikan baris di layar. ?>
+        <?php // Kotak saring (public/assets/js/pilih-cari.js): hanya menyembunyikan baris di layar.
+              // Baris yang sedang diisi dan belum disimpan (tr.kotor) tidak pernah disembunyikan. ?>
         <div class="saring-daftar" data-saring-wadah="#grid-realisasi tbody" data-saring-butir="tr[data-ikp]" data-saring-satuan="IKP"
-             data-saring-teks="td.lekat .nama, td.lekat .sub">
+             data-saring-teks="td.lekat .nama, td.lekat .sub"
+             data-saring-tetap=".kotor" data-saring-tetap-info="belum disimpan, tetap tampil">
             <label class="saring-cari"><i class="fas fa-filter" aria-hidden="true"></i>
                 <input type="search" class="form-control form-control-sm" data-saring-input autocomplete="off"
                        placeholder="Saring <?= count($rekap) ?> IKP: rumusan atau satuan…" aria-label="Saring IKP"></label>
