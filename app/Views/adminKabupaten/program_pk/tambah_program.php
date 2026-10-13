@@ -36,7 +36,7 @@
           <?= csrf_field() ?>
           <div class="mb-4">
             <label class="form-label fw-semibold">OPD</label>
-            <select name="opd_id" class="form-select" required>
+            <select name="opd_id" class="form-select" required data-pilih-cari>
               <option value="">-- Pilih OPD --</option>
               <?php foreach ($opds as $opd): ?>
                 <option value="<?= $opd['id'] ?>" <?= ((string) $oldOpdId === (string) $opd['id']) ? 'selected' : '' ?>>

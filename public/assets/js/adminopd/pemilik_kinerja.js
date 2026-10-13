@@ -722,6 +722,8 @@
         // Baris hasil "Turunkan IKP": target, metode & tautan IKP dikunci (diatur di halaman itu); satuan tetap bisa diubah.
         var delegasi = ind.ikp_sumber === 'delegasi' && !!ind.ikp_id;
         ['#pmkTarget', '#pmkMetode', '#pmkIkp'].forEach(function (q) { var el = modalIndEl.querySelector(q); if (el) el.disabled = delegasi; });
+        // #pmkIkp bisa dicari (Select2, data-pilih-cari): tampilannya disegarkan sesudah .value diubah dari kode.
+        if (window.AksaraPilih) { window.AksaraPilih.segarkan(selIkp); }
         segarkanInfoIkp();
         segarkanBantuMetode();
         if (delegasi) {
@@ -734,6 +736,7 @@
     }
     if (modalIndEl) {
         modalIndEl.addEventListener('shown.bs.modal', function () { modalIndEl.querySelector('#pmkSatuan').focus(); });
+        // Pilihan lewat Select2 tetap sampai ke pendengar bawaan ini (jembatan event, pilih-cari.js).
         modalIndEl.querySelector('#pmkIkp').addEventListener('change', segarkanInfoIkp);
         modalIndEl.querySelector('#pmkMetode').addEventListener('change', segarkanBantuMetode);
         modalIndEl.addEventListener('keydown', function (e) {

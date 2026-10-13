@@ -318,7 +318,7 @@ $labelUnit = $labelUnitHeader
                     </label>
                     <?php if ($isBupati): ?>
                         <?php $pjVal = (string) $val('penanggung_jawab'); ?>
-                        <select class="form-select" id="penanggung_jawab" name="penanggung_jawab" required>
+                        <select class="form-select" id="penanggung_jawab" name="penanggung_jawab" required data-pilih-cari>
                             <option value="">&mdash; Pilih Perangkat Daerah &mdash;</option>
                             <?php foreach (($opdList ?? []) as $opd): ?>
                                 <option value="<?= esc($opd['nama_opd']) ?>" <?= ($pjVal === $opd['nama_opd']) ? 'selected' : '' ?>>
@@ -495,7 +495,10 @@ $labelUnit = $labelUnitHeader
                     // panjang ("Dokumen", "Orang/Kegiatan", "Persentase"), dan kotak
                     // 150px memotongnya jadi tidak terbaca. flex-basis memberi porsi
                     // tetap sambil tetap boleh menyusut di layar sempit.
-                    + '<select class="form-select sub-satuan flex-grow-0 flex-shrink-1"'
+                    // data-pilih-cari: bisa dicari (Select2) — dipasang pilihBisaDicari() sesudah
+                    // baris disisipkan; pilihan tetap memicu 'change' bawaan (jembatan pilih-cari.js),
+                    // jadi pendengar delegasi di #renaksi-list tetap memanggil sync().
+                    + '<select class="form-select sub-satuan flex-grow-0 flex-shrink-1" data-pilih-cari'
                     + ' style="flex-basis:220px;min-width:130px"'
                     + ' title="Satuan target triwulan sub ini">' + satOpts + '</select>'
                     + '<button type="button" class="btn btn-outline-danger remove-sub" title="'
@@ -644,8 +647,14 @@ $labelUnit = $labelUnitHeader
                 subJson.value = JSON.stringify(map);
             }
 
+            /** Satuan sub rencana aksi bisa dicari — dipasang sesudah baris dibuat. */
+            function pilihBisaDicari(akar) {
+                if (window.AksaraPilih) window.AksaraPilih.pasang(akar);
+            }
+
             function addRow(val, subs) {
                 list.insertAdjacentHTML('beforeend', rowHtml(val, subs));
+                pilihBisaDicari(list.lastElementChild);
                 // Hanya butir yang baru saja disisipkan yang perlu diukur.
                 tumbuhkanSemua(list.lastElementChild);
                 renumber();
@@ -755,6 +764,7 @@ $labelUnit = $labelUnitHeader
                         }));
                         sudah = wrap.lastElementChild;
                         tumbuhkanSemua(sudah);
+                        pilihBisaDicari(sudah);
                     }
 
                     sudah.classList.add('sub-ditolak', 'sub-bermonev');
@@ -791,6 +801,7 @@ $labelUnit = $labelUnitHeader
                     if (wrap) {
                         wrap.insertAdjacentHTML('beforeend', subRowHtml({ id: 0, teks: '', satuan: '', tw: ['', '', '', ''] }));
                         tumbuhkanSemua(wrap.lastElementChild);
+                        pilihBisaDicari(wrap.lastElementChild);
                     }
                     renumber();
                     sync();

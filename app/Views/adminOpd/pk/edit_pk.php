@@ -297,7 +297,7 @@ foreach ($pkMasterPakai as $kunci) {
                                                                 <label class="form-label">Satuan</label>
                                                                 <select
                                                                     name="sasaran_pk[<?= $si ?>][indikator][<?= $ii ?>][id_satuan]"
-                                                                    class="form-select mb-3 border-secondary satuan-select" required>
+                                                                    class="form-select select2 mb-3 border-secondary satuan-select" required>
                                                                     <option value="">Pilih Satuan</option>
                                                                     <?php if (isset($satuan) && !empty($satuan)): ?>
                                                                         <?php foreach ($satuan as $s): ?>

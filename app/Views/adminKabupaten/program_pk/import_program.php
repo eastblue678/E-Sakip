@@ -134,7 +134,7 @@
 
                         <div class="row">
                             <div class="col-md-6">
-                                <select name="opd_id" id="opd_id" class="form-control border-secondary" required>
+                                <select name="opd_id" id="opd_id" class="form-control border-secondary" required data-pilih-cari>
                                     <option value="">-- Pilih OPD --</option>
                                     <?php foreach ($opds as $opd): ?>
                                         <option value="<?= $opd['id'] ?>">
@@ -326,7 +326,7 @@
                 info.classList.toggle('d-none', !semua);
                 opd.disabled = semua;
                 opd.required = !semua;
-                if (semua) { opd.value = ''; }
+                if (semua) { opd.value = ''; if (window.AksaraPilih) { window.AksaraPilih.segarkan(opd); } } // tampilan Select2 ikut kosong
             }
 
             perOpd.addEventListener('change', terapkan);

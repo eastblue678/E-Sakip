@@ -360,7 +360,7 @@ foreach ($pkMasterPakai as $kunci) {
                                                     <div class="col-md-4">
                                                         <label class="form-label">Satuan</label>
                                                         <select name="sasaran_pk[0][indikator][0][id_satuan]"
-                                                            class="form-select mb-3 border-secondary satuan-select"
+                                                            class="form-select select2 mb-3 border-secondary satuan-select"
                                                             required>
                                                             <option value="">Pilih Satuan</option>
                                                             <?php if (isset($satuan) && !empty($satuan)): ?>

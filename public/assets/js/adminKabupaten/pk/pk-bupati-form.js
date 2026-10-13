@@ -52,6 +52,17 @@ document.addEventListener('DOMContentLoaded', function () {
     updateFormNames();
 
     /* ===============================
+     * SATUAN BISA DICARI (Select2)
+     * Baris di-clone dari baris yang sudah ber-Select2: salin lewat
+     * AksaraPilih.klon (tanpa sisa Select2), lalu pasang lagi sesudah
+     * baris baru masuk ke halaman. Lihat public/assets/js/pilih-cari.js.
+     * =============================== */
+    const SATUAN = 'select.satuan-select';
+    const klon = (el) => (window.AksaraPilih ? window.AksaraPilih.klon(el) : el.cloneNode(true));
+    const pasangSatuan = (akar) => { if (window.AksaraPilih) window.AksaraPilih.pasang(akar, SATUAN); };
+    pasangSatuan(sasaranContainer);
+
+    /* ===============================
      * ADD / REMOVE HANDLER (DELEGATION)
      * =============================== */
     document.addEventListener('click', function (e) {
@@ -63,12 +74,13 @@ document.addEventListener('DOMContentLoaded', function () {
             const template = document.querySelector('.sasaran-item');
             if (!template) return;
 
-            const clone = template.cloneNode(true);
+            const clone = klon(template);
 
             clone.querySelectorAll('input, textarea').forEach(el => el.value = '');
             clone.querySelectorAll('select').forEach(el => el.selectedIndex = 0);
 
             sasaranContainer.appendChild(clone);
+            pasangSatuan(clone);
             updateFormNames();
             return;
         }
@@ -83,12 +95,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
             if (!indikatorContainer || !template) return;
 
-            const clone = template.cloneNode(true);
+            const clone = klon(template);
 
             clone.querySelectorAll('input').forEach(el => el.value = '');
             clone.querySelectorAll('select').forEach(el => el.selectedIndex = 0);
 
             indikatorContainer.appendChild(clone);
+            pasangSatuan(clone);
             updateFormNames();
             return;
         }

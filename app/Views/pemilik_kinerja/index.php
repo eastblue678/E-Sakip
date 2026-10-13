@@ -515,7 +515,7 @@ $areaOpd   = ($area ?? 'adminopd') === 'adminopd';   // tautan ke menu Cascading
                         </div>
                         <div class="col-md-7">
                             <label class="form-label" for="pmkIkp">Turunan langsung IKP? <span class="text-secondary fw-normal">(opsional)</span></label>
-                            <select class="form-select" id="pmkIkp" data-no-select2>
+                            <select class="form-select" id="pmkIkp" data-pilih-cari>
                                 <option value="">&mdash; Tidak ditautkan ke IKP &mdash;</option>
                                 <?php foreach ($ikpOpsi as $i): ?>
                                     <option value="<?= (int) $i['id'] ?>">[<?= esc($kategoriIkp[$i['kategori']] ?? $i['kategori']) ?>] <?= esc($i['nama']) ?></option>
