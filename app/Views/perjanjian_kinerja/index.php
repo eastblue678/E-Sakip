@@ -98,8 +98,8 @@ $jumlahSemua = array_sum($hitung);
         <select name="opd_id" class="form-select" onchange="this.form.submit()" aria-label="Perangkat daerah">
           <option value="">Semua perangkat daerah</option>
           <?php $grupOpd = []; foreach ($daftarOpd as $o) { $grupOpd[$o['kelompok'] ?? 'lainnya'][] = $o; } ?>
-          <?php foreach ($grupOpd as $kel => $isiGrup): ?>
-            <optgroup label="<?= esc(\App\Services\RuangOpdService::KELOMPOK[$kel] ?? 'Lainnya', 'attr') ?>">
+          <?php foreach ($grupOpd as $kunciGrup => $isiGrup): ?>
+            <optgroup label="<?= esc(\App\Services\RuangOpdService::KELOMPOK[$kunciGrup] ?? 'Lainnya', 'attr') ?>">
               <?php foreach ($isiGrup as $o): ?>
                 <option value="<?= (int) $o['id'] ?>" <?= (int) $o['id'] === (int) $opdId ? 'selected' : '' ?>><?= esc($o['nama_tampil']) ?></option>
               <?php endforeach; ?>
