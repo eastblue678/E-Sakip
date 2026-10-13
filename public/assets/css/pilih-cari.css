@@ -1,0 +1,24 @@
+/* AKSARA+ — isian pilihan bisa dicari (Select2) & kotak saring daftar.
+ * Pasangan public/assets/js/pilih-cari.js; dimuat lewat app/Views/templates/pilih_cari.php. */
+
+/* Pilihan panjang (nama OPD, rumusan IKP) dibungkus, bukan dipotong, di daftar. */
+.select2-container--bootstrap-5 .select2-results__option { white-space: normal; overflow-wrap: anywhere; }
+.select2-container--bootstrap-5 .select2-results__group { font-size: .72rem; text-transform: uppercase; letter-spacing: .3px; color: #5d7064; }
+
+/* Select asli yang bermargin bawah (mb-3) — margin pindah ke kontainer Select2. */
+select.mb-3.select2-hidden-accessible + .select2-container { margin-bottom: 1rem; }
+
+/* Di dalam .input-group (satuan sub rencana aksi): lebar proporsional, boleh menyusut. */
+.input-group > .select2-container--bootstrap-5 { flex: 0 1 220px; min-width: 130px; width: auto !important; }
+.input-group > .select2-container--bootstrap-5 .select2-selection { border-radius: 0; height: 100%; }
+
+/* ---------- Kotak saring daftar ---------- */
+.saring-daftar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; background: #fff; border: 1px solid #e3e9e5;
+    border-radius: 12px; padding: 8px 12px; margin: 0 0 12px; }
+.saring-cari { position: relative; flex: 1 1 260px; min-width: 0; margin: 0; }
+.saring-cari i { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: #8aa295; font-size: .85rem; pointer-events: none; }
+.saring-cari input { padding-left: 32px; border-radius: 10px; }
+.saring-sakelar { display: inline-flex; align-items: center; gap: 6px; font-size: .82rem; font-weight: 600; color: #33483b; margin: 0; cursor: pointer; }
+.saring-info { font-size: .78rem; color: #5d6b62; }
+.saring-kosong { font-size: .82rem; color: #8a5a1c; background: #fdf5e1; border-radius: 10px; padding: 8px 12px; margin: 8px 0; }
+.saring-sembunyi { display: none !important; }

@@ -96,6 +96,8 @@
         tandaiBelum();
         paskan();
     }
+    // Pendengar bawaan: pilihan lewat Select2 sampai ke sini berkat jembatan
+    // event di public/assets/js/pilih-cari.js (dulu klik tidak berpengaruh).
     sFokus.addEventListener('change', function () { fokus(sFokus.value); });
 
     // ---- Tahun & paskan ----
@@ -117,7 +119,11 @@
         var b = e.target.closest('[data-pp-ke]');
         if (!b) { return; }
         var id = b.getAttribute('data-pp-ke');
-        if (sFokus.value) { sFokus.value = ''; fokus(''); }
+        if (sFokus.value) {
+            sFokus.value = '';
+            if (window.AksaraPilih) { window.AksaraPilih.segarkan(sFokus); } // tampilan Select2 ikut kembali
+            fokus('');
+        }
         if (!cTampil.checked) { cTampil.checked = true; aturTampil(); }
         var node = tree.querySelector('.tree-node[data-simpul="' + id + '"]');
         if (!node) { return; }
