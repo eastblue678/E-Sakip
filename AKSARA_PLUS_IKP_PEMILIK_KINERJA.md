@@ -805,17 +805,20 @@ kedua footer).
 | Jembatan event | `trigger('change')` tanpa namespace pada select ber-Select2 → **tepat satu** event `change` bawaan yang menggelembung; pendengar jQuery, atribut `onchange`, dan pendengar delegasi menerima event yang sama (tidak dobel). `trigger('change.select2')` tidak disentuh |
 | Pasang otomatis | `select.form-select` di luar form POST/modal (aturan lama) **dan** `select[data-pilih-cari]` di mana pun — modal memakai `dropdownParent` modal itu. `data-no-select2` = jangan |
 | Kotak cari | hanya bila pilihan **> 8** (`minimumResultsForSearch` 9) — bawaan semua Select2 non-AJAX yang tidak menyetel sendiri; AJAX/tags tidak disentuh |
+| Saat daftar dibuka (semua Select2, juga `initSelect2` lama pk-form*.js) | `select2:open` di document: kotak cari difokuskan di layar ≥ 768 px (bug jQuery 3.6); **Enter** (memilih hasil) dan **Esc** (menutup daftar) yang sudah dipakai Select2 (`preventDefault`) dihentikan di kontainer Select2 — tidak memicu "Enter = simpan" modal Pemilik Kinerja dan tidak menutup modal Bootstrap. Esc saat daftar tertutup tetap menutup modal |
 | API `window.AksaraPilih` | `pasang(akar, pemilih?)` sesudah baris disisipkan · `segarkan(el)` sesudah `.value` diubah dari kode (tanpa memicu pendengar — `trigger('change.select2')` ikut menjalankan `onchange` inline, jadi hindari) · `klon(node)` = `cloneNode` tanpa sisa Select2 · `saring(kotak)` |
-| Kotak saring | `<div data-saring-wadah data-saring-butir [data-saring-teks]>` + `input[data-saring-input]`, opsional `[data-saring-hanya]`, `[data-saring-info]`, `[data-saring-kosong]`. Butir bersarang: induk tampil redup sebagai jalur, `<details>` dibuka lalu dikembalikan. **Hanya tampilan** — isian butir tersembunyi tetap terkirim |
+| Kotak saring | `<div data-saring-wadah data-saring-butir [data-saring-teks]>` + `input[data-saring-input]`, opsional `[data-saring-hanya]`, `[data-saring-info]`, `[data-saring-kosong]`. Butir bersarang: induk tampil redup sebagai jalur, `<details>` dibuka lalu dikembalikan. `data-saring-tetap=".kotor"`: butir itu selalu tampil (baris realisasi yang belum disimpan) dan disebut di info. **Hanya tampilan** — isian butir tersembunyi tetap terkirim |
 
 **Yang diubah**: pemilih OPD Perjanjian Kinerja & Turunkan IKP Admin Kab (dulu `data-no-select2`; kini berkelompok
 `optgroup`), `#pmkIkp` modal Pemilik Kinerja, Penanggung Jawab RA PK Bupati, satuan sub rencana aksi, satuan indikator PK
-(kelas `select2` → `initSelect2` pk-form*.js; PK Bupati menyalin baris lewat `klon`), OPD Program PK tambah/ubah/impor;
+(kelas `select2` → `initSelect2` pk-form*.js; PK Bupati: semua baris tema bootstrap-5 lewat `AksaraPilih`, disalin lewat
+`klon` — `initSelect2` inline tambah_pk tidak menimpanya), OPD Program PK tambah/ubah/impor;
 kotak saring simpul Turunkan IKP (> 8 simpul; Bapperida 59) dan baris grid realisasi IKP (> 8 IKP). Tidak ada perubahan
 data, rute, atau isi kiriman formulir.
 
 **Uji**: `/root/demo-kinerja/uji/combobox/cek_combobox_aksara.mjs` (semua pilihan lewat **klik** Select2; Diskominfo,
-Bapperida, Admin Kab, Super Admin; 1366 & 390) 93/93; `combobox/asap_combobox_aksara.mjs` (semua tautan menu 5 akun, tanpa
+Bapperida, Admin Kab, Super Admin; 1366 & 390; juga keyboard ketik + Enter / Esc di `#pmkIkp`, baris realisasi belum
+disimpan saat disaring, tema satuan PK Bupati) 108/108; `combobox/asap_combobox_aksara.mjs` (semua tautan menu 5 akun, tanpa
 galat JS, setelan kotak cari benar) lulus; unit 189 tes, hanya 2 gagal lama `CapaianTotalTest`.
 
 ### Terbuka untuk dibahas (isian pilihan)
