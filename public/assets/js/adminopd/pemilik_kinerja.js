@@ -740,6 +740,9 @@
         modalIndEl.querySelector('#pmkIkp').addEventListener('change', segarkanInfoIkp);
         modalIndEl.querySelector('#pmkMetode').addEventListener('change', segarkanBantuMetode);
         modalIndEl.addEventListener('keydown', function (e) {
+            // Enter di kotak cari #pmkIkp (Select2, dropdownParent = modal ini) berarti
+            // MEMILIH hasil cari, bukan menyimpan — Select2 sudah menanganinya.
+            if (e.defaultPrevented || (e.target.closest && e.target.closest('.select2-container'))) { return; }
             if (e.key === 'Enter' && e.target.tagName === 'INPUT') {
                 e.preventDefault();
                 simpanIndikator(modalIndEl.querySelector('.modal-footer .btn-success'), false);

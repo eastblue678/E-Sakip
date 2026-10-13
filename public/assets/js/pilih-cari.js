@@ -18,6 +18,11 @@
  *    data-no-select2 tetap berarti "jangan".
  * 3. KOTAK CARI hanya bila pilihan > 8 (minimumResultsForSearch 9), sebagai
  *    bawaan SEMUA Select2 non-AJAX yang tidak menyetelnya sendiri.
+ *    Untuk SEMUA Select2 (juga yang dipasang skrip lama, mis. initSelect2
+ *    pk-form*.js) lewat select2:open di document: kotak cari difokuskan di
+ *    layar lebar, dan Enter/Esc yang sudah dipakai Select2 (memilih hasil,
+ *    menutup daftar) tidak diteruskan ke leluhurnya — tidak menyimpan
+ *    formulir modal, tidak menutup modal Bootstrap.
  * 4. API window.AksaraPilih:
  *    pasang(akar, pemilih?)  pasang Select2 pada baris yang baru disisipkan;
  *    segarkan(el)            segarkan tampilan sesudah .value diubah dari kode;
@@ -75,27 +80,59 @@
         $.fn.select2 = bungkus;
     }
 
+    // ------------------------------------------------------------------
+    // 3b. Perilaku seragam saat daftar Select2 dibuka (semua instans)
+    // ------------------------------------------------------------------
+    // jQuery 3.6 memutus fokus otomatis Select2 ke kotak cari. Di layar lebar
+    // kotak cari langsung difokuskan; di ponsel tidak, supaya papan ketik tidak
+    // menutup daftar (pengguna tinggal mengetuk kotak cari bila perlu).
+    function fokusCari(inst) {
+        if (w.innerWidth < 768 || !inst.$dropdown) { return; }
+        setTimeout(function () {
+            var f = inst.$dropdown.find('.select2-search--dropdown:not(.select2-search--hide) .select2-search__field')[0];
+            if (f && d.activeElement !== f) { f.focus(); }
+        }, 0);
+    }
+
+    // Enter (memilih hasil) dan Esc (menutup daftar) yang sudah ditangani Select2
+    // ditandai preventDefault. Tanpa ini keydown-nya terus menggelembung: Enter
+    // memicu pendengar "Enter = simpan" di modal, Esc menutup seluruh modal
+    // Bootstrap (keydown.dismiss.bs.modal tidak memeriksa defaultPrevented).
+    // Esc saat daftar TERTUTUP tidak di-preventDefault Select2, jadi tetap
+    // menutup modal seperti biasa.
+    var TOMBOL_DIPAKAI = { Enter: true, Escape: true, Esc: true };
+    function tahanTombol(e) {
+        if (TOMBOL_DIPAKAI[e.key] && e.isDefaultPrevented()) { e.stopPropagation(); }
+    }
+
+    function pasangSaatBuka($) {
+        if ($._aksaraSaatBuka) { return; }
+        $._aksaraSaatBuka = true;
+        $(d).on('select2:open.aksaraPilih', function (e) {
+            var inst = $(e.target).data('select2');
+            if (!inst) { return; }
+            if (!inst._aksaraTombol) {
+                inst._aksaraTombol = true;
+                // $container: kotak terpilih (+ kotak cari inline pilihan ganda);
+                // $dropdown: daftar + kotak cari — keduanya di bawah dropdownParent.
+                if (inst.$container) { inst.$container.on('keydown.aksaraPilih', tahanTombol); }
+                if (inst.$dropdown) { inst.$dropdown.on('keydown.aksaraPilih', tahanTombol); }
+            }
+            fokusCari(inst);
+        });
+    }
+
     function siapkan() {
         var $ = w.jQuery;
         pasangJembatan($);
         pasangBawaanCari($);
-        return $ && $.fn && $.fn.select2 ? $ : null;
+        if ($ && $.fn && $.fn.select2) { pasangSaatBuka($); return $; }
+        return null;
     }
 
     // ------------------------------------------------------------------
     // 2. Pemasangan
     // ------------------------------------------------------------------
-    // jQuery 3.6 memutus fokus otomatis Select2 ke kotak cari. Di layar lebar
-    // kotak cari langsung difokuskan; di ponsel tidak, supaya papan ketik tidak
-    // menutup daftar (pengguna tinggal mengetuk kotak cari bila perlu).
-    function fokusCari() {
-        if (w.innerWidth < 768) { return; }
-        setTimeout(function () {
-            var f = d.querySelector('.select2-container--open .select2-search--dropdown:not(.select2-search--hide) .select2-search__field');
-            if (f) { f.focus(); }
-        }, 0);
-    }
-
     function pasangSatu($, el) {
         var $s = $(el);
         if ($s.hasClass('select2-hidden-accessible') || $s.is('[data-no-select2]')) { return; }
@@ -106,8 +143,7 @@
             opsi.selectionCssClass = 'select2--small';
             opsi.dropdownCssClass = 'select2--small';
         }
-        $s.select2(opsi);
-        $s.on('select2:open.aksaraPilih', fokusCari);
+        $s.select2(opsi); // fokus kotak cari & Enter/Esc: pasangSaatBuka (semua instans)
     }
 
     function bolehOtomatis($s) {
