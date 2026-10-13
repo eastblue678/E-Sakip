@@ -83,6 +83,17 @@ $sel  = static function (array $t) {
         <a href="<?= esc($u('adminopd/ikp'), 'attr') ?>" class="btn btn-outline-secondary btn-sm mt-2">Ke daftar IKP</a>
     </div>
 <?php else: ?>
+    <?php if (count($rekap) > 8): ?>
+        <?php // Kotak saring (public/assets/js/pilih-cari.js): hanya menyembunyikan baris di layar. ?>
+        <div class="saring-daftar" data-saring-wadah="#grid-realisasi tbody" data-saring-butir="tr[data-ikp]" data-saring-satuan="IKP"
+             data-saring-teks="td.lekat .nama, td.lekat .sub">
+            <label class="saring-cari"><i class="fas fa-filter" aria-hidden="true"></i>
+                <input type="search" class="form-control form-control-sm" data-saring-input autocomplete="off"
+                       placeholder="Saring <?= count($rekap) ?> IKP: rumusan atau satuan…" aria-label="Saring IKP"></label>
+            <span class="saring-info" data-saring-info aria-live="polite"></span>
+            <p class="saring-kosong" data-saring-kosong hidden>Tidak ada IKP yang cocok dengan saringan.</p>
+        </div>
+    <?php endif; ?>
     <div class="ikp-grid-wrap">
         <table class="ikp-grid" data-no-paginate id="grid-realisasi"
                data-tahun="<?= (int) $tahun ?>" data-terbuka="<?= (int) $bulanTerbuka ?>"

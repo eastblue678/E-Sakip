@@ -393,6 +393,18 @@ $render = function (int $id) use (&$render, $urut, $simpul, $ind, $label, $keada
         <p class="small mb-0">Susun simpul Eselon III sampai pelaksana di menu Pohon Kinerja &amp; Cascading, lalu isi pemiliknya di Pemilik Kinerja.</p>
     </div>
 <?php else: ?>
+    <?php if (count($simpul) > 8): ?>
+        <?php // Kotak saring (public/assets/js/pilih-cari.js): hanya tampilan — simpul yang tersembunyi tetap ikut tersimpan. ?>
+        <div class="saring-daftar" data-saring-wadah="#tr-pohon" data-saring-butir="li.tr-simpul" data-saring-satuan="simpul"
+             data-saring-teks=".tr-level, .tr-sasaran, .tr-pemilik, .tr-baca, select[data-pilih-ind] option">
+            <label class="saring-cari"><i class="fas fa-filter" aria-hidden="true"></i>
+                <input type="search" class="form-control form-control-sm" data-saring-input autocomplete="off"
+                       placeholder="Saring <?= count($simpul) ?> simpul: sasaran, pemilik, atau indikator…" aria-label="Saring simpul pohon"></label>
+            <label class="saring-sakelar"><input type="checkbox" data-saring-hanya=":scope > .tr-kartu.ikut"> Hanya yang ikut memikul</label>
+            <span class="saring-info" data-saring-info aria-live="polite"></span>
+            <p class="saring-kosong" data-saring-kosong hidden>Tidak ada simpul yang cocok. Ubah kata saringan atau matikan &ldquo;Hanya yang ikut memikul&rdquo;.</p>
+        </div>
+    <?php endif; ?>
     <form method="post" action="<?= esc($u('ikp/turun/' . $ikpId . '/save'), 'attr') ?>" id="form-turun"
           data-pola="<?= esc($polaKode, 'attr') ?>" data-target="<?= esc($target === null ? '' : (string) $target, 'attr') ?>"
           data-satuan="<?= esc($satuan, 'attr') ?>" data-boleh="<?= $ubah ? 1 : 0 ?>" data-terbagi="<?= $terbagi ? 1 : 0 ?>"
@@ -409,7 +421,7 @@ $render = function (int $id) use (&$render, $urut, $simpul, $ind, $label, $keada
             <?= $kotakPeriksa($periksa['per_induk']['akar'] ?? null, 'akar', 'Pembagian dari IKP:') ?>
         </div>
 
-        <ul class="tr-pohon">
+        <ul class="tr-pohon" id="tr-pohon">
             <?php foreach ($urut($pohon['akar']) as $a): ?>
                 <?= $render((int) $a) ?>
             <?php endforeach; ?>
